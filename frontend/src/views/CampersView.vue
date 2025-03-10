@@ -5,7 +5,7 @@
 <template>
   <main>
     <h1>
-      Home page
+      Campers page
     </h1>
   </main>
 </template>
