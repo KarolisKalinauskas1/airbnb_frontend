@@ -25,6 +25,12 @@ const router = createRouter({
       // which is lazy-loaded when the route is visited.
       component: () => import('../views/AccountView.vue'),
     },
+    {
+      path: '/camper/:id',
+      name: 'CampingSpotDetail',
+      props: true, // 👈 this allows route params to be passed as props
+      component: () => import('../views/CampingSpotDetail.vue')
+    },
   ],
 })
 

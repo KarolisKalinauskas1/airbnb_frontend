@@ -15,7 +15,7 @@
                     >
                         Home
                     </RouterLink>
-                    <RouterLink to="campers" 
+                    <RouterLink to="/campers" 
                         class=" p-4 hover:scale-110 hover:text-red-400 md:text-[20px]" 
                         active-class="text-red-400 font-bold"
                     >
@@ -24,17 +24,23 @@
                     <RouterLink to="/account" 
                         class=" p-4 hover:scale-110 hover:text-red-400 md:text-[20px]" 
                         active-class="text-red-400 font-bold"
+                        v-if="isAuthenticated"
                     >
                         Account
                     </RouterLink>
+                    <LoginBtnComponent class=" p-4 hover:scale-110 hover:text-red-400 md:text-[20px]" >
+
+                    </LoginBtnComponent>
                 </div>
             </div>
         </div>
     </nav>
 </template>
 
-<script>
+<script setup>
 
-    import { RouterLink, RouterView } from 'vue-router'
-
+    import { RouterLink } from 'vue-router'
+    import LoginBtnComponent from "./LoginBtnComponent.vue"
+    import { useAuth0 } from '@auth0/auth0-vue'
+    const { user, isAuthenticated, isLoading } = useAuth0();
 </script>
