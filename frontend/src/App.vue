@@ -1,30 +1,21 @@
-
-
 <template>
-  <div>
-    <div class="navigation">
-      <NavComponent/>
-
+  <div id="app">
+    <div>
+      <NavComponent />
     </div>
+    <RouterView />
   </div>
-
-    
-      
- 
-
-  <RouterView />
 </template>
 
 <script setup>
-import { RouterLink, RouterView } from 'vue-router'
-import NavComponent from './components/NavComponent.vue'
+import { onBeforeMount } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import NavComponent from '@/components/NavComponent.vue'
+
+const { initAuth } = useAuthStore()
+
+onBeforeMount(() => {
+  // Just initialize from localStorage if available
+  initAuth()
+})
 </script>
-
-<style scoped>
-header {
-  line-height: 1.5;
-  max-height: 100vh;
-}
-
-
-</style>

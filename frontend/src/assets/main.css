@@ -5,5 +5,27 @@
   box-sizing: border-box;
 }
 
+/* Make text black by default */
+#app .text-gray-500:not(nav *),
+#app .text-gray-600:not(nav *),
+#app .text-gray-700:not(nav *),
+#app .text-gray-800:not(nav *),
+#app .text-gray-900:not(nav *),
+#app [class*="text-gray-"]:not(nav *) {
+  color: #000000 !important;
+}
+
+/* Slightly lighter for descriptions but still very readable */
+#app .text-gray-600.line-clamp-2,
+#app p.text-sm.text-gray-600,
+#app p.text-gray-600 {
+  color: #1a1a1a !important;
+}
+
+/* Date and metadata text - slightly lighter but still readable */
+#app .text-sm.text-gray-500 {
+  color: #000000 !important;
+}
+
 
 

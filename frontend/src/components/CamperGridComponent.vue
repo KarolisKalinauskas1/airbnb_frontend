@@ -23,17 +23,17 @@
   const spots = ref([])
   const loading = ref(true)
   
-  onMounted(async () => {
+  // onMounted(async () => {
     
-    try {
-    const res = await fetch('/camping-spots?startDate=2025-07-01&endDate=2025-07-07')
-    const data = await res.json()
-    spots.value = data
-    } catch (error) {
-        console.error('Error fetching spots:', error)
-    } finally {
-    loading.value = false
-  }
-  })
+  //   try {
+  //   const res = await fetch('/camping-spots?startDate=2025-07-01&endDate=2025-07-07')
+  //   const data = await res.json()
+  //   spots.value = data
+  //   } catch (error) {
+  //       console.error('Error fetching spots:', error)
+  //   } finally {
+  //   loading.value = false
+  // }
+  // })
   </script>
   

@@ -7,6 +7,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 
 // https://vite.dev/config/
+// vite.config.js
 export default defineConfig({
   plugins: [
     vue(),
@@ -20,7 +21,32 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/camping-spots': 'http://localhost:3000',
-    },
-  },
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false
+      },
+      '/camping-spots': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false
+      },
+      '/amenities': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false
+      },
+      '/countries': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false
+      },
+      '/users': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false
+      }
+    }
+  }
 })
+
