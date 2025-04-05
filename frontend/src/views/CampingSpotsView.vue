@@ -2,7 +2,7 @@
   <DashboardLayout>
     <div class="mb-6 flex justify-between items-center">
       <h1 class="text-2xl font-semibold">My Camping Spots</h1>
-      <button @click="showAddModal = true" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600">
+      <button @click="showAddModal = true" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 cursor-pointer transition-colors">
         Add New Spot
       </button>
     </div>
@@ -250,13 +250,13 @@
             <button 
               type="button" 
               @click="closeModal" 
-              class="px-4 py-2 text-black-600 hover:text-black-800"
+              class="px-4 py-2 text-gray-600 hover:text-gray-800 cursor-pointer transition-colors"
             >
               Cancel
             </button>
             <button 
               type="submit" 
-              class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
+              class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 cursor-pointer transition-colors"
             >
               {{ editingSpot ? 'Save Changes' : 'Add Spot' }}
             </button>

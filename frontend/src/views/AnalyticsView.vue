@@ -1,69 +1,71 @@
 <template>
   <DashboardLayout>
-    <div v-if="loading" class="text-center py-8">Loading...</div>
-    <div v-else-if="error" class="text-center py-8 text-red-600">{{ error }}</div>
+    <div v-if="loading" class="flex justify-center items-center h-64">
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
+    </div>
+    <div v-else-if="error" class="text-center py-8 text-red-600 bg-red-50 rounded-lg">{{ error }}</div>
     <template v-else>
       <div class="space-y-8">
-        <!-- Revenue Overview -->
-        <div class="bg-white p-6 rounded-lg shadow-sm">
-          <h2 class="text-xl font-semibold mb-4">Revenue Overview</h2>
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div>
-              <h3 class="text-sm text-gray-500">Total Revenue</h3>
+        <!-- Revenue Overview with improved layout -->
+        <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-200">
+          <h2 class="text-xl font-semibold mb-6 text-gray-800 border-b pb-3">Revenue Overview</h2>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="p-5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+              <h3 class="text-sm font-medium text-gray-600">Total Revenue</h3>
               <p class="text-2xl font-bold text-red-600">€{{ dashboardData.revenue.total.toFixed(2) }}</p>
             </div>
-            <div>
-              <h3 class="text-sm text-gray-500">This Month</h3>
+            <div class="p-5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+              <h3 class="text-sm font-medium text-gray-600">This Month</h3>
               <p class="text-2xl font-bold text-red-600">€{{ dashboardData.revenue.monthly.toFixed(2) }}</p>
               <p class="text-sm text-gray-500" :class="dashboardData.revenue.growth >= 0 ? 'text-green-600' : 'text-red-600'">
                 {{ dashboardData.revenue.growth >= 0 ? '↑' : '↓' }} {{ Math.abs(dashboardData.revenue.growth) }}% from last month
               </p>
             </div>
-            <div>
-              <h3 class="text-sm text-gray-500">Average per Booking</h3>
+            <div class="p-5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+              <h3 class="text-sm font-medium text-gray-600">Average per Booking</h3>
               <p class="text-2xl font-bold text-red-600">€{{ dashboardData.revenue.average.toFixed(2) }}</p>
             </div>
-            <div>
-              <h3 class="text-sm text-gray-500">Projected Monthly</h3>
+            <div class="p-5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+              <h3 class="text-sm font-medium text-gray-600">Projected Monthly</h3>
               <p class="text-2xl font-bold text-red-600">€{{ dashboardData.revenue.projected.toFixed(2) }}</p>
             </div>
           </div>
         </div>
 
-        <!-- Booking Statistics -->
-        <div class="bg-white p-6 rounded-lg shadow-sm">
-          <h2 class="text-xl font-semibold mb-4">Booking Statistics</h2>
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div>
-              <h3 class="text-sm text-gray-500">Total Bookings</h3>
-              <p class="text-2xl font-bold">{{ dashboardData.bookings.total }}</p>
+        <!-- Booking Statistics with improved layout -->
+        <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-200">
+          <h2 class="text-xl font-semibold mb-6 text-gray-800 border-b pb-3">Booking Statistics</h2>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="p-5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+              <h3 class="text-sm font-medium text-gray-600">Total Bookings</h3>
+              <p class="text-2xl font-bold text-gray-800">{{ dashboardData.bookings.total }}</p>
             </div>
-            <div>
-              <h3 class="text-sm text-gray-500">This Month</h3>
-              <p class="text-2xl font-bold">{{ dashboardData.bookings.monthly }}</p>
+            <div class="p-5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+              <h3 class="text-sm font-medium text-gray-600">This Month</h3>
+              <p class="text-2xl font-bold text-gray-800">{{ dashboardData.bookings.monthly }}</p>
               <p class="text-sm" :class="dashboardData.bookings.growth >= 0 ? 'text-green-600' : 'text-red-600'">
                 {{ dashboardData.bookings.growth >= 0 ? '↑' : '↓' }} {{ Math.abs(dashboardData.bookings.growth) }}% from last month
               </p>
             </div>
-            <div>
-              <h3 class="text-sm text-gray-500">Average Duration</h3>
-              <p class="text-2xl font-bold">{{ dashboardData.bookings.averageDuration.toFixed(1) }} days</p>
+            <div class="p-5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+              <h3 class="text-sm font-medium text-gray-600">Average Duration</h3>
+              <p class="text-2xl font-bold text-gray-800">{{ dashboardData.bookings.averageDuration.toFixed(1) }} days</p>
             </div>
-            <div>
-              <h3 class="text-sm text-gray-500">Occupancy Rate</h3>
-              <p class="text-2xl font-bold">{{ dashboardData.bookings.occupancyRate }}%</p>
+            <div class="p-5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+              <h3 class="text-sm font-medium text-gray-600">Occupancy Rate</h3>
+              <p class="text-2xl font-bold text-gray-800">{{ dashboardData.bookings.occupancyRate }}%</p>
             </div>
           </div>
         </div>
 
-        <!-- Popular Spots & Performance -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Popular Spots & Performance with improved layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <!-- Popular Spots -->
-          <div class="bg-white p-6 rounded-lg shadow-sm">
-            <h2 class="text-xl font-semibold mb-4">Most Popular Spots</h2>
+          <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-200">
+            <h2 class="text-xl font-semibold mb-6 text-gray-800 border-b pb-3">Most Popular Spots</h2>
             <div class="space-y-4">
               <div v-for="spot in dashboardData.popularSpots" :key="spot.id" 
-                  class="flex justify-between items-center border-b pb-4">
+                   class="flex justify-between items-center p-4 rounded-lg hover:bg-gray-50 transition-colors border-b last:border-b-0">
                 <div>
                   <h3 class="font-medium">{{ spot.name }}</h3>
                   <div class="flex items-center gap-4">
@@ -77,17 +79,17 @@
           </div>
 
           <!-- Spot Performance -->
-          <div class="bg-white p-6 rounded-lg shadow-sm">
-            <h2 class="text-xl font-semibold mb-4">Spot Performance</h2>
-            <div class="space-y-4">
+          <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-200">
+            <h2 class="text-xl font-semibold mb-6 text-gray-800 border-b pb-3">Spot Performance</h2>
+            <div class="space-y-6">
               <div v-for="spot in dashboardData.spotPerformance" :key="spot.id" class="space-y-2">
                 <div class="flex justify-between items-center">
-                  <h3 class="font-medium">{{ spot.name }}</h3>
-                  <span class="text-sm font-medium">€{{ spot.performance.toFixed(2) }}/day</span>
+                  <h3 class="font-medium text-gray-800">{{ spot.name }}</h3>
+                  <span class="text-sm font-medium text-red-600">€{{ spot.performance.toFixed(2) }}/day</span>
                 </div>
                 <!-- Progress bar -->
-                <div class="w-full bg-gray-200 rounded-full h-2.5">
-                  <div class="bg-red-600 h-2.5 rounded-full" 
+                <div class="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                  <div class="bg-red-600 h-2.5 rounded-full transition-all duration-500" 
                        :style="{ width: Math.min((spot.performance / maxPerformance) * 100, 100) + '%' }"></div>
                 </div>
               </div>
@@ -95,9 +97,9 @@
           </div>
         </div>
 
-        <!-- Recent Activity -->
-        <div class="bg-white p-6 rounded-lg shadow-sm">
-          <h2 class="text-xl font-semibold mb-4">Recent Bookings</h2>
+        <!-- Recent Bookings Table with improved layout -->
+        <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-200">
+          <h2 class="text-xl font-semibold mb-6 text-gray-800 border-b pb-3">Recent Bookings</h2>
           <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
               <thead>

@@ -10,7 +10,7 @@ import { useAuthStore } from '@/stores/auth'
 
 const routes = [
   { path: '/', name: 'home', component: HomeView },
-  { path: '/campers', name: 'campers', component: CampersView },
+  { path: '/campers', name: 'campers', component: () => import('@/views/CampersView.vue') },
   { path: '/auth', name: 'auth', component: LoginView },
   {
     path: '/account',
@@ -27,7 +27,7 @@ const routes = [
   {
     path: '/dashboard/spots',
     name: 'dashboard-spots',
-    component: CampingSpotsView,
+    component: () => import('@/views/DashboardSpots.vue'),
     meta: { requiresAuth: true, requiresSeller: true }
   },
   {
@@ -35,6 +35,27 @@ const routes = [
     name: 'dashboard-analytics',
     component: AnalyticsView,
     meta: { requiresAuth: true, requiresSeller: true }
+  },
+  { 
+    path: '/camper/:id', 
+    name: 'camper-detail',
+    component: () => import('@/views/CampingSpotDetail.vue')
+  },
+  {
+    path: '/booking/:id',
+    name: 'create-booking',
+    component: () => import('../views/CreateBooking.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/404',
+    name: 'NotFound',
+    component: () => import('../views/NotFound.vue')
+  },
+  // Catch-all route for non-existent paths
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/404'
   }
 ]
 
