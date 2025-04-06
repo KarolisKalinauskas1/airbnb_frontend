@@ -248,7 +248,8 @@ const fetchSpots = async (filters = currentFilters.value) => {
     })
     
     const { data } = await axios.get('/camping-spots', { params })
-    spots.value = data
+    // Filter out spots owned by the current user
+    spots.value = data.filter(spot => spot.owner_id !== authStore.fullUser?.user_id)
   } catch (error) {
     console.error('Failed to fetch spots:', error)
     toast.error('Failed to fetch camping spots')
@@ -260,5 +261,19 @@ const fetchSpots = async (filters = currentFilters.value) => {
 const handleFilters = (filters) => {
   currentFilters.value = filters
   fetchSpots(filters)
+}
+
+const loadSpots = async () => {
+  loading.value = true
+  try {
+    const { data } = await axios.get('/camping-spots')
+    // Filter out spots owned by the current user
+    spots.value = data.filter(spot => spot.owner_id !== authStore.fullUser?.user_id)
+  } catch (error) {
+    console.error('Failed to load spots:', error)
+    toast.error('Failed to load camping spots')
+  } finally {
+    loading.value = false
+  }
 }
 </script>

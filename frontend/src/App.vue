@@ -1,11 +1,9 @@
 <template>
   <div id="app">
-    <div>
-      <NavComponent />
-    </div>
+    <NavComponent v-if="initialized" />
     <Suspense>
       <template #default>
-        <RouterView />
+        <RouterView v-if="initialized" />
       </template>
       <template #fallback>
         <div class="flex justify-center items-center min-h-screen">
@@ -17,14 +15,15 @@
 </template>
 
 <script setup>
-import { onBeforeMount } from 'vue'
+import { ref, onBeforeMount } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import NavComponent from '@/components/NavComponent.vue'
 
-const { initAuth } = useAuthStore()
+const initialized = ref(false)
+const authStore = useAuthStore()
 
-onBeforeMount(() => {
-  // Just initialize from localStorage if available
-  initAuth()
+onBeforeMount(async () => {
+  await authStore.initAuth()
+  initialized.value = true
 })
 </script>

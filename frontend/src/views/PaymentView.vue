@@ -17,27 +17,31 @@
           <div class="space-y-2">
             <div class="flex justify-between">
               <span class="text-gray-600">{{ bookingDetails.nights }} nights</span>
-              <span>€{{ bookingDetails.subtotal }}</span>
+              <span>€{{ bookingDetails.base_price }}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-600">Service fee</span>
-              <span>€{{ bookingDetails.serviceFee }}</span>
+              <span>€{{ (bookingDetails.total - bookingDetails.base_price).toFixed(2) }}</span>
             </div>
-            <div class="flex justify-between font-bold mt-4 pt-4 border-t">
+            <div class="pt-4 border-t flex justify-between font-bold">
               <span>Total</span>
               <span>€{{ bookingDetails.total }}</span>
             </div>
           </div>
         </div>
 
-        <!-- Payment Form -->
-        <PaymentForm
-          v-if="clientSecret"
-          :amount="bookingDetails.total"
-          :client-secret="clientSecret"
-          @payment-succeeded="handlePaymentSuccess"
-          @payment-failed="handlePaymentFailure"
-        />
+        <!-- Stripe Payment Form -->
+        <form id="payment-form" @submit.prevent="handleSubmit">
+          <div id="payment-element" class="mb-6"></div>
+          <button
+            type="submit"
+            class="w-full py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:bg-gray-300"
+            :disabled="loading"
+          >
+            <span v-if="loading">Processing...</span>
+            <span v-else>Pay €{{ bookingDetails.total }}</span>
+          </button>
+        </form>
       </div>
     </div>
   </div>
@@ -46,14 +50,17 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import PaymentForm from '@/components/PaymentForm.vue'
-import { useToast } from 'vue-toastification'
 import axios from '@/axios'
+import { useToast } from 'vue-toastification'
+import { loadStripe } from '@stripe/stripe-js'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
-const clientSecret = ref(null)
+
+const loading = ref(false)
+const stripe = ref(null)
+const elements = ref(null)
 const bookingDetails = ref(null)
 
 onMounted(async () => {
@@ -64,30 +71,55 @@ onMounted(async () => {
       throw new Error('No booking details found')
     }
 
+    // Initialize Stripe
+    stripe.value = await loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY)
+
     // Create payment intent
     const { data } = await axios.post('/api/bookings/create-payment-intent', {
-      amount: parseFloat(bookingDetails.value.total)
+      amount: bookingDetails.value.total
     })
-    clientSecret.value = data.clientSecret
+    
+    // Create payment elements
+    elements.value = stripe.value.elements({
+      clientSecret: data.clientSecret,
+      appearance: {
+        theme: 'stripe'
+      }
+    })
+
+    const paymentElement = elements.value.create('payment')
+    paymentElement.mount('#payment-element')
   } catch (error) {
     toast.error('Failed to initialize payment')
     router.push('/account')
   }
 })
 
-const handlePaymentSuccess = async () => {
+const handleSubmit = async () => {
+  loading.value = true
+
   try {
+    const { error } = await stripe.value.confirmPayment({
+      elements: elements.value,
+      confirmParams: {
+        return_url: `${window.location.origin}/booking-success`,
+      },
+    })
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    // Create booking after successful payment
     const response = await axios.post('/api/bookings/confirm', bookingDetails.value)
-    if (response.data) {
+    if (response.data.success) {
       toast.success('Booking confirmed successfully!')
       router.push('/account')
     }
   } catch (error) {
-    toast.error('Booking failed: ' + (error.response?.data?.error || 'Unknown error'))
+    toast.error('Payment failed: ' + error.message)
+  } finally {
+    loading.value = false
   }
-}
-
-const handlePaymentFailure = (error) => {
-  toast.error('Payment failed: ' + error.message)
 }
 </script>

@@ -72,6 +72,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/booking/:id',
+    name: 'booking-details',
+    component: () => import('../views/BookingDetailsView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/404',
     name: 'NotFound',
     component: () => import('../views/NotFound.vue')
@@ -79,6 +85,12 @@ const routes = [
   {
     path: '/:pathMatch(.*)*',
     redirect: '/404'
+  },
+  {
+    path: '/payment',
+    name: 'payment',
+    component: () => import('../views/PaymentView.vue'),
+    meta: { requiresAuth: true }
   }
 ]
 

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/lib/supabase'
 import axios from 'axios'
@@ -30,8 +30,13 @@ onMounted(async () => {
   filterBookings()
 })
 
-// Remove or comment out fetchUserInfo since we're using Pinia store data
-// const fetchUserInfo = async () => { ... }
+// Add a watcher for authStore.fullUser
+watch(() => authStore.fullUser, (newValue) => {
+  if (newValue) {
+    fullUser.value = newValue
+    filterBookings()
+  }
+}, { deep: true })
 
 const filterBookings = () => {
   if (!fullUser.value || !Array.isArray(fullUser.value.bookings)) {
@@ -45,11 +50,20 @@ const filterBookings = () => {
 
   // 🧹 Clean nulls first
   const cleanBookings = fullUser.value.bookings.filter(b => b !== null)
-
   const now = new Date()
-  upcomingBookings.value = cleanBookings.filter(b => new Date(b.start_date) > now)
-  previousBookings.value = cleanBookings.filter(b => new Date(b.end_date) <= now)
-  
+
+  // Show confirmed (2) bookings in upcoming if they're in the future
+  upcomingBookings.value = cleanBookings.filter(b => {
+    const startDate = new Date(b.start_date)
+    return startDate > now && b.status_id === 2 // Only show confirmed (2) bookings
+  })
+
+  // Show completed (4) and cancelled (3) bookings in previous
+  previousBookings.value = cleanBookings.filter(b => {
+    const endDate = new Date(b.end_date)
+    return b.status_id === 3 || b.status_id === 4 || (endDate <= now && b.status_id === 2)
+  })
+
   if (previousBookings.value.length === 0 && activeTab.value === 'previous') {
     activeTab.value = 'info'
   }

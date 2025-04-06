@@ -53,7 +53,7 @@
                   @click="editingDates = !editingDates"
                   class="text-red-600 underline cursor-pointer"
                 >
-                  {{ editingDates ? 'Cancel' : 'Edit' }}
+                  {{ editingDates ? 'Close' : 'Edit' }}
                 </button>
               </div>
               <DateRangeSelector
@@ -79,7 +79,7 @@
                   @click="editingGuests = !editingGuests"
                   class="text-red-600 underline cursor-pointer"
                 >
-                  {{ editingGuests ? 'Cancel' : 'Edit' }}
+                  {{ editingGuests ? 'Close' : 'Edit' }}
                 </button>
               </div>
               <div v-if="editingGuests" class="flex items-center gap-4">
@@ -100,44 +100,19 @@
               </div>
             </div>
 
-            <!-- Phone Number Section -->
-            <div class="bg-white rounded-lg shadow p-6 mb-4 border-2 border-red-100">
-              <div class="mb-4">
-                <h3 class="font-medium text-lg flex items-center gap-2">
-                  Contact number <span class="text-red-500">*</span>
-                  <span class="text-sm text-red-500 font-normal">(Required for booking)</span>
-                </h3>
-              </div>
-              <input 
-                v-model="phoneNumber"
-                type="tel"
-                required
-                placeholder="Enter your phone number (e.g. +32412345678)"
-                class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                :class="{'border-red-500': phoneNumberError}"
-                @input="handlePhoneInput"
-              >
-              <p v-if="phoneNumberError" class="mt-1 text-sm text-red-500">
-                {{ phoneNumberError }}
-              </p>
-            </div>
-
             <!-- Add cursor-pointer to all action buttons -->
-            <div class="bg-white rounded-lg shadow p-6 mb-4">
-              <h3 class="font-medium text-lg mb-4">Payment Details</h3>
-            </div>
-
             <button 
               type="submit"
               class="w-full py-4 rounded-xl font-semibold shadow-md transition-all duration-200"
               :class="[
-                !loading && phoneNumber && !phoneNumberError
+                !loading && isFormValid
                   ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white hover:shadow-lg cursor-pointer transform hover:-translate-y-0.5'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'
               ]"
-              :disabled="loading || !phoneNumber || phoneNumberError"
+              :disabled="loading || !isFormValid"
             >
-              Continue to Payment
+              <span v-if="loading">Processing...</span>
+              <span v-else>Confirm Booking (€{{ grandTotal }})</span>
             </button>
             <p v-if="bookingError" class="mt-2 text-red-500 text-sm">{{ bookingError }}</p>
           </form>
@@ -203,8 +178,6 @@ const toast = useToast()
 const loading = ref(true)
 const spot = ref(null)
 const guests = ref(1)
-const phoneNumber = ref('')
-const phoneNumberError = ref('')
 const bookingError = ref(null);
 
 const dates = ref({
@@ -254,75 +227,53 @@ const handleDateChange = () => {
   })
 }
 
-const handlePhoneInput = (e) => {
-  phoneNumber.value = e.target.value
-  validatePhoneNumber(phoneNumber.value)
-}
-
-const validatePhoneNumber = (number) => {
-  phoneNumberError.value = '' // Clear previous error
-  
-  if (!number?.trim()) {
-    phoneNumberError.value = 'Phone number is required'
-    return false
+const validateForm = () => {
+  if (!dates.value.startDate || !dates.value.endDate) {
+    toast.error('Please select check-in and check-out dates');
+    return false;
   }
 
-  // Remove any spaces and non-numeric characters except + sign
-  const cleanNumber = number.replace(/[^\d+]/g, '')
-  
-  if (cleanNumber.length < 10) {
-    phoneNumberError.value = 'Phone number must be at least 10 digits'
-    return false
-  }
-  
-  if (cleanNumber.length > 15) {
-    phoneNumberError.value = 'Phone number cannot exceed 15 digits'
-    return false
-  }
-  
-  if (!/^(\+|\d)/.test(cleanNumber)) {
-    phoneNumberError.value = 'Phone number must start with + or a number'
-    return false
+  if (!guests.value || guests.value < 1) {
+    toast.error('Please select number of guests');
+    return false;
   }
 
-  return true  // Only return true if all validations pass
-}
+  if (!authStore.fullUser?.user_id) {
+    toast.error('Please log in to continue');
+    return false;
+  }
+
+  return true;
+};
 
 const handleSubmit = async () => {
-  if (!validatePhoneNumber(phoneNumber.value)) return;
+  if (!validateForm()) return;
   
   loading.value = true;
   try {
-    console.log('Creating checkout session with data:', {
-      camping_spot_id: spot.value.camping_spot_id,
-      user_id: authStore.fullUser.user_id,
-      start_date: dates.value.startDate,
-      end_date: dates.value.endDate,
-      number_of_guests: guests.value,
-      phone_number: phoneNumber.value,
-      total: grandTotal.value,
+    const basePrice = parseFloat(totalPrice.value);
+    const totalWithFee = parseFloat(grandTotal.value);
+
+    // Instead of creating booking directly, redirect to payment with booking details
+    router.push({
+      name: 'payment',
+      params: {
+        bookingDetails: {
+          camping_spot_id: spot.value.camping_spot_id,
+          user_id: authStore.fullUser.user_id,
+          start_date: dates.value.startDate,
+          end_date: dates.value.endDate,
+          number_of_guests: guests.value,
+          total: totalWithFee,
+          base_price: basePrice,
+          camping_spot: spot.value
+        }
+      }
     });
-
-    const { data } = await axios.post('/api/bookings/create-checkout-session', {
-      camping_spot_id: spot.value.camping_spot_id,
-      user_id: authStore.fullUser.user_id,
-      start_date: dates.value.startDate,
-      end_date: dates.value.endDate,
-      number_of_guests: guests.value,
-      phone_number: phoneNumber.value,
-      total: grandTotal.value
-    });
-
-    console.log('Checkout session created:', data);
-
-    if (data.url) {
-      window.location.href = data.url;
-    } else {
-      throw new Error('No checkout URL received');
-    }
   } catch (error) {
-    console.error('Checkout Error:', error.response?.data || error.message);
-    toast.error(error.response?.data?.error || 'Failed to create checkout session');
+    console.error('Booking Error:', error);
+    toast.error(error.response?.data?.error || 'Failed to process booking');
+  } finally {
     loading.value = false;
   }
 };
@@ -336,11 +287,6 @@ onMounted(async () => {
       }
     })
     spot.value = data
-
-    // If user has a phone number, pre-fill it
-    if (authStore.fullUser?.phone_number) {
-      phoneNumber.value = authStore.fullUser.phone_number
-    }
   } catch (error) {
     console.error('Failed to load spot:', error)
   } finally {
@@ -369,6 +315,15 @@ const averageRating = computed(() => {
   const avg = spot.value.reviews.reduce((sum, review) => sum + review.rating, 0) / spot.value.reviews.length
   return avg.toFixed(1)
 })
+
+// Add computed property for form validation
+const isFormValid = computed(() => {
+  return (
+    dates.value.startDate &&
+    dates.value.endDate &&
+    guests.value > 0
+  );
+});
 </script>
 
 <style scoped>

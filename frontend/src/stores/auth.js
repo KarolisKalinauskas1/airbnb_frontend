@@ -64,27 +64,22 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   const initAuth = async () => {
-    // If already initialized and have data, return early
-    if (isInitialized.value && fullUser.value) {
-      return
-    }
-
+    // Prevent multiple initialization attempts
+    if (loading.value) return
+    loading.value = true
+    
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) {
         user.value = session.user
         await syncUserWithBackend(session.user)
 
-        // Try to get user data from storage first
         const storedData = localStorage.getItem('userData')
         if (storedData) {
           const parsed = JSON.parse(storedData)
           parsed.isowner = Number(parsed.isowner)
           fullUser.value = parsed
-          isInitialized.value = true
-        }
-        // Fetch fresh data only if we don't have stored data
-        if (!storedData) {
+        } else {
           await fetchFullUserInfo()
         }
       } else {
@@ -93,6 +88,9 @@ export const useAuthStore = defineStore('auth', () => {
     } catch (error) {
       console.error('Init auth error:', error)
       clearState()
+    } finally {
+      loading.value = false
+      isInitialized.value = true
     }
   }
 
