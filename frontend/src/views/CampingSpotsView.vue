@@ -588,17 +588,16 @@ onMounted(async () => {
 })
 
 const loadSpots = async () => {
+  loading.value = true
   try {
-    const { data } = await axios.get('/camping-spots/my-spots');
-    spots.value = data.map(spot => ({
-      ...spot,
-      camping_spot_id: spot.camping_spot_id,
-      id: spot.camping_spot_id,
-      price: spot.price_per_night,
-      location: `${spot.location?.city}, ${spot.location?.country?.name}`
-    }));
+    const { data } = await axios.get('/camping-spots')
+    // Filter out spots owned by the current user
+    spots.value = data.filter(spot => spot.owner_id !== authStore.fullUser?.user_id)
   } catch (error) {
-    console.error('Failed to load spots:', error);
+    console.error('Failed to load spots:', error)
+    toast.error('Failed to load camping spots')
+  } finally {
+    loading.value = false
   }
 }
 </script>

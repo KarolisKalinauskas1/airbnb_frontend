@@ -6,6 +6,9 @@ import AccountView from '../views/AccountView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import CampingSpotsView from '../views/CampingSpotsView.vue'
 import AnalyticsView from '../views/AnalyticsView.vue'
+import PaymentView from '@/views/PaymentView.vue'
+import BookingSuccessView from '@/views/BookingSuccessView.vue'
+import BookingFailedView from '@/views/BookingFailedView.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const routes = [
@@ -42,9 +45,30 @@ const routes = [
     component: () => import('@/views/CampingSpotDetail.vue')
   },
   {
-    path: '/booking/:id',
+    path: '/camper/create-booking/:id',
     name: 'create-booking',
-    component: () => import('../views/CreateBooking.vue'),
+    component: () => import('@/views/CreateBooking.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/payment',
+    name: 'payment',
+    component: PaymentView,
+    meta: { 
+      requiresAuth: true,
+      requiresBookingDetails: true
+    }
+  },
+  {
+    path: '/booking-success',
+    name: 'booking-success',
+    component: BookingSuccessView,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/booking-failed',
+    name: 'booking-failed',
+    component: BookingFailedView,
     meta: { requiresAuth: true }
   },
   {
@@ -52,7 +76,6 @@ const routes = [
     name: 'NotFound',
     component: () => import('../views/NotFound.vue')
   },
-  // Catch-all route for non-existent paths
   {
     path: '/:pathMatch(.*)*',
     redirect: '/404'
@@ -95,6 +118,16 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
+  next()
+})
+
+// Add this guard after router creation
+router.beforeEach((to, from, next) => {
+  // Check if payment route requires booking details
+  if (to.name === 'payment' && (!to.params.bookingDetails || !to.params.bookingDetails.camping_spot_id)) {
+    next({ name: 'campers' })
+    return
+  }
   next()
 })
 

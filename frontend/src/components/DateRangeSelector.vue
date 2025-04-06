@@ -1,23 +1,23 @@
 <template>
-  <div class="bg-white p-4 rounded-lg shadow-sm">
-    <div class="grid grid-cols-2 gap-4">
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-2">Check In</label>
+  <div class="date-range-container">
+    <div class="grid grid-cols-2 gap-2">
+      <div class="date-input-group">
+        <label class="block text-sm font-medium mb-1">Check in</label>
         <input
           type="date"
           :value="localStartDate"
           :min="today"
-          class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-lg px-4 py-2 transition-all duration-200 hover:border-red-300"
+          class="date-input"
           @input="handleStartDateChange($event)"
         >
       </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-2">Check Out</label>
+      <div class="date-input-group">
+        <label class="block text-sm font-medium mb-1">Check out</label>
         <input
           type="date"
           :value="localEndDate"
           :min="minEndDate"
-          class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 text-lg px-4 py-2 transition-all duration-200 hover:border-red-300"
+          class="date-input"
           @input="handleEndDateChange($event)"
         >
       </div>
@@ -77,7 +77,48 @@ const emitDates = () => {
 </script>
 
 <style scoped>
+.date-range-container {
+  background: white;
+  border-radius: 1rem;
+  padding: 1rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.date-range-container:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+.date-input-group {
+  position: relative;
+}
+
+.date-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #E5E7EB;
+  border-radius: 0.75rem;
+  font-size: 1rem;
+  color: #374151;
+  background: #F9FAFB;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.date-input:hover {
+  border-color: #FF385C;
+  background: #FFF8F6;
+}
+
+.date-input:focus {
+  outline: none;
+  border-color: #FF385C;
+  box-shadow: 0 0 0 3px rgba(255, 56, 92, 0.1);
+}
+
 input[type="date"] {
+  appearance: none;
   -webkit-appearance: none;
   position: relative;
   padding-right: 30px !important;

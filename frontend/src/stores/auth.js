@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import axios from '@/axios'
 import { supabase } from '@/lib/supabase'
+import { useDatesStore } from './dates'
+import router from '@/router' // Add this import
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(null)
@@ -118,10 +120,22 @@ export const useAuthStore = defineStore('auth', () => {
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut()
+      // Clear user data
       clearState()
+      
+      // Clear dates
+      const datesStore = useDatesStore()
+      datesStore.clearDates()
+      
+      // Perform logout
+      await supabase.auth.signOut()
+
+      // Navigate to auth page
+      router.push('/auth')
     } catch (error) {
       console.error('Logout error:', error)
+      // Still redirect even if there's an error
+      router.push('/auth')
     }
   }
 

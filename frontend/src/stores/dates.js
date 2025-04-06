@@ -9,6 +9,10 @@ export const useDatesStore = defineStore('dates', {
     setDates(startDate, endDate) {
       this.startDate = startDate
       this.endDate = endDate
+    },
+    clearDates() {
+      this.startDate = ''
+      this.endDate = ''
     }
   },
   persist: true

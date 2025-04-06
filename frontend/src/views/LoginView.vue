@@ -135,11 +135,23 @@ const handleLogin = async () => {
 
     if (!success) throw new Error(error)
 
-    // Redirect based on user type
-    if (isOwner) {
+    // Check if we came from booking
+    const redirectPath = route.query.redirect
+    const startDate = route.query.startDate
+    const endDate = route.query.endDate
+
+    if (redirectPath && redirectPath.includes('create-booking')) {
+      router.push({
+        path: redirectPath,
+        query: {
+          startDate,
+          endDate
+        }
+      })
+    } else if (isOwner) {
       router.push('/dashboard')
     } else {
-      router.push(route.query.redirect || '/')
+      router.push('/campers')
     }
   } catch (error) {
     console.error('Login error:', error)

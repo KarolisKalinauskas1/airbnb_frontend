@@ -176,7 +176,7 @@
 
                 <button 
                   @click="handleBooking"
-                  class="w-full bg-gradient-to-r from-red-500 to-red-600 text-white py-4 rounded-xl font-semibold hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                  class="w-full bg-gradient-to-r from-red-500 to-red-600 text-white py-4 rounded-xl font-semibold hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 cursor-pointer"
                 >
                   Reserve now
                 </button>
@@ -227,6 +227,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDatesStore } from '@/stores/dates'
+import { useAuthStore } from '@/stores/auth'  // Add this import
 import axios from '@/axios'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 import LocationMap from '@/components/LocationMap.vue'
@@ -235,6 +236,7 @@ import { useToast } from 'vue-toastification'
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()  // Add this line
 const spot = ref(null)
 const loading = ref(true)
 const showMap = ref(false)
@@ -277,14 +279,22 @@ const calculateTotal = () => {
 }
 
 const handleBooking = () => {
-  if (!dates.value.startDate || !dates.value.endDate) {
-    alert('Please select dates first')
+  if (!authStore.user) {
+    router.push({
+      path: '/auth',
+      query: { 
+        redirect: `/camper/create-booking/${spot.value.camping_spot_id}`,
+        startDate: dates.value.startDate,
+        endDate: dates.value.endDate,
+        from: route.fullPath
+      }
+    })
     return
   }
+
   router.push({
-    name: 'create-booking',
-    params: { id: spot.value.camping_spot_id },
-    query: { 
+    path: `/camper/create-booking/${spot.value.camping_spot_id}`,
+    query: {
       startDate: dates.value.startDate,
       endDate: dates.value.endDate
     }

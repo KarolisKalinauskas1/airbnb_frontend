@@ -21,19 +21,15 @@
     </div>
 
     <!-- Price Range Buttons -->
-    <div class="space-y-4">
+    <div class="space-y-4 border-t pt-6">
       <h3 class="text-base font-medium text-gray-800">Price Range</h3>
-      <div class="flex flex-wrap gap-2">
-        <button 
-          v-for="range in priceRanges" 
+      <div class="grid grid-cols-2 gap-2">
+        <button
+          v-for="range in priceRanges"
           :key="range.id"
           @click="selectPriceRange(range)"
-          :class="[
-            'px-4 py-2 rounded-full text-sm cursor-pointer',
-            selectedPriceRange?.id === range.id 
-              ? 'bg-red-500 text-white' 
-              : 'bg-gray-100 hover:bg-gray-200'
-          ]"
+          class="px-4 py-2 rounded-lg border cursor-pointer transition-colors duration-200"
+          :class="selectedPriceRange?.id === range.id ? 'bg-red-50 border-red-500 text-red-700' : 'border-gray-300 hover:bg-gray-50'"
         >
           {{ range.label }}
         </button>
@@ -109,13 +105,13 @@
       <div class="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
         <button 
           @click="decrementGuests"
-          class="w-10 h-10 rounded-full border-2 border-red-500 flex items-center justify-center hover:bg-red-50 transition-colors text-red-500 text-xl"
+          class="w-10 h-10 rounded-full border-2 border-red-500 flex items-center justify-center hover:bg-red-50 transition-colors text-red-500 text-xl cursor-pointer"
           :disabled="filters.guests <= 1"
         >-</button>
         <span class="text-xl font-medium">{{ filters.guests }}</span>
         <button 
           @click="incrementGuests"
-          class="w-10 h-10 rounded-full border-2 border-red-500 flex items-center justify-center hover:bg-red-50 transition-colors text-red-500 text-xl"
+          class="w-10 h-10 rounded-full border-2 border-red-500 flex items-center justify-center hover:bg-red-50 transition-colors text-red-500 text-xl cursor-pointer"
         >+</button>
       </div>
     </div>
@@ -133,7 +129,7 @@
             type="checkbox"
             :value="amenity.amenity_id"
             v-model="filters.amenities"
-            class="rounded-lg border-gray-300 text-red-500 focus:ring-red-500 w-5 h-5"
+            class="rounded-lg border-gray-300 text-red-500 focus:ring-red-500 w-5 h-5 cursor-pointer"
           >
           <span class="ml-3 text-gray-700">{{ amenity.name }}</span>
         </label>
@@ -144,7 +140,7 @@
     <button 
       type="button" 
       @click="applyFilters"
-      class="w-full px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200 text-lg font-medium shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
+      class="w-full px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200 text-lg font-medium shadow-sm hover:shadow-md transform hover:-translate-y-0.5 cursor-pointer"
     >
       Apply Filters
     </button>
@@ -152,7 +148,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, defineProps, watch } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import axios from '@/axios'
 
 const props = defineProps({
