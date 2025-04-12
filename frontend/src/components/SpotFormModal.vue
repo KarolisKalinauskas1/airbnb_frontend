@@ -1,8 +1,16 @@
 <template>
-  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center overflow-y-auto">
-    <div class="bg-white p-6 rounded-lg w-full max-w-2xl my-8 mx-4">
+  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center overflow-y-auto pt-20 pb-10 z-50">
+    <div class="bg-white p-6 rounded-lg w-full max-w-2xl my-10 mx-4 shadow-xl relative">
+      <!-- Close button in the top-right corner -->
+      <button 
+        @click="$emit('close')" 
+        class="absolute -top-4 -right-4 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-110 border border-gray-200 cursor-pointer"
+      >
+        <span class="text-gray-600 hover:text-red-600 transition-colors">&times;</span>
+      </button>
+      
       <h2 class="text-xl font-semibold mb-4">{{ spot ? 'Edit' : 'Add' }} Camping Spot</h2>
-      <form @submit.prevent="handleSubmit" class="space-y-4 max-h-[80vh] overflow-y-auto pr-4">
+      <form @submit.prevent="handleSubmit" class="space-y-4 max-h-[70vh] overflow-y-auto pr-4">
         <!-- Basic Information -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -336,3 +344,49 @@ onMounted(async () => {
   }
 })
 </script>
+
+<style scoped>
+/* Add styles to ensure modal is properly positioned */
+.fixed {
+  position: fixed;
+}
+
+.pt-20 {
+  padding-top: 5rem; /* Ensure it's below the navbar */
+}
+
+.overflow-y-auto {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,0,0,0.3) transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar {
+  width: 6px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background-color: rgba(0,0,0,0.3);
+  border-radius: 3px;
+}
+
+/* Animation for close button hover */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+button.absolute:hover {
+  animation: pulse 1s infinite;
+}
+</style>

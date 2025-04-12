@@ -9,7 +9,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
       monthly: 0,
       average: 0,
       projected: 0,
-      growth: 0
+      growth: 0,
+      cancelled: 0 // Add this property to the initial state
     },
     bookings: {
       total: 0,
@@ -34,8 +35,16 @@ export const useDashboardStore = defineStore('dashboard', () => {
     try {
       const { data } = await axios.get('/api/dashboard/analytics')
       console.log('Dashboard data received:', data) // Debug log
+      
+      // Make sure all expected properties exist, using defaults if not
       dashboardData.value = {
+        ...dashboardData.value, // Keep the initial structure
         ...data,
+        revenue: {
+          ...dashboardData.value.revenue,
+          ...(data.revenue || {}), // Use empty object as fallback if revenue is undefined
+          cancelled: data.revenue?.cancelled || 0 // Ensure cancelled property exists
+        },
         totalSpots: data.spotPerformance?.length || 0
       }
     } catch (err) {

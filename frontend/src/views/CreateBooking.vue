@@ -250,31 +250,45 @@ const handleSubmit = async () => {
   if (!validateForm()) return;
   
   loading.value = true;
+  bookingError.value = null; // Clear any previous errors
+  
   try {
     const basePrice = parseFloat(totalPrice.value);
     const totalWithFee = parseFloat(grandTotal.value);
+    const nights = numberOfNights.value;
 
-    // Instead of creating booking directly, redirect to payment with booking details
-    router.push({
-      name: 'payment',
-      params: {
-        bookingDetails: {
-          camping_spot_id: spot.value.camping_spot_id,
-          user_id: authStore.fullUser.user_id,
-          start_date: dates.value.startDate,
-          end_date: dates.value.endDate,
-          number_of_guests: guests.value,
-          total: totalWithFee,
-          base_price: basePrice,
-          camping_spot: spot.value
-        }
+    // Show a message to the user about redirection
+    toast.info('Redirecting to payment page...');
+
+    // Create Stripe checkout session directly
+    const { data } = await axios.post('/api/bookings/create-checkout-session', {
+      booking: {
+        camping_spot_id: spot.value.camping_spot_id,
+        user_id: authStore.fullUser.user_id,
+        start_date: dates.value.startDate,
+        end_date: dates.value.endDate,
+        number_of_guests: guests.value,
+        total: totalWithFee,
+        base_price: basePrice,
+        nights: nights
       }
     });
+    
+    // Set a small timeout to allow the toast to display
+    setTimeout(() => {
+      // Redirect to Stripe Checkout
+      window.location.href = data.url;
+    }, 500);
   } catch (error) {
     console.error('Booking Error:', error);
-    toast.error(error.response?.data?.error || 'Failed to process booking');
+    bookingError.value = error.response?.data?.error || 'Failed to process booking';
+    toast.error(bookingError.value);
   } finally {
-    loading.value = false;
+    // Don't reset loading state here since we're redirecting
+    // Only reset if there was an error
+    if (bookingError.value) {
+      loading.value = false;
+    }
   }
 };
 

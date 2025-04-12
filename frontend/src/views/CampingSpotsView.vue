@@ -75,10 +75,18 @@
     </div>
 
     <!-- Add/Edit Modal -->
-    <div v-if="showAddModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center overflow-y-auto">
-      <div class="bg-white p-6 rounded-lg w-full max-w-2xl my-8 mx-4">
+    <div v-if="showAddModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center overflow-y-auto pt-20 pb-10 z-50">
+      <div class="bg-white p-6 rounded-lg w-full max-w-2xl my-10 mx-4 shadow-xl relative">
+        <!-- Close button in the top-right corner -->
+        <button 
+          @click="closeModal" 
+          class="absolute -top-4 -right-4 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-110 border border-gray-200 cursor-pointer"
+        >
+          <span class="text-gray-600 hover:text-red-600 transition-colors">&times;</span>
+        </button>
+        
         <h2 class="text-xl font-semibold mb-4">{{ editingSpot ? 'Edit' : 'Add' }} Camping Spot</h2>
-        <form @submit.prevent="handleSubmit" class="space-y-4 max-h-[80vh] overflow-y-auto pr-4">
+        <form @submit.prevent="handleSubmit" class="space-y-4 max-h-[70vh] overflow-y-auto pr-4">
           <!-- Basic Information -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -631,5 +639,63 @@ const loadSpots = async () => {
 
 .border-red-500 {
   animation: shake 0.4s ease-in-out;
+}
+
+/* Add styles for proper modal positioning */
+.py-10 {
+  padding-top: 2.5rem;
+  padding-bottom: 2.5rem;
+}
+
+.my-16 {
+  margin-top: 4rem;
+  margin-bottom: 4rem;
+}
+
+.z-50 {
+  z-index: 50;
+}
+
+.items-start {
+  align-items: flex-start;
+}
+
+/* Add styles for proper modal positioning */
+.pt-20 {
+  padding-top: 5rem; /* Ensure it's below the navbar */
+}
+
+.pb-10 {
+  padding-bottom: 2.5rem;
+}
+
+.my-10 {
+  margin-top: 2.5rem;
+  margin-bottom: 2.5rem;
+}
+
+.z-50 {
+  z-index: 50;
+}
+
+.items-start {
+  align-items: flex-start;
+}
+
+/* Animation for close button hover */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+button.absolute:hover {
+  animation: pulse 1s infinite;
 }
 </style>

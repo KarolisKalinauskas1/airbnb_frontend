@@ -1,49 +1,72 @@
 <script setup>
+import { computed, watch, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { storeToRefs } from 'pinia'
-import { useRouter } from 'vue-router'
-import { computed, watch } from 'vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
-const { user, fullUser } = storeToRefs(authStore)
+const { user, fullUser, isInitialized } = storeToRefs(authStore)
+const isLoading = ref(true)
 
-const isSeller = computed(() => {
-  return fullUser.value?.isowner === 1
+// Check if user is Owner (seller)
+const isOwner = computed(() => {
+  return fullUser.value?.isowner === 1 || fullUser.value?.isowner === true
 })
 
+// Return nav items based on user role
 const navItems = computed(() => {
-  if (!user.value) {
-    return [
-      { name: 'Home', path: '/' },
-      { name: 'Campers', path: '/campers' },
-      { name: 'Login', path: '/auth' }
-    ]
-  }
-  
-  if (isSeller.value) {
-    return [
-      { name: 'Campers', path: '/campers' },
-      { name: 'Account', path: '/account' },
-      { name: 'Dashboard', path: '/dashboard' }
-    ]
-  }
-  
-  return [
+  const items = [
     { name: 'Home', path: '/' },
-    { name: 'Campers', path: '/campers' },
-    { name: 'Account', path: '/account' }
   ]
+
+  if (user.value || fullUser.value) {
+    if (isOwner.value) {
+      items.push({ name: 'Dashboard', path: '/dashboard' })
+    }
+    items.push({ name: 'Campers', path: '/campers' })
+    items.push({ name: 'Account', path: '/account' })
+  } else {
+    items.push({ name: 'Campers', path: '/campers' })
+    items.push({ name: 'Login', path: '/auth' })
+  }
+
+  return items
 })
 
 const handleLogout = async () => {
-  await authStore.handleLogout()
-  router.push('/auth')
+  try {
+    const { success } = await authStore.handleLogout()
+    if (success) {
+      // Handle navigation in the component
+      router.push('/auth')
+    }
+  } catch (error) {
+    console.error('Logout failed:', error)
+    // Try to navigate anyway
+    router.push('/auth')
+  }
 }
+
+// Initialize auth state if needed
+onMounted(async () => {
+  if (!isInitialized.value) {
+    await authStore.initAuth()
+  }
+  isLoading.value = false
+})
+
+// For debugging - log auth state changes
+watch(() => [user.value, fullUser.value], ([newUser, newFullUser]) => {
+  console.log('NavComponent: Auth state changed', {
+    user: newUser ? 'logged in' : 'logged out',
+    fullUser: newFullUser ? 'loaded' : 'not loaded'
+  })
+})
 </script>
 
 <template>
-  <nav class="nav-container">
+  <nav v-if="!isLoading" class="nav-container">
     <div class="nav-content">
       <RouterLink to="/" class="logo-container">
         <img src="../assets/logo_for_airbnb.webp" alt="Logo" class="logo">
@@ -67,6 +90,17 @@ const handleLogout = async () => {
         >
           Logout
         </button>
+      </div>
+    </div>
+  </nav>
+  <nav v-else class="nav-container">
+    <!-- Loading placeholder -->
+    <div class="nav-content">
+      <div class="logo-container">
+        <img src="../assets/logo_for_airbnb.webp" alt="Logo" class="logo">
+      </div>
+      <div class="flex items-center justify-center">
+        <div class="w-6 h-6 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     </div>
   </nav>

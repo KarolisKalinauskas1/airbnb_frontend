@@ -102,45 +102,32 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   
-  // Wait for fullUser data to be loaded
-  if (!authStore.user || !authStore.fullUser) {
+  // Wait for auth to initialize if it's not already
+  if (!authStore.isInitialized) {
     await authStore.initAuth()
   }
 
+  // Check if the route requires authentication
+  const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
+  const requiresOwner = to.matched.some(record => record.meta.requiresOwner)
+  
+  // Get current authentication state
   const isAuthenticated = !!authStore.user
-  const isSeller = Number(authStore.fullUser?.isowner) === 1
-
-  // Debug logs
-  console.log('Auth check:', {
-    isAuthenticated,
-    isSeller,
-    fullUser: authStore.fullUser,
-    isowner: authStore.fullUser?.isowner
-  })
-
-  // Check if route requires auth
-  if (to.meta.requiresAuth && !isAuthenticated) {
-    next({ path: '/auth', query: { redirect: to.fullPath } })
-    return
+  const isOwner = authStore.fullUser?.isowner === 1
+  
+  if (requiresAuth && !isAuthenticated) {
+    // Redirect to login page if authentication is required but user is not authenticated
+    next({ 
+      path: '/auth',
+      query: { redirect: to.fullPath }
+    })
+  } else if (requiresOwner && (!isAuthenticated || !isOwner)) {
+    // Redirect to home if owner access is required but user is not an owner
+    next({ path: '/' })
+  } else {
+    // Continue to the requested route
+    next()
   }
-
-  // Check if route requires seller privileges
-  if (to.meta.requiresSeller && !isSeller) {
-    next({ path: '/account' })
-    return
-  }
-
-  next()
-})
-
-// Add this guard after router creation
-router.beforeEach((to, from, next) => {
-  // Check if payment route requires booking details
-  if (to.name === 'payment' && (!to.params.bookingDetails || !to.params.bookingDetails.camping_spot_id)) {
-    next({ name: 'campers' })
-    return
-  }
-  next()
 })
 
 export default router

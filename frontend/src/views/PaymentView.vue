@@ -8,7 +8,22 @@
         <span class="text-xl">←</span> Back
       </button>
 
-      <div class="bg-white rounded-lg shadow-lg p-6">
+      <div v-if="loading" class="text-center py-12">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
+        <p class="mt-4 text-gray-600">Preparing your payment...</p>
+      </div>
+
+      <div v-else-if="!bookingDetails" class="text-center py-12 bg-white rounded-lg shadow-lg p-6">
+        <p class="text-lg text-gray-600 mb-6">Payment information not found.</p>
+        <button 
+          @click="router.push('/campers')" 
+          class="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 cursor-pointer"
+        >
+          Return to Camping Spots
+        </button>
+      </div>
+
+      <div v-else class="bg-white rounded-lg shadow-lg p-6">
         <h1 class="text-2xl font-semibold mb-6">Complete Payment</h1>
         
         <!-- Order Summary -->
@@ -30,18 +45,23 @@
           </div>
         </div>
 
-        <!-- Stripe Payment Form -->
-        <form id="payment-form" @submit.prevent="handleSubmit">
-          <div id="payment-element" class="mb-6"></div>
-          <button
-            type="submit"
-            class="w-full py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:bg-gray-300"
-            :disabled="loading"
+        <!-- Payment Button -->
+        <div>
+          <p v-if="errorMessage" class="text-red-500 mb-4">{{ errorMessage }}</p>
+          
+          <button 
+            @click="handleCheckout"
+            :disabled="processing"
+            class="w-full py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed cursor-pointer transition-colors"
           >
-            <span v-if="loading">Processing...</span>
-            <span v-else>Pay €{{ bookingDetails.total }}</span>
+            <span v-if="processing">Processing...</span>
+            <span v-else>Proceed to Checkout</span>
           </button>
-        </form>
+          
+          <p class="mt-4 text-sm text-gray-500 text-center">
+            You'll be redirected to Stripe's secure payment page.
+          </p>
+        </div>
       </div>
     </div>
   </div>
@@ -52,74 +72,65 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from '@/axios'
 import { useToast } from 'vue-toastification'
-import { loadStripe } from '@stripe/stripe-js'
 
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 
-const loading = ref(false)
-const stripe = ref(null)
-const elements = ref(null)
+const loading = ref(true)
+const processing = ref(false)
+const errorMessage = ref('')
 const bookingDetails = ref(null)
 
 onMounted(async () => {
   try {
-    // Get booking details from route state
-    bookingDetails.value = route.params.bookingDetails
-    if (!bookingDetails.value) {
-      throw new Error('No booking details found')
-    }
-
-    // Initialize Stripe
-    stripe.value = await loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY)
-
-    // Create payment intent
-    const { data } = await axios.post('/api/bookings/create-payment-intent', {
-      amount: bookingDetails.value.total
-    })
+    // Get booking details from query string
+    const bookingDetailsParam = route.query.bookingDetails
     
-    // Create payment elements
-    elements.value = stripe.value.elements({
-      clientSecret: data.clientSecret,
-      appearance: {
-        theme: 'stripe'
-      }
-    })
-
-    const paymentElement = elements.value.create('payment')
-    paymentElement.mount('#payment-element')
+    if (!bookingDetailsParam) {
+      toast.error('No booking details found')
+      loading.value = false
+      return
+    }
+    
+    // Parse the JSON string from query parameter
+    bookingDetails.value = JSON.parse(bookingDetailsParam)
+    
+    if (!bookingDetails.value) {
+      throw new Error('Invalid booking details')
+    }
   } catch (error) {
+    console.error('Initialization error:', error)
+    errorMessage.value = error.message || 'Failed to initialize payment'
     toast.error('Failed to initialize payment')
-    router.push('/account')
+  } finally {
+    loading.value = false
   }
 })
 
-const handleSubmit = async () => {
-  loading.value = true
+const handleCheckout = async () => {
+  if (!bookingDetails.value) {
+    errorMessage.value = 'Booking details not found'
+    return
+  }
+  
+  processing.value = true
+  errorMessage.value = ''
 
   try {
-    const { error } = await stripe.value.confirmPayment({
-      elements: elements.value,
-      confirmParams: {
-        return_url: `${window.location.origin}/booking-success`,
-      },
+    // Create a checkout session
+    const { data } = await axios.post('/api/bookings/create-checkout-session', {
+      booking: bookingDetails.value
     })
-
-    if (error) {
-      throw new Error(error.message)
-    }
-
-    // Create booking after successful payment
-    const response = await axios.post('/api/bookings/confirm', bookingDetails.value)
-    if (response.data.success) {
-      toast.success('Booking confirmed successfully!')
-      router.push('/account')
-    }
+    
+    // Redirect to the Stripe Checkout page
+    window.location.href = data.url
   } catch (error) {
-    toast.error('Payment failed: ' + error.message)
+    console.error('Checkout error:', error)
+    errorMessage.value = error.response?.data?.error || 'Failed to initialize checkout'
+    toast.error('Failed to initialize checkout: ' + errorMessage.value)
   } finally {
-    loading.value = false
+    processing.value = false
   }
 }
 </script>

@@ -176,6 +176,13 @@ const fetchAmenities = async () => {
     availableAmenities.value = data
   } catch (error) {
     console.error('Failed to fetch amenities:', error)
+    // Import toast dynamically to avoid undefined reference
+    import('vue-toastification').then(toastModule => {
+      const { useToast } = toastModule;
+      useToast().error('Failed to load amenities');
+    }).catch(err => {
+      console.error('Could not show toast notification:', err);
+    });
   }
 }
 

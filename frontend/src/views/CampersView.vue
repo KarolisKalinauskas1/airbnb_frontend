@@ -115,6 +115,7 @@ import LocationSearchInput from '@/components/LocationSearchInput.vue'
 import { useAuthStore } from '@/stores/auth'
 import axios from '@/axios'
 import { useDatesStore } from '@/stores/dates'
+import { useToast } from 'vue-toastification'
 
 const authStore = useAuthStore()
 const spots = ref([])
@@ -123,6 +124,14 @@ const showDatePrompt = ref(true)
 const showMobileFilters = ref(false)
 const location = ref('')
 const coordinates = ref(null)
+const error = ref(null)
+const guests = ref(1)
+const filters = ref({
+  minPrice: null,
+  maxPrice: null,
+  amenities: [],
+  radius: 50
+})
 
 const dates = reactive({
   startDate: '',
@@ -134,15 +143,21 @@ const currentFilters = ref({})
 const route = useRoute()
 const router = useRouter()
 const datesStore = useDatesStore()
+const toast = useToast()
 
 const loadSavedState = () => {
   const savedState = localStorage.getItem('campers-state')
   if (savedState) {
-    const state = JSON.parse(savedState)
-    dates.startDate = state.startDate
-    dates.endDate = state.endDate
-    showDatePrompt.value = false
-  } else {
+    try {
+      const state = JSON.parse(savedState)
+      if (state.startDate) dates.startDate = state.startDate
+      if (state.endDate) dates.endDate = state.endDate
+    } catch (e) {
+      console.error('Failed to parse saved state:', e)
+    }
+  }
+  
+  if (!dates.startDate || !dates.endDate) {
     // Set default dates
     const today = new Date()
     const tomorrow = new Date(today)
@@ -156,7 +171,8 @@ const loadSavedState = () => {
 // Save state when navigating away
 const saveState = () => {
   localStorage.setItem('campersViewState', JSON.stringify({
-    dates: dates,
+    startDate: dates.startDate,
+    endDate: dates.endDate,
     location: location.value,
     coordinates: coordinates.value,
     filters: currentFilters.value
@@ -218,62 +234,55 @@ const handleLocationSelect = (loc) => {
 }
 
 const isOwner = (spot) => {
-  return authStore.isLoggedIn && spot.owner_id === authStore.user?.user_id
+  return authStore.fullUser && spot.owner_id === authStore.fullUser.user_id
 }
 
-const fetchSpots = async (filters = currentFilters.value) => {
-  if (!dates.startDate || !dates.endDate) return
-  
+const fetchSpots = async () => {
   loading.value = true
-  try {
-    const params = {
-      startDate: dates.startDate,
-      endDate: dates.endDate,
-      ...(coordinates.value && {
-        lat: coordinates.value.lat,
-        lng: coordinates.value.lng,
-        radius: coordinates.value.radius
-      }),
-      minPrice: filters.minPrice,
-      maxPrice: filters.maxPrice,
-      guests: filters.guests,
-      amenities: filters.amenities?.join(',')
-    }
+  spots.value = []
+  error.value = null
+
+  // Make sure dates are defined before attempting to fetch spots
+  if (!dates.startDate || !dates.endDate) {
+    const today = new Date()
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
     
-    // Clean up params - remove falsy values (but keep 0)
-    Object.keys(params).forEach(key => {
-      if (params[key] === undefined || params[key] === null || params[key] === '') {
-        delete params[key]
+    dates.startDate = today.toISOString().split('T')[0]
+    dates.endDate = tomorrow.toISOString().split('T')[0]
+  }
+
+  try {
+    const { data } = await axios.get('/camping-spots', {
+      params: {
+        startDate: dates.startDate,
+        endDate: dates.endDate,
+        guests: guests.value || 1,
+        minPrice: filters.value?.minPrice || null,
+        maxPrice: filters.value?.maxPrice || null,
+        amenities: filters.value?.amenities?.length ? filters.value.amenities.join(',') : '',
+        lat: coordinates.value?.lat || null,
+        lng: coordinates.value?.lng || null,
+        radius: filters.value?.radius || 50
       }
     })
-    
-    const { data } = await axios.get('/camping-spots', { params })
-    // Filter out spots owned by the current user
-    spots.value = data.filter(spot => spot.owner_id !== authStore.fullUser?.user_id)
+    spots.value = data
   } catch (error) {
     console.error('Failed to fetch spots:', error)
-    toast.error('Failed to fetch camping spots')
-  } finally {
-    loading.value = false
-  }
-}
-
-const handleFilters = (filters) => {
-  currentFilters.value = filters
-  fetchSpots(filters)
-}
-
-const loadSpots = async () => {
-  loading.value = true
-  try {
-    const { data } = await axios.get('/camping-spots')
-    // Filter out spots owned by the current user
-    spots.value = data.filter(spot => spot.owner_id !== authStore.fullUser?.user_id)
-  } catch (error) {
-    console.error('Failed to load spots:', error)
+    error.value = 'Failed to load camping spots. Please try again later'
     toast.error('Failed to load camping spots')
   } finally {
     loading.value = false
   }
+}
+
+const handleFilters = (newFilters) => {
+  // Make sure the newFilters object is properly structured
+  if (!newFilters) newFilters = { minPrice: null, maxPrice: null, amenities: [], radius: 50 };
+  if (!newFilters.amenities) newFilters.amenities = [];
+  
+  currentFilters.value = newFilters;
+  filters.value = newFilters;
+  fetchSpots();
 }
 </script>

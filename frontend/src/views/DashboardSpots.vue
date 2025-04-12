@@ -2,7 +2,7 @@
   <DashboardLayout>
     <div class="mb-6 flex justify-between items-center">
       <h1 class="text-2xl font-semibold">My Camping Spots</h1>
-      <button @click="showAddModal = true" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 cursor-pointer transition-colors">
+      <button @click="handleAddNewClick" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 cursor-pointer transition-colors">
         Add New Spot
       </button>
     </div>
@@ -70,6 +70,14 @@
       </template>
     </div>
 
+    <!-- Form Modal -->
+    <SpotFormModal
+      v-if="showModal"
+      :spot="editingSpot"
+      @close="closeModal"
+      @submit="handleSubmit"
+    />
+
     <!-- Delete Confirmation Modal -->
     <div v-if="showDeleteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div class="bg-white rounded-lg p-6 max-w-md mx-4">
@@ -91,14 +99,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Form Modal -->
-    <SpotFormModal
-      v-if="showModal"
-      :spot="editingSpot"
-      @close="closeModal"
-      @submit="handleSubmit"
-    />
   </DashboardLayout>
 </template>
 
@@ -126,7 +126,14 @@ const loadSpots = async () => {
     spots.value = data
   } catch (error) {
     console.error('Failed to load spots:', error)
+    toast.error('Failed to load your camping spots')
   }
+}
+
+// Add new method to handle Add New button click
+const handleAddNewClick = () => {
+  editingSpot.value = null // Ensure we're not in edit mode
+  showModal.value = true
 }
 
 const editSpot = (spot) => {
@@ -185,3 +192,24 @@ onMounted(() => {
   loadSpots()
 })
 </script>
+
+<style scoped>
+/* Ensure proper modal positioning */
+:deep(.fixed) {
+  position: fixed;
+}
+
+:deep(.py-10) {
+  padding-top: 2.5rem;
+  padding-bottom: 2.5rem;
+}
+
+:deep(.my-16) {
+  margin-top: 4rem;
+  margin-bottom: 4rem;
+}
+
+:deep(.z-50) {
+  z-index: 50;
+}
+</style>
