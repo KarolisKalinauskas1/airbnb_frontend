@@ -2,88 +2,79 @@
   <DashboardLayout>
     <div class="mb-6 flex justify-between items-center">
       <h1 class="text-2xl font-semibold">My Camping Spots</h1>
-      <button @click="handleAddNewClick" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 cursor-pointer transition-colors">
+      <button @click="showAddModal = true" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors">
         Add New Spot
       </button>
     </div>
 
-    <!-- Spots Management Grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <template v-for="spot in spots" :key="spot.camping_spot_id">
-        <div class="bg-white rounded-lg shadow-sm p-4 hover:shadow-md transition-shadow">
-          <!-- Spot Card Content -->
-          <div class="relative mb-3">
-            <div class="w-full h-48">
-              <img 
-                v-if="spot.images?.length > 0"
-                :src="spot.images[0].image_url"
-                class="w-full h-full object-cover rounded-lg"
-                alt="Spot image"
-              />
-              <div v-else class="w-full h-full bg-gray-100 rounded-lg flex items-center justify-center">
-                <span class="text-gray-400">No image available</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Spot Details -->
-          <div class="space-y-4">
-            <div class="flex justify-between">
-              <div>
-                <h3 class="text-lg font-semibold">{{ spot.title }}</h3>
-                <p class="text-sm text-gray-600">{{ formatLocation(spot) }}</p>
-                <p class="mt-1 font-bold">€{{ spot.price_per_night }} / night</p>
-              </div>
-              <div class="flex gap-2">
-                <button 
-                  @click="editSpot(spot)"
-                  class="text-blue-600 hover:text-blue-800 cursor-pointer px-3 py-1 rounded hover:bg-blue-50 transition-colors"
-                >
-                  Edit
-                </button>
-                <button 
-                  @click="confirmDelete(spot)"
-                  class="text-red-600 hover:text-red-800 cursor-pointer px-3 py-1 rounded hover:bg-red-50 transition-colors"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-
-            <!-- Performance Stats -->
-            <div class="grid grid-cols-3 gap-4 text-sm">
-              <div class="bg-gray-50 p-2 rounded">
-                <p class="text-gray-600">Bookings</p>
-                <p class="font-semibold">{{ spot.stats?.totalBookings || 0 }}</p>
-              </div>
-              <div class="bg-gray-50 p-2 rounded">
-                <p class="text-gray-600">Revenue</p>
-                <p class="font-semibold">€{{ spot.stats?.revenue || 0 }}</p>
-              </div>
-              <div class="bg-gray-50 p-2 rounded">
-                <p class="text-gray-600">Occupancy</p>
-                <p class="font-semibold">{{ spot.stats?.occupancyRate || 0 }}%</p>
-              </div>
+    <!-- Spots List with improved layout -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div v-for="spot in spots" :key="spot.camping_spot_id" class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+        <!-- Images Gallery -->
+        <div class="relative mb-4">
+          <div class="w-full h-48 overflow-hidden rounded-lg">
+            <img 
+              v-if="spot.images && spot.images.length > 0"
+              :src="spot.images[0].image_url"
+              class="w-full h-full object-cover"
+              alt="Spot image"
+            />
+            <div 
+              v-else 
+              class="h-full w-full bg-gray-100 flex items-center justify-center"
+            >
+              <span class="text-gray-400">No image</span>
             </div>
           </div>
         </div>
-      </template>
+
+        <!-- Spot Details -->
+        <div class="space-y-2">
+          <h2 class="text-xl font-semibold">{{ spot.title }}</h2>
+          <p class="text-gray-600">{{ spot.location?.city }}, {{ spot.location?.country?.name }}</p>
+          <p class="font-bold text-lg">€{{ spot.price_per_night }} per night</p>
+          <p class="text-sm text-gray-500">Maximum {{ spot.max_guests }} guests</p>
+          
+          <!-- Action Buttons -->
+          <div class="flex justify-between mt-4">
+            <button 
+              @click="editingSpot = spot; showAddModal = true" 
+              class="text-blue-500 hover:text-blue-700 cursor-pointer"
+            >
+              Edit
+            </button>
+            <button 
+              @click="manageAvailability(spot)" 
+              class="text-green-500 hover:text-green-700 cursor-pointer"
+            >
+              Manage Availability
+            </button>
+            <button 
+              @click="spotToDelete = spot; showDeleteModal = true" 
+              class="text-red-500 hover:text-red-700 cursor-pointer"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- Form Modal -->
-    <SpotFormModal
-      v-if="showModal"
+    <!-- Add/Edit Modal -->
+    <SpotFormModal 
+      v-if="showAddModal" 
       :spot="editingSpot"
-      @close="closeModal"
-      @submit="handleSubmit"
+      @close="closeAddModal"
+      @submit="handleSaveSpot"
     />
 
     <!-- Delete Confirmation Modal -->
-    <div v-if="showDeleteModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-lg p-6 max-w-md mx-4">
-        <h3 class="text-lg font-semibold mb-4">Confirm Deletion</h3>
-        <p class="mb-6">Are you sure you want to delete "{{ spotToDelete?.title }}"? This action cannot be undone.</p>
-        <div class="flex justify-end gap-4">
+    <div v-if="showDeleteModal && spotToDelete" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+      <div class="bg-white p-6 rounded-lg shadow-lg max-w-md w-full">
+        <h2 class="text-xl font-semibold mb-4">Confirm Deletion</h2>
+        <p>Are you sure you want to delete <strong>{{ spotToDelete.title }}</strong>? This action cannot be undone.</p>
+        
+        <div class="mt-6 flex justify-end space-x-3">
           <button 
             @click="showDeleteModal = false" 
             class="px-4 py-2 text-gray-600 hover:text-gray-800 cursor-pointer"
@@ -91,11 +82,63 @@
             Cancel
           </button>
           <button 
-            @click="deleteSpot(spotToDelete?.camping_spot_id)" 
-            class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 cursor-pointer"
+            @click="deleteSpot" 
+            class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 cursor-pointer"
           >
             Delete
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Availability Management Modal -->
+    <div v-if="showAvailabilityModal && selectedSpot" 
+         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div class="bg-white rounded-lg w-full max-w-4xl shadow-xl relative max-h-[90vh] overflow-y-auto">
+        <div class="sticky top-0 bg-white border-b z-10 p-6">
+          <div class="flex justify-between items-center">
+            <h2 class="text-xl font-semibold">Manage: {{ selectedSpot.title }}</h2>
+            <button 
+              @click="showAvailabilityModal = false" 
+              class="text-gray-500 hover:text-gray-700 text-2xl h-8 w-8 rounded-full flex items-center justify-center hover:bg-gray-100 cursor-pointer"
+            >
+              &times;
+            </button>
+          </div>
+        </div>
+        
+        <div class="p-6 pt-2">
+          <div class="grid grid-cols-1 gap-8">
+            <div>
+              <h3 class="text-lg font-medium mb-3 text-gray-800">Pricing</h3>
+              <PriceSuggestionWidget
+                :camping-spot-id="selectedSpot.camping_spot_id"
+                :current-price="selectedSpot.price_per_night"
+                :show-update-button="true"
+                @update-price="updateSpotPrice"
+              />
+              <p class="text-sm text-gray-500 mt-2">
+                Setting the right price helps optimize your bookings and revenue. This price becomes your default base price.
+              </p>
+            </div>
+            
+            <div class="border-t pt-6">
+              <h3 class="text-lg font-medium mb-3 text-gray-800">Availability Calendar</h3>
+              <p class="text-sm text-gray-500 mb-4">
+                Use this calendar to block dates when your camping spot is unavailable.
+                Click "Block Dates" to enter blocking mode, then select your date range.
+              </p>
+              
+              <!-- Using our fixed calendar component -->
+              <AvailabilityCalendar 
+                :camping-spot-id="selectedSpot.camping_spot_id"
+                :base-price="selectedSpot.price_per_night"
+                :is-owner="true"
+                :owner-id="authStore.fullUser?.user_id"
+                @date-selected="handleCalendarDateSelected"
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -106,110 +149,152 @@
 import { ref, onMounted } from 'vue'
 import DashboardLayout from '@/components/DashboardLayout.vue'
 import SpotFormModal from '@/components/SpotFormModal.vue'
-import { useDashboardStore } from '@/stores/dashboard'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from 'vue-toastification'
 import axios from '@/axios'
+import AvailabilityCalendar from '@/components/AvailabilityCalendar.vue'
+import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue'
 
 const spots = ref([])
-const showModal = ref(false)
+const showAddModal = ref(false)
 const editingSpot = ref(null)
 const showDeleteModal = ref(false)
 const spotToDelete = ref(null)
-const dashboardStore = useDashboardStore()
+const authStore = useAuthStore()
 const toast = useToast()
 
-// Methods
-const loadSpots = async () => {
+// Availability management
+const showAvailabilityModal = ref(false)
+const selectedSpot = ref(null)
+
+onMounted(async () => {
+  await fetchSpots()
+})
+
+async function fetchSpots() {
   try {
-    const { data } = await axios.get('/camping-spots/my-spots')
-    spots.value = data
+    // Get the user's session token
+    const token = await authStore.getAuthToken();
+    
+    if (!token) {
+      toast.error('Authentication required. Please log in.');
+      return;
+    }
+    
+    const { data } = await axios.get('/camping-spots/owner', {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    
+    spots.value = data;
   } catch (error) {
-    console.error('Failed to load spots:', error)
-    toast.error('Failed to load your camping spots')
+    console.error('Failed to fetch spots:', error);
+    
+    if (error.response?.status === 401) {
+      toast.error('Authentication required. Please log in again.');
+    } else {
+      toast.error('Failed to load camping spots');
+    }
   }
 }
 
-// Add new method to handle Add New button click
-const handleAddNewClick = () => {
-  editingSpot.value = null // Ensure we're not in edit mode
-  showModal.value = true
-}
-
-const editSpot = (spot) => {
-  editingSpot.value = spot
-  showModal.value = true
-}
-
-const closeModal = () => {
-  showModal.value = false
+function closeAddModal() {
+  showAddModal.value = false
   editingSpot.value = null
 }
 
-const handleSubmit = async (formData) => {
+async function handleSaveSpot(spotData) {
   try {
     if (editingSpot.value) {
-      await axios.put(`/camping-spots/${editingSpot.value.camping_spot_id}`, formData)
+      await axios.put(`/camping-spots/${editingSpot.value.camping_spot_id}`, spotData)
       toast.success('Spot updated successfully')
     } else {
-      await axios.post('/camping-spots', formData)
-      toast.success('New spot added successfully')
+      await axios.post('/camping-spots', spotData)
+      toast.success('Spot created successfully')
     }
-    await loadSpots()
-    await dashboardStore.fetchDashboardData()
-    closeModal()
+    
+    closeAddModal()
+    await fetchSpots()
   } catch (error) {
     console.error('Failed to save spot:', error)
-    toast.error(error.response?.data?.error || 'Failed to save spot')
+    toast.error(error.response?.data?.error || 'Failed to save camping spot')
   }
 }
 
-const confirmDelete = (spot) => {
-  spotToDelete.value = spot
-  showDeleteModal.value = true
-}
-
-const deleteSpot = async (id) => {
-  if (!id) return
+async function deleteSpot() {
+  if (!spotToDelete.value) return
   
   try {
-    await axios.delete(`/camping-spots/${id}`)
-    spots.value = spots.value.filter(spot => spot.camping_spot_id !== id)
-    await dashboardStore.fetchDashboardData()
-    showDeleteModal.value = false
+    await axios.delete(`/camping-spots/${spotToDelete.value.camping_spot_id}`)
     toast.success('Spot deleted successfully')
+    showDeleteModal.value = false
+    spotToDelete.value = null
+    await fetchSpots()
   } catch (error) {
     console.error('Failed to delete spot:', error)
-    toast.error('Failed to delete spot')
+    toast.error('Failed to delete camping spot')
   }
 }
 
-const formatLocation = (spot) => {
-  return `${spot.location?.city}, ${spot.location?.country?.name}`
+const manageAvailability = (spot) => {
+  selectedSpot.value = spot
+  showAvailabilityModal.value = true
 }
 
-onMounted(() => {
-  loadSpots()
-})
+// This function handles the date selection from our calendar component
+const handleCalendarDateSelected = (dateRange) => {
+  // The calendar now handles blocking dates internally
+  console.log('Dates blocked:', dateRange);
+  
+  // Refresh the list of spots when we come back
+  setTimeout(() => {
+    fetchSpots();
+  }, 500);
+}
+
+const updateSpotPrice = async (newPrice) => {
+  try {
+    await axios.patch(`/camping-spots/${selectedSpot.value.camping_spot_id}/price`, { 
+      price_per_night: newPrice 
+    });
+    
+    // Update local data
+    selectedSpot.value.price_per_night = newPrice;
+    
+    // Update in the spots list
+    const spotIndex = spots.value.findIndex(s => s.camping_spot_id === selectedSpot.value.camping_spot_id);
+    if (spotIndex !== -1) {
+      spots.value[spotIndex].price_per_night = newPrice;
+    }
+    
+    toast.success('Price updated successfully');
+  } catch (error) {
+    console.error('Failed to update price:', error);
+    const errorMessage = error.response?.data?.error || 'Failed to update price';
+    toast.error(errorMessage);
+  }
+}
 </script>
 
 <style scoped>
-/* Ensure proper modal positioning */
-:deep(.fixed) {
-  position: fixed;
+/* Improve the modal positioning */
+.max-h-\[90vh\] {
+  max-height: 90vh;
 }
 
-:deep(.py-10) {
-  padding-top: 2.5rem;
-  padding-bottom: 2.5rem;
+/* Fix modal scrolling issues */
+:deep(.dp__overlay) {
+  z-index: 100;
 }
 
-:deep(.my-16) {
-  margin-top: 4rem;
-  margin-bottom: 4rem;
+/* Animation for better UX feedback */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-:deep(.z-50) {
-  z-index: 50;
+.fixed {
+  animation: fadeIn 0.2s ease-out;
 }
 </style>

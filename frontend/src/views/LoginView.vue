@@ -231,13 +231,15 @@ const handleLogin = async () => {
     const redirectPath = route.query.redirect
     const startDate = route.query.startDate
     const endDate = route.query.endDate
+    const guests = route.query.guests
 
     if (redirectPath && redirectPath.includes('create-booking')) {
       router.push({
         path: redirectPath,
         query: {
           startDate,
-          endDate
+          endDate,
+          guests
         }
       })
     } else if (isOwner) {

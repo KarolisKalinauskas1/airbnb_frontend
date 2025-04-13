@@ -1,77 +1,62 @@
 <template>
   <div class="min-h-screen bg-gray-50 py-8">
-    <div class="max-w-6xl mx-auto px-4">
+    <div class="max-w-5xl mx-auto px-4">
+      <!-- Back Button -->
       <button 
-        @click="router.back()" 
-        class="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
+        @click="goBack" 
+        class="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
       >
         <span class="text-xl">←</span> Back
       </button>
 
-      <h1 class="text-2xl font-semibold mb-6">Complete your booking</h1>
-      
-      <div v-if="loading" class="text-center py-8">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto"></div>
+      <div v-if="loading" class="flex justify-center py-20">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
       </div>
       
-      <div v-else-if="!spot" class="text-center py-8">
-        <p class="text-gray-600">Spot not found</p>
-      </div>
-
       <div v-else class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <!-- Left Column: Booking Details -->
-        <div class="lg:col-span-2 space-y-6">
-          <!-- Login Required Message -->
-          <div v-if="!authStore.user" class="bg-white rounded-lg shadow p-6">
-            <h3 class="text-lg font-semibold mb-4">Login Required</h3>
-            <p class="text-gray-600 mb-4">Please log in to complete your booking</p>
-            <router-link 
-              :to="{ 
-                path: '/auth',
-                query: { redirect: $route.fullPath }
-              }"
-              class="inline-block bg-red-500 text-white px-6 py-2 rounded-lg hover:bg-red-600 cursor-pointer"
-            >
-              Login to Continue
-            </router-link>
-          </div>
+        <!-- Booking Form Section -->
+        <div class="lg:col-span-2 space-y-8">
+          <div class="bg-white p-6 rounded-lg shadow-md">
+            <h1 class="text-2xl font-semibold mb-6">Complete your booking</h1>
 
-          <!-- Booking Form -->
-          <form v-else @submit.prevent="handleSubmit">
-            <!-- Dates Section -->
-            <div class="bg-white rounded-lg shadow p-6 mb-4">
-              <div class="flex justify-between items-center mb-4">
+            <!-- Trip Details -->
+            <div class="mb-8">
+              <h2 class="text-lg font-medium mb-4">Trip Details</h2>
+              
+              <!-- Date Range -->
+              <div class="flex justify-between items-center border-b pb-4 mb-4">
                 <div>
-                  <h3 class="font-medium text-lg">Your trip dates</h3>
-                  <div v-if="!editingDates" class="text-gray-600">
-                    {{ formatDate(dates.startDate) }} - {{ formatDate(dates.endDate) }}
-                    <span class="text-gray-500 text-sm">({{ numberOfNights }} nights)</span>
-                  </div>
+                  <h3 class="font-medium">Dates</h3>
+                  <p class="text-gray-600">{{ formatDateRange(dates.startDate, dates.endDate) }}</p>
                 </div>
                 <button 
-                  type="button"
-                  @click="editingDates = !editingDates"
+                  @click="editingDates = !editingDates" 
                   class="text-red-600 underline cursor-pointer"
                 >
                   {{ editingDates ? 'Close' : 'Edit' }}
                 </button>
               </div>
-              <DateRangeSelector
-                v-if="editingDates"
-                v-model:startDate="dates.startDate"
-                v-model:endDate="dates.endDate"
-                @dateChange="handleDateChange"
-                class="w-full"
-              />
-            </div>
-
-            <!-- Guests Section -->
-            <div class="bg-white rounded-lg shadow p-6 mb-4">
-              <div class="flex justify-between items-center mb-4">
+              
+              <div v-if="editingDates" class="my-4">
+                <DateRangeSelector
+                  v-model:startDate="dates.startDate"
+                  v-model:endDate="dates.endDate"
+                  @dateChange="handleDateChange"
+                />
+                
+                <!-- Warning if selected dates are now blocked -->
+                <div v-if="datesAreBlocked" class="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  <p class="font-medium">These dates are unavailable for booking.</p>
+                  <p>Please select different dates.</p>
+                </div>
+              </div>
+              
+              <!-- Guests -->
+              <div class="flex justify-between items-center">
                 <div>
-                  <h3 class="font-medium text-lg">Guests</h3>
+                  <h3 class="font-medium">Guests</h3>
                   <div v-if="!editingGuests" class="text-gray-600">
-                    {{ guests }} {{ guests === 1 ? 'guest' : 'guests' }}
+                    {{ guestCount }} {{ guestCount === 1 ? 'guest' : 'guests' }}
                   </div>
                 </div>
                 <button 
@@ -82,79 +67,93 @@
                   {{ editingGuests ? 'Close' : 'Edit' }}
                 </button>
               </div>
-              <div v-if="editingGuests" class="flex items-center gap-4">
+              <div v-if="editingGuests" class="flex items-center gap-4 mt-4">
                 <button 
                   type="button"
                   @click="decrementGuests"
                   class="w-10 h-10 rounded-full border-2 border-red-500 flex items-center justify-center hover:bg-red-50 transition-colors text-red-500"
-                  :disabled="guests <= 1"
+                  :disabled="guestCount <= 1"
                 >-</button>
-                <span class="text-xl font-medium">{{ guests }}</span>
+                <span class="text-xl font-medium">{{ guestCount }}</span>
                 <button 
                   type="button"
                   @click="incrementGuests"
                   class="w-10 h-10 rounded-full border-2 border-red-500 flex items-center justify-center hover:bg-red-50 transition-colors text-red-500"
-                  :disabled="guests >= spot.max_guests"
+                  :disabled="spot && guestCount >= spot.max_guests"
                 >+</button>
-                <span class="text-sm text-gray-500">(Max: {{ spot.max_guests }} guests)</span>
               </div>
             </div>
 
-            <!-- Add cursor-pointer to all action buttons -->
-            <button 
-              type="submit"
-              class="w-full py-4 rounded-xl font-semibold shadow-md transition-all duration-200"
-              :class="[
-                !loading && isFormValid
-                  ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white hover:shadow-lg cursor-pointer transform hover:-translate-y-0.5'
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              ]"
-              :disabled="loading || !isFormValid"
-            >
-              <span v-if="loading">Processing...</span>
-              <span v-else>Confirm Booking (€{{ grandTotal }})</span>
-            </button>
-            <p v-if="bookingError" class="mt-2 text-red-500 text-sm">{{ bookingError }}</p>
-          </form>
+            <!-- Cancellation Policy -->
+            <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+              <h3 class="font-medium mb-2">Cancellation Policy</h3>
+              <p class="text-sm text-gray-600">Free cancellation for 48 hours. Cancel before checkin to receive a partial refund. Review the full policy.</p>
+            </div>
+          </div>
         </div>
 
-        <!-- Right Column: Spot Overview -->
-        <div class="lg:col-span-1">
-          <div class="sticky top-8">
-            <div class="bg-white rounded-lg shadow p-6">
-              <!-- Spot Preview -->
-              <div class="flex gap-4 pb-6 border-b">
+        <!-- Order Summary Section -->
+        <div class="lg:col-span-1 space-y-6">
+          <div class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-lg font-medium border-b pb-4 mb-4">Booking Summary</h2>
+            
+            <!-- Spot Preview -->
+            <div class="flex gap-4 mb-6">
+              <div class="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden">
                 <img 
-                  :src="spot.images[0]?.image_url" 
-                  :alt="spot.title"
-                  class="w-24 h-24 object-cover rounded-lg"
-                >
-                <div>
-                  <h3 class="font-medium text-sm text-gray-500">{{ spot.title }}</h3>
-                  <p class="text-sm text-gray-600">{{ formatLocation(spot.location) }}</p>
-                  <div class="flex items-center gap-1 mt-1">
-                    <span class="text-yellow-400">★</span>
-                    <span class="text-sm">{{ averageRating }}</span>
-                  </div>
+                  v-if="spot?.images?.length" 
+                  :src="spot.images[0].image_url" 
+                  alt="Camping spot"
+                  class="w-full h-full object-cover"
+                />
+                <div v-else class="w-full h-full bg-gray-200 flex items-center justify-center text-gray-400">
+                  No image
                 </div>
               </div>
-
-              <!-- Price Breakdown Only -->
-              <div class="py-6 space-y-4">
-                <div class="flex justify-between">
-                  <span class="text-gray-600">€{{ spot.price_per_night }} × {{ numberOfNights }} nights</span>
-                  <span>€{{ totalPrice }}</span>
-                </div>
-                <div class="flex justify-between">
-                  <span class="text-gray-600">Service fee</span>
-                  <span>€{{ serviceFee }}</span>
-                </div>
-                <div class="pt-4 border-t flex justify-between font-bold">
-                  <span>Total</span>
-                  <span>€{{ grandTotal }}</span>
+              <div>
+                <h3 class="font-medium">{{ spot?.title }}</h3>
+                <p class="text-sm text-gray-600">{{ formatLocation(spot?.location) }}</p>
+                <div class="mt-1 text-sm">
+                  <span class="text-yellow-500">★</span>
+                  <span>4.9 (52 reviews)</span>
                 </div>
               </div>
             </div>
+            
+            <!-- Price Breakdown -->
+            <div class="space-y-3 mb-6">
+              <div class="flex justify-between">
+                <p>€{{ spot?.price_per_night }} × {{ nights }} nights</p>
+                <p>€{{ totalPrice }}</p>
+              </div>
+              <div class="flex justify-between">
+                <p>Service fee</p>
+                <p>€{{ serviceFee }}</p>
+              </div>
+              <div class="flex justify-between font-bold border-t pt-3 mt-3">
+                <p>Total</p>
+                <p>€{{ grandTotal }}</p>
+              </div>
+            </div>
+            
+            <!-- Error Message -->
+            <div v-if="bookingError" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p class="text-red-700 text-sm">{{ bookingError }}</p>
+            </div>
+            
+            <!-- Checkout Button -->
+            <button 
+              @click="processBooking"
+              :disabled="loading || datesAreBlocked"
+              class="w-full bg-red-500 text-white py-3 rounded-lg font-medium hover:bg-red-600 transition-colors"
+              :class="{'opacity-50 cursor-not-allowed': loading || datesAreBlocked}"
+            >
+              {{ loading ? 'Processing...' : 'Confirm and Pay' }}
+            </button>
+            
+            <p class="mt-4 text-xs text-gray-500 text-center">
+              By confirming, you agree to the <a href="#" class="text-red-600">Terms of Service</a> and <a href="#" class="text-red-600">Privacy Policy</a>.
+            </p>
           </div>
         </div>
       </div>
@@ -163,39 +162,51 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import axios from '@/axios'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 import { useToast } from 'vue-toastification'
 
+const toast = useToast()
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
-const toast = useToast()
 
-const loading = ref(true)
 const spot = ref(null)
-const guests = ref(1)
-const bookingError = ref(null);
+const guestCount = ref(1)
+const editingDates = ref(false)
+const editingGuests = ref(false)
+const loading = ref(true)
+const bookingError = ref(null)
+const blockedDates = ref([])
 
 const dates = ref({
-  startDate: route.query.startDate || '',
-  endDate: route.query.endDate || ''
+  startDate: '',
+  endDate: ''
 })
 
-const numberOfNights = computed(() => {
+// Calculate nights between dates
+const nights = computed(() => {
   if (!dates.value.startDate || !dates.value.endDate) return 0
+  
   const start = new Date(dates.value.startDate)
   const end = new Date(dates.value.endDate)
+  
+  start.setHours(0, 0, 0, 0)
+  end.setHours(0, 0, 0, 0)
+  
   return Math.ceil((end - start) / (1000 * 60 * 60 * 24))
 })
 
+// Calculate price based on nights and base price
 const totalPrice = computed(() => {
-  return (spot.value?.price_per_night * numberOfNights.value).toFixed(2)
+  if (!spot.value) return 0
+  return (spot.value.price_per_night * nights.value).toFixed(2)
 })
 
+// Calculate service fee as 10% of total price
 const serviceFee = computed(() => {
   return (parseFloat(totalPrice.value) * 0.10).toFixed(2)
 })
@@ -204,17 +215,51 @@ const grandTotal = computed(() => {
   return (parseFloat(totalPrice.value) + parseFloat(serviceFee.value)).toFixed(2)
 })
 
+// Check if selected dates overlap with any blocked dates
+const datesAreBlocked = computed(() => {
+  if (!dates.value.startDate || !dates.value.endDate || blockedDates.value.length === 0) return false
+  
+  const start = new Date(dates.value.startDate)
+  const end = new Date(dates.value.endDate)
+  
+  start.setHours(0, 0, 0, 0)
+  end.setHours(0, 0, 0, 0)
+  
+  return blockedDates.value.some(block => {
+    const blockStart = new Date(block.start_date)
+    const blockEnd = new Date(block.end_date)
+    
+    blockStart.setHours(0, 0, 0, 0)
+    blockEnd.setHours(0, 0, 0, 0)
+    
+    // Check if the ranges overlap
+    return (
+      (start <= blockEnd && end >= blockStart) ||
+      (start >= blockStart && end <= blockEnd)
+    )
+  })
+})
+
 const formatLocation = (location) => {
   if (!location) return ''
   return `${location.city}, ${location.country.name}`
 }
 
 const decrementGuests = () => {
-  if (guests.value > 1) guests.value--
+  if (guestCount.value > 1) guestCount.value--
 }
 
 const incrementGuests = () => {
-  if (guests.value < spot.value.max_guests) guests.value++
+  if (spot.value && guestCount.value < spot.value.max_guests) guestCount.value++
+}
+
+const formatDateRange = (startDate, endDate) => {
+  if (!startDate || !endDate) return ''
+  
+  const start = new Date(startDate)
+  const end = new Date(endDate)
+  
+  return `${start.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} - ${end.toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'})}`
 }
 
 const handleDateChange = () => {
@@ -233,46 +278,53 @@ const validateForm = () => {
     return false;
   }
 
-  if (!guests.value || guests.value < 1) {
+  if (!guestCount.value || guestCount.value < 1) {
     toast.error('Please select number of guests');
     return false;
   }
 
-  if (!authStore.fullUser?.user_id) {
-    toast.error('Please log in to continue');
+  if (datesAreBlocked.value) {
+    toast.error('The selected dates are unavailable');
     return false;
   }
 
   return true;
-};
+}
 
-const handleSubmit = async () => {
+const goBack = () => {
+  router.push({
+    path: `/camping-spots/${route.params.id}`,
+    query: {
+      startDate: dates.value.startDate,
+      endDate: dates.value.endDate,
+      guests: guestCount.value
+    }
+  });
+}
+
+const processBooking = async () => {
   if (!validateForm()) return;
+
+  if (datesAreBlocked.value) {
+    bookingError.value = 'The selected dates are unavailable for booking';
+    toast.error('The selected dates are unavailable for booking');
+    return;
+  }
   
   loading.value = true;
-  bookingError.value = null; // Clear any previous errors
-  
+  bookingError.value = null;
+
   try {
-    const basePrice = parseFloat(totalPrice.value);
-    const totalWithFee = parseFloat(grandTotal.value);
-    const nights = numberOfNights.value;
-
-    // Show a message to the user about redirection
-    toast.info('Redirecting to payment page...');
-
-    // Create Stripe checkout session directly
-    const { data } = await axios.post('/api/bookings/create-checkout-session', {
-      booking: {
-        camping_spot_id: spot.value.camping_spot_id,
-        user_id: authStore.fullUser.user_id,
-        start_date: dates.value.startDate,
-        end_date: dates.value.endDate,
-        number_of_guests: guests.value,
-        total: totalWithFee,
-        base_price: basePrice,
-        nights: nights
-      }
+    const { data } = await axios.post('/bookings/create-checkout-session', {
+      camping_spot_id: route.params.id,
+      user_id: authStore.fullUser.user_id,
+      start_date: dates.value.startDate,
+      end_date: dates.value.endDate,
+      number_of_guests: guestCount.value,
+      base_price: spot.value.price_per_night
     });
+    
+    toast.success('Redirecting to payment...');
     
     // Set a small timeout to allow the toast to display
     setTimeout(() => {
@@ -292,57 +344,74 @@ const handleSubmit = async () => {
   }
 };
 
+// Fetch availability for date validation
+const fetchAvailability = async () => {
+  try {
+    const { data } = await axios.get(`/camping-spots/${route.params.id}/availability`, {
+      params: {
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date(new Date().setMonth(new Date().getMonth() + 3)).toISOString().split('T')[0]
+      }
+    });
+    
+    blockedDates.value = data.bookings || [];
+  } catch (error) {
+    console.error('Failed to fetch availability:', error);
+  }
+};
+
 onMounted(async () => {
   try {
+    // Set dates from query parameters
+    if (route.query.startDate) dates.value.startDate = route.query.startDate;
+    if (route.query.endDate) dates.value.endDate = route.query.endDate;
+    
+    // Set guest count from query parameters if available
+    if (route.query.guests) {
+      guestCount.value = parseInt(route.query.guests) || 1;
+    }
+    
     const { data } = await axios.get(`/camping-spots/${route.params.id}`, {
       params: {
         startDate: dates.value.startDate,
         endDate: dates.value.endDate
       }
-    })
-    spot.value = data
+    });
+    spot.value = data;
+    
+    // Fetch availability data to check for blocked dates
+    await fetchAvailability();
+    
+    // Make sure guest count is within spot limits
+    if (spot.value) {
+      guestCount.value = Math.min(Math.max(1, guestCount.value), spot.value.max_guests);
+    }
   } catch (error) {
-    console.error('Failed to load spot:', error)
+    console.error('Failed to load spot:', error);
+    bookingError.value = 'Failed to load camping spot details';
+    toast.error('Failed to load camping spot details');
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-})
+});
 
-// Add new refs for edit states
-const editingDates = ref(false)
-const editingGuests = ref(false)
-const editingPhone = ref(false)
-
-// Format date helper
-const formatDate = (dateStr) => {
-  if (!dateStr) return ''
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  })
-}
-
-// Add computed for average rating
-const averageRating = computed(() => {
-  if (!spot.value?.reviews?.length) return 'New'
-  const avg = spot.value.reviews.reduce((sum, review) => sum + review.rating, 0) / spot.value.reviews.length
-  return avg.toFixed(1)
-})
-
-// Add computed property for form validation
-const isFormValid = computed(() => {
-  return (
-    dates.value.startDate &&
-    dates.value.endDate &&
-    guests.value > 0
-  );
+// Watch for date changes to check availability
+watch([() => dates.value.startDate, () => dates.value.endDate], () => {
+  if (dates.value.startDate && dates.value.endDate) {
+    // Check if dates are blocked
+    if (datesAreBlocked.value) {
+      toast.warning('These dates are not available for booking.');
+    }
+  }
 });
 </script>
 
 <style scoped>
-.sticky {
-  position: sticky;
-  top: 2rem;
+.rounded-lg {
+  border-radius: 0.5rem;
+}
+
+.shadow-md {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 </style>

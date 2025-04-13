@@ -206,9 +206,19 @@ onUnmounted(() => {
 
 const handleDateChange = async (newDates) => {
   if (newDates.startDate && newDates.endDate) {
-    dates.startDate = newDates.startDate
-    dates.endDate = newDates.endDate
-    datesStore.setDates(dates.startDate, dates.endDate)
+    // Validate that end date is after start date
+    const start = new Date(newDates.startDate);
+    const end = new Date(newDates.endDate);
+    
+    if (end <= start) {
+      toast.error('Checkout date must be after check-in date');
+      return;
+    }
+    
+    dates.startDate = newDates.startDate;
+    dates.endDate = newDates.endDate;
+    datesStore.setDates(dates.startDate, dates.endDate);
+    showDatePrompt.value = false;
     
     // Update URL without navigation
     router.replace({ 
@@ -217,9 +227,9 @@ const handleDateChange = async (newDates) => {
         startDate: dates.startDate,
         endDate: dates.endDate 
       }
-    })
+    });
     
-    await fetchSpots()
+    await fetchSpots();
   }
 }
 
@@ -266,7 +276,13 @@ const fetchSpots = async () => {
         radius: filters.value?.radius || 50
       }
     })
-    spots.value = data
+    
+    // Filter out spots owned by the current user
+    if (authStore.fullUser) {
+      spots.value = data.filter(spot => spot.owner_id !== authStore.fullUser.user_id)
+    } else {
+      spots.value = data
+    }
   } catch (error) {
     console.error('Failed to fetch spots:', error)
     error.value = 'Failed to load camping spots. Please try again later'

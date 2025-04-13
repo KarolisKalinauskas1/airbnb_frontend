@@ -253,6 +253,33 @@
             >
           </div>
 
+          <!-- Add availability management section before the submit button -->
+          <div v-if="editingSpot" class="border-t pt-4">
+            <h3 class="text-lg font-semibold mb-3">Manage Availability</h3>
+            
+            <div class="grid grid-cols-1 gap-4">
+              <div>
+                <AvailabilityCalendar 
+                  :camping-spot-id="editingSpot.camping_spot_id"
+                  :base-price="form.price || editingSpot.price_per_night"
+                  :is-owner="true"
+                  :owner-id="authStore.fullUser?.user_id"
+                />
+              </div>
+              
+              <div>
+                <PriceSuggestionWidget
+                  :camping-spot-id="editingSpot.camping_spot_id"
+                  :current-price="form.price || editingSpot.price_per_night"
+                  :show-update-button="false"
+                />
+                <p class="text-sm text-gray-600 mt-2">
+                  Consider using the suggested price to optimize your earnings. You can always adjust the price manually.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <!-- Submit Buttons -->
           <div class="flex justify-end space-x-3">
             <button 
@@ -281,6 +308,9 @@ import DashboardLayout from '@/components/DashboardLayout.vue'
 import axios from '@/axios'
 import { useDashboardStore } from '@/stores/dashboard'
 import { useAuthStore } from '@/stores/auth'
+// Import new components
+import AvailabilityCalendar from '@/components/AvailabilityCalendar.vue'
+import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue'
 
 const availableAmenities = ref([])
 const countries = ref([])

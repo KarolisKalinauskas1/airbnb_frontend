@@ -86,8 +86,49 @@
               </div>
             </div>
           </div>
+
+          <!-- Add a manage availability button -->
+          <div class="px-4 pb-4">
+            <button 
+              @click="selectSpot(spot)"
+              class="w-full py-2 mt-2 bg-blue-500 hover:bg-blue-600 text-white rounded"
+            >
+              Manage Availability & Pricing
+            </button>
+          </div>
         </div>
       </template>
+    </div>
+
+    <!-- Add a new management section -->
+    <div v-if="selectedSpot" class="mt-6 bg-white rounded-lg shadow p-6">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-xl font-semibold">Manage: {{ selectedSpot.title }}</h2>
+        <button @click="selectedSpot = null" class="text-gray-500 hover:text-gray-700">
+          &times;
+        </button>
+      </div>
+      
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <h3 class="text-lg font-medium mb-3">Availability Calendar</h3>
+          <AvailabilityCalendar 
+            :camping-spot-id="selectedSpot.camping_spot_id"
+            :base-price="selectedSpot.price_per_night"
+            :is-owner="true"
+            :owner-id="authStore.fullUser?.user_id"
+          />
+        </div>
+        
+        <div>
+          <PriceSuggestionWidget
+            :camping-spot-id="selectedSpot.camping_spot_id"
+            :current-price="selectedSpot.price_per_night"
+            :show-update-button="true"
+            @update-price="updateSpotPrice"
+          />
+        </div>
+      </div>
     </div>
 
     <!-- Add/Edit Modal -->
@@ -97,6 +138,40 @@
 
 <script setup>
 // ...existing script setup code...
+import AvailabilityCalendar from '@/components/AvailabilityCalendar.vue'
+import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue'
+import { useToast } from 'vue-toastification'
+
+const toast = useToast()
+const spots = ref([])
+const selectedSpot = ref(null)
+
+const selectSpot = (spot) => {
+  selectedSpot.value = spot
+}
+
+const updateSpotPrice = async (newPrice) => {
+  try {
+    if (!selectedSpot.value) return
+    
+    await axios.patch(`/camping-spots/${selectedSpot.value.camping_spot_id}/price`, {
+      price_per_night: newPrice
+    })
+    
+    // Update the price in the selectedSpot and in spots array
+    selectedSpot.value.price_per_night = newPrice
+    
+    const spotIndex = spots.value.findIndex(s => s.camping_spot_id === selectedSpot.value.camping_spot_id)
+    if (spotIndex !== -1) {
+      spots.value[spotIndex].price_per_night = newPrice
+    }
+    
+    toast.success('Price updated successfully!')
+  } catch (error) {
+    console.error('Failed to update price:', error)
+    toast.error('Failed to update price. Please try again.')
+  }
+}
 
 // Additional computed properties for summary stats
 const totalRevenue = computed(() => {

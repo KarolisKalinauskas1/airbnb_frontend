@@ -17,6 +17,7 @@
     "@stripe/stripe-js": "^7.0.0",
     "@supabase/supabase-js": "^2.49.4",
     "@tailwindcss/vite": "^4.0.12",
+    "@vuepic/vue-datepicker": "^11.0.2",
     "appwrite": "^17.0.1",
     "axios": "^1.8.4",
     "ol": "^10.5.0",

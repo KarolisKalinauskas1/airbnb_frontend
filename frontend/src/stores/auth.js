@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { supabase } from '@/lib/supabase'
 import axios from '@/axios'
 import { useDatesStore } from './dates'
+import router from '@/router'
 
 // Add a debounce utility function to the store
 function debounce(fn, delay) {
@@ -29,16 +30,69 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('userData')
   }
 
+  // Add this function to the auth store
+  const handleApiConnectionFailure = () => {
+    // If we haven't been able to connect to the API after multiple retries
+    console.warn("Backend API connection issues detected. Continuing in offline mode.");
+    
+    // Flag for the UI to show offline mode indicator if needed
+    const isOffline = ref(true);
+    
+    // We can still use localStorage data if available
+    const storedData = localStorage.getItem('userData');
+    if (storedData) {
+      try {
+        const parsed = JSON.parse(storedData);
+        parsed.isowner = Number(parsed.isowner);
+        fullUser.value = parsed;
+        console.log('Using cached user data in offline mode:', parsed);
+      } catch (e) {
+        console.error('Failed to parse user data from localStorage', e);
+      }
+    }
+    
+    return {
+      isOffline,
+      // Other functions/properties to include in the return
+      user,
+      fullUser,
+      loading,
+      isInitialized,
+      handleLogin,
+      handleLogout,
+      checkAuth,
+      initAuth,
+      fetchFullUserInfo,
+      debouncedFetchFullUserInfo,
+      clearState,
+      getAuthToken
+    }
+  }
+
   // Sync user with backend
   const syncUserWithBackend = async (supabaseUser) => {
+    if (!supabaseUser || !supabaseUser.email) {
+      console.warn('No valid Supabase user to sync with backend');
+      return;
+    }
+  
     try {
-      await axios.post('/api/users/sync', {
+      const response = await axios.post('/api/users/sync', {
         email: supabaseUser.email,
         full_name: supabaseUser.user_metadata?.full_name || 'User',
         auth_user_id: supabaseUser.id
-      })
+      }, { timeout: 8000 }); // Add a reasonable timeout
+      
+      console.log('User synced with backend:', response.data);
+      return response.data;
     } catch (err) {
-      console.error('Failed to sync user with backend:', err)
+      if (err.code === 'ERR_NETWORK') {
+        console.warn('Backend API connection failed. Using offline mode.');
+        // Return silently and allow the app to continue with local data
+        return null;
+      }
+      console.error('Failed to sync user with backend:', err);
+      throw err;
     }
   }
 
@@ -46,10 +100,10 @@ export const useAuthStore = defineStore('auth', () => {
   const fetchFullUserInfo = async (forceRefresh = false) => {
     // Simple throttling - store last fetch time in localStorage
     const now = Date.now();
-    const lastFetchTime = localStorage.getItem('last_user_fetch_time');
+    const lastFetchTimeStr = localStorage.getItem('last_user_fetch_time');
     const throttleTime = 2000; // 2 seconds minimum between fetches
     
-    if (!forceRefresh && lastFetchTime && (now - parseInt(lastFetchTime) < throttleTime)) {
+    if (!forceRefresh && lastFetchTimeStr && (now - parseInt(lastFetchTimeStr) < throttleTime)) {
       console.log('Throttled user info fetch');
       return fullUser.value;
     }
@@ -57,7 +111,7 @@ export const useAuthStore = defineStore('auth', () => {
     // If already fetching or if last fetch was less than 5 seconds ago and not forced
     if (
       isFetching.value || 
-      (!forceRefresh && now - lastFetchTime.value < 5000)
+      (!forceRefresh && lastFetchTimeStr && now - parseInt(lastFetchTimeStr) < 5000)
     ) {
       return fullUser.value;
     }
@@ -120,7 +174,6 @@ export const useAuthStore = defineStore('auth', () => {
         isInitialized.value = true
         localStorage.setItem('userData', JSON.stringify(userData))
         
-        lastFetchTime.value = now;
         // Update last fetch time
         localStorage.setItem('last_user_fetch_time', now.toString());
         return userData
@@ -296,6 +349,16 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  const getAuthToken = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      return session?.access_token
+    } catch (error) {
+      console.error('Failed to get auth token:', error)
+      return null
+    }
+  }
+
   return {
     user,
     fullUser,
@@ -307,6 +370,7 @@ export const useAuthStore = defineStore('auth', () => {
     initAuth,
     fetchFullUserInfo,
     debouncedFetchFullUserInfo,
-    clearState
+    clearState,
+    getAuthToken  // Add this line
   }
 })

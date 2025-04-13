@@ -27,5 +27,31 @@
   color: #000000 !important;
 }
 
+/* Global styles to ensure all interactive elements have pointer cursor */
+button, 
+[type="button"],
+[type="submit"],
+[type="reset"],
+.cursor-pointer,
+a,
+select,
+input[type="date"],
+input[type="checkbox"],
+input[type="radio"] {
+  cursor: pointer;
+}
+
+/* Apply cursor-pointer to common interactive class names */
+.btn,
+.button,
+.link,
+.clickable,
+.hover\:bg-red-50,
+.hover\:bg-red-100,
+.hover\:bg-gray-50,
+.hover\:bg-gray-100 {
+  cursor: pointer;
+}
+
 
 
