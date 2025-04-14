@@ -258,35 +258,72 @@ const fetchSpots = async () => {
     const tomorrow = new Date(today)
     tomorrow.setDate(tomorrow.getDate() + 1)
     
-    dates.startDate = today.toISOString().split('T')[0]
-    dates.endDate = tomorrow.toISOString().split('T')[0]
+    dates.startDate = today.toISOString().slice(0, 10)
+    dates.endDate = tomorrow.toISOString().slice(0, 10)
   }
 
   try {
-    const { data } = await axios.get('/camping-spots', {
-      params: {
-        startDate: dates.startDate,
-        endDate: dates.endDate,
-        guests: guests.value || 1,
-        minPrice: filters.value?.minPrice || null,
-        maxPrice: filters.value?.maxPrice || null,
-        amenities: filters.value?.amenities?.length ? filters.value.amenities.join(',') : '',
-        lat: coordinates.value?.lat || null,
-        lng: coordinates.value?.lng || null,
-        radius: filters.value?.radius || 50
-      }
-    })
-    
-    // Filter out spots owned by the current user
-    if (authStore.fullUser) {
-      spots.value = data.filter(spot => spot.owner_id !== authStore.fullUser.user_id)
-    } else {
-      spots.value = data
+    // Prepare the params for the API call
+    const params = {
+      startDate: dates.startDate,
+      endDate: dates.endDate
     }
+    
+    // Add location filters if available
+    if (coordinates.value) {
+      params.lat = coordinates.value.lat
+      params.lng = coordinates.value.lng
+      params.radius = coordinates.value.radius || 50
+    }
+    
+    // Add price and amenities filters
+    if (filters.value) {
+      if (filters.value.minPrice) params.minPrice = filters.value.minPrice
+      if (filters.value.maxPrice) params.maxPrice = filters.value.maxPrice
+      if (filters.value.amenities?.length) params.amenities = filters.value.amenities.join(',')
+    }
+
+    // First try the API endpoint
+    let data
+    try {
+      const response = await axios.get('/api/camping-spots', { 
+        params,
+        headers: { 'Accept': 'application/json' }
+      })
+      data = response.data
+      console.log('Fetched from /api/camping-spots successfully')
+    } catch (apiError) {
+      console.warn('API endpoint failed, trying without /api prefix:', apiError.message)
+      const response = await axios.get('/camping-spots', { 
+        params, 
+        headers: { 'Accept': 'application/json' }
+      })
+      data = response.data
+      console.log('Fetched from /camping-spots successfully')
+    }
+
+    // Validate that data is an array
+    if (!data) {
+      throw new Error('No data received from server')
+    }
+    
+    if (!Array.isArray(data)) {
+      console.error('Expected array but received:', data)
+      toast.error('Received invalid data format from server')
+      spots.value = []
+      return
+    }
+
+    // Set spots data
+    spots.value = authStore.fullUser 
+      ? data.filter(spot => spot.owner_id !== authStore.fullUser.user_id)
+      : data
+    
+    console.log('Fetched spots:', spots.value.length)
   } catch (error) {
     console.error('Failed to fetch spots:', error)
     error.value = 'Failed to load camping spots. Please try again later'
-    toast.error('Failed to load camping spots')
+    toast.error('Failed to load camping spots: ' + (error.message || 'Unknown error'))
   } finally {
     loading.value = false
   }

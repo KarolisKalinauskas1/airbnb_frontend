@@ -12,14 +12,29 @@ const pinia = createPinia()
 
 // Add this before the app initialization
 const checkBackendStatus = async () => {
-  try {
-    const response = await axios.get('/', { timeout: 3000 });
-    console.log('Backend status:', response.data);
-    return true;
-  } catch (error) {
-    console.warn('Backend not available. Some features may not work properly.');
-    return false;
+  // Try several endpoints to ensure at least one works
+  const endpointsToTry = ['/', '/health'];
+  
+  for (const endpoint of endpointsToTry) {
+    try {
+      const response = await axios.get(endpoint, { 
+        timeout: 3000,
+        // Accept 2xx and 4xx responses as "success" for the connectivity check
+        // This is just to check if the server is responding at all
+        validateStatus: status => status >= 200 && status < 500
+      });
+      
+      console.log(`Backend status check succeeded with ${endpoint}:`, response.data);
+      return true;
+    } catch (error) {
+      console.warn(`Backend check failed with ${endpoint}:`, error.message);
+      // Continue trying other endpoints
+    }
   }
+  
+  // If we get here, all endpoint checks failed
+  console.warn('Backend not available. Some features may not work properly.');
+  return false;
 }
 
 // Then in your initialization code, add:

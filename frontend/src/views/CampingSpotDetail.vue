@@ -164,11 +164,15 @@
         <!-- Right Column: Booking Card -->
         <div class="lg:col-span-1">
           <div class="sticky top-8">
-            <div class="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+            <div class="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
               <div class="flex items-baseline justify-between mb-6">
                 <div>
                   <span class="text-2xl font-bold">€{{ spot.price_per_night }}</span>
                   <span class="text-gray-600">/night</span>
+                </div>
+                <div class="flex items-center">
+                  <span class="text-yellow-400">★</span>
+                  <span>{{ averageRating }} ({{ spot.reviews?.length || 0 }})</span>
                 </div>
               </div>
               
@@ -177,7 +181,6 @@
                 <DateRangeSelector
                   v-model:startDate="dates.startDate"
                   v-model:endDate="dates.endDate"
-                  :camping-spot-id="spot.camping_spot_id" 
                   @dateChange="calculateTotal"
                   class="date-range-selector w-full"
                 />
@@ -192,22 +195,13 @@
                   </select>
                 </div>
                 
-                <div v-if="nights > 0" class="mt-6 space-y-4">
-                  <div class="flex justify-between">
-                    <p>€{{ spot.price_per_night }} x {{ nights }} nights</p>
-                    <p>€{{ subtotal }}</p>
-                  </div>
-                  <div class="flex justify-between">
-                    <p>Service fee (10%)</p>
-                    <p>€{{ (subtotal * 0.1).toFixed(2) }}</p>
-                  </div>
-                  <div class="border-t border-gray-200 pt-4">
-                    <div class="flex justify-between font-bold">
-                      <p>Total</p>
-                      <p>€{{ total.toFixed(2) }}</p>
-                    </div>
-                  </div>
-                </div>
+                <!-- Use the new CheckoutSummary component when dates are selected -->
+                <CheckoutSummary 
+                  v-if="nights > 0"
+                  :basePrice="spot.price_per_night" 
+                  :nights="nights"
+                  :serviceFeePercent="10"
+                />
                 
                 <!-- Add a warning if dates overlap with blocked dates -->
                 <div v-if="hasBlockedDates" class="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
@@ -220,8 +214,8 @@
                   v-if="!hasBlockedDates && dates.startDate && dates.endDate"
                   @click="bookNow" 
                   :disabled="!canBook || loading"
-                  class="w-full bg-gradient-to-r from-red-500 to-red-600 text-white py-4 rounded-xl font-semibold hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5 cursor-pointer mt-6"
-                  :class="{ 'opacity-50 cursor-not-allowed': !canBook || loading }"
+                  class="w-full bg-gradient-to-r from-rose-500 to-red-600 text-white py-4 rounded-xl font-semibold hover:from-rose-600 hover:to-red-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                  :class="{ 'opacity-50 cursor-not-allowed transform-none shadow-none': !canBook || loading }"
                 >
                   <span v-if="loading">Processing...</span>
                   <span v-else>Reserve now</span>
@@ -235,6 +229,9 @@
                 >
                   Select dates to continue
                 </button>
+                
+                <!-- Add this button for testing API connection -->
+                <button @click="testConnection" type="button" class="text-sm text-blue-500">Test API Connection</button>
                 
               </div>
             </div>
@@ -280,7 +277,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDatesStore } from '@/stores/dates'
 import { useAuthStore } from '@/stores/auth'
@@ -290,6 +287,7 @@ import LocationMap from '@/components/LocationMap.vue'
 import { useToast } from 'vue-toastification'
 import AvailabilityCalendar from '@/components/AvailabilityCalendar.vue'
 import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue'
+import CheckoutSummary from '@/components/CheckoutSummary.vue'
 
 const toast = useToast()
 const route = useRoute()
@@ -429,7 +427,7 @@ const calculateTotal = () => {
   total.value = subtotal.value + serviceFee
 }
 
-// Update the bookNow function to go directly to Stripe checkout
+// Update the bookNow function to follow the correct flow
 const bookNow = async () => {
   if (!canBook.value) {
     if (hasBlockedDates.value) {
@@ -457,42 +455,135 @@ const bookNow = async () => {
     return;
   }
   
+  // Make sure we have the full user info
+  if (!authStore.fullUser) {
+    try {
+      await authStore.fetchFullUserInfo(true);
+      if (!authStore.fullUser) {
+        toast.error('Unable to retrieve your account information. Please try logging out and back in.');
+        return;
+      }
+    } catch (error) {
+      console.error('Failed to fetch user info:', error);
+      if (error.code === 'ERR_NETWORK') {
+        toast.error('Unable to connect to server. Please check your internet connection or try again later.');
+      } else {
+        toast.error('Authentication issue. Please try logging out and back in.');
+      }
+      return;
+    }
+  }
+  
   loading.value = true;
   
   try {
     // Calculate base price and service fee
     const basePrice = spot.value.price_per_night * nights.value;
-    const serviceFee = subtotal.value * 0.1;
+    const serviceFee = basePrice * 0.1;
+    const totalAmount = basePrice + serviceFee;
     
-    // Direct Stripe checkout creation
-    const { data } = await axios.post('/api/bookings/create-checkout-session', {
-      camping_spot_id: spot.value.camping_spot_id,
+    // Check if backend is available before proceeding
+    try {
+      // Simple HEAD request to check server availability
+      await axios.head('/', { timeout: 3000 });
+    } catch (networkError) {
+      if (networkError.code === 'ERR_NETWORK') {
+        toast.error('Server is currently unavailable. Please try again later.');
+        loading.value = false;
+        return;
+      }
+    }
+    
+    // First, check availability again to ensure dates are still available
+    const { data: availabilityData } = await axios.get(`/camping-spots/${spot.value.camping_spot_id}/availability`, {
+      params: {
+        startDate: dates.value.startDate,
+        endDate: dates.value.endDate
+      }
+    });
+    
+    if (availabilityData?.bookings?.length > 0) {
+      toast.error('Sorry, these dates are no longer available. Please select different dates.');
+      loading.value = false;
+      return;
+    }
+    
+    // Get the authentication token
+    const token = await authStore.getAuthToken();
+    if (!token) {
+      toast.error('Authentication required. Please try logging out and back in.');
+      loading.value = false;
+      return;
+    }
+    
+    // Create the session request payload
+    const sessionData = {
+      camper_id: spot.value.camping_spot_id,
       user_id: authStore.fullUser.user_id,
       start_date: dates.value.startDate,
       end_date: dates.value.endDate,
       number_of_guests: guests.value,
-      base_price: basePrice,
-      service_fee: serviceFee.toFixed(2)
-    });
+      cost: basePrice.toFixed(2),
+      service_fee: serviceFee.toFixed(2),
+      total: totalAmount.toFixed(2),
+      spot_name: spot.value.title,
+      spot_image: spot.value.images?.[0]?.image_url || null
+    };
+    
+    console.log('Creating checkout session with data:', sessionData);
+    
+    // Create Stripe Checkout session - explicitly include the auth token
+    const { data: sessionResponse } = await axios.post('/bookings/create-checkout-session', 
+      sessionData,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+    
+    if (!sessionResponse.url) {
+      throw new Error('Invalid response from server - no checkout URL received');
+    }
     
     toast.success('Redirecting to payment...');
     
-    // Redirect to Stripe checkout with a slight delay to show the toast
-    setTimeout(() => {
-      window.location.href = data.url;
-    }, 500);
+    // Redirect to Stripe Checkout
+    window.location.href = sessionResponse.url;
   } catch (error) {
     console.error('Booking Error:', error);
-    if (error.response?.status === 400 && error.response?.data?.error) {
-      toast.error(`Booking failed: ${error.response.data.error}`);
-    } else {
-      toast.error('Failed to process booking. Please try again later.');
-    }
     loading.value = false;
+    
+    if (error.code === 'ERR_NETWORK') {
+      toast.error('Cannot connect to server. Please check your internet connection or try again later.');
+    } else if (error.response?.status === 401) {
+      toast.error('Authentication required. Please try logging out and back in.');
+    } else if (error.response?.status === 400 && error.response?.data?.error) {
+      toast.error(`Booking failed: ${error.response.data.error}`);
+      if (error.response.data.details) {
+        console.error('Error details:', error.response.data.details);
+      }
+    } else {
+      toast.error('An error occurred while processing your booking. Please try again later.');
+    }
+  }
+}
+
+// Add this method for testing API connectivity
+const testConnection = async () => {
+  try {
+    const { data } = await axios.post('/api/bookings/test-connection', {
+      test: 'data',
+      time: new Date().toISOString()
+    });
+    console.log('Connection test successful:', data);
+    toast.success('API connection successful');
+  } catch (error) {
+    console.error('Connection test failed:', error);
+    toast.error('API connection failed');
   }
 };
 
-// Make sure canBook properly checks for all conditions
 const canBook = computed(() => {
   return dates.value.startDate && 
          dates.value.endDate && 
@@ -502,43 +593,20 @@ const canBook = computed(() => {
 })
 
 // Enhance the date change handler to check for blocked dates
-const handleDateChange = async () => {
-  calculateTotal();
+const handleDateChange = () => {
+  // Update URL with new dates
+  persistDatesToUrl(dates.value.startDate, dates.value.endDate, guests.value);
   
-  // Check if the dates are valid
-  if (!dates.value.startDate || !dates.value.endDate) {
-    return;
-  }
+  // Save to localStorage as backup
+  localStorage.setItem('campingDates', JSON.stringify({
+    startDate: dates.value.startDate,
+    endDate: dates.value.endDate,
+    lastUpdated: new Date().toISOString()
+  }));
   
-  const start = new Date(dates.value.startDate);
-  const end = new Date(dates.value.endDate);
-  
-  if (isNaN(start) || isNaN(end) || start >= end) {
-    toast.warning('Please select a valid date range');
-    return;
-  }
-  
-  // Check if selected dates are blocked immediately
-  if (hasBlockedDates.value) {
-    toast.warning('The selected dates are unavailable for booking');
-  }
-  
-  // Re-fetch availability from the server to ensure we have the latest data
-  try {
-    const { data } = await axios.get(`/camping-spots/${spot.value.camping_spot_id}/availability`, {
-      params: {
-        startDate: dates.value.startDate,
-        endDate: dates.value.endDate
-      }
-    });
-    
-    handleBlockedDates(data.bookings || []);
-    
-    if (hasBlockedDates.value) {
-      toast.warning('The selected dates are unavailable for booking');
-    }
-  } catch (error) {
-    console.error('Failed to check availability:', error);
+  // Trigger availability check if both dates are set
+  if (dates.value.startDate && dates.value.endDate) {
+    checkAvailability();
   }
 }
 
@@ -552,6 +620,21 @@ const handleBlockedDates = (dates) => {
   // Re-check booking availability when blocked dates change
   calculateTotal();
 };
+
+// Add this function near your other methods
+const persistDatesToUrl = (startDate, endDate, guestsCount) => {
+  // Update URL without reloading the page
+  const query = { ...route.query };
+  
+  if (startDate) query.startDate = startDate;
+  if (endDate) query.endDate = endDate;
+  if (guestsCount) query.guests = guestsCount;
+  
+  router.replace({ 
+    path: route.path,
+    query: query
+  });
+}
 
 onMounted(async () => {
   try {
@@ -570,9 +653,23 @@ onMounted(async () => {
         endDate: datesStore.endDate
       }
     } else {
-      dates.value = {
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: new Date(Date.now() + 86400000).toISOString().split('T')[0]
+      // Try to load from localStorage
+      const savedDates = localStorage.getItem('campingDates');
+      if (savedDates) {
+        try {
+          const parsed = JSON.parse(savedDates);
+          // Only use saved dates if they're less than 1 day old
+          const lastUpdated = new Date(parsed.lastUpdated);
+          const now = new Date();
+          const daysSinceUpdate = (now - lastUpdated) / (1000 * 60 * 60 * 24);
+          
+          if (daysSinceUpdate < 1) {
+            dates.value.startDate = parsed.startDate;
+            dates.value.endDate = parsed.endDate;
+          }
+        } catch (e) {
+          console.error('Failed to parse saved dates', e);
+        }
       }
     }
     
@@ -623,6 +720,15 @@ onMounted(async () => {
     loading.value = false;
   }
 })
+
+// Watch for changes to dates and guests to persist them
+watch([() => dates.value.startDate, () => dates.value.endDate, () => guests.value], 
+  ([newStartDate, newEndDate, newGuests]) => {
+    if (newStartDate && newEndDate) {
+      persistDatesToUrl(newStartDate, newEndDate, newGuests);
+    }
+  }
+);
 </script>
 
 <style scoped>
@@ -687,12 +793,7 @@ onMounted(async () => {
 /* Make sure buttons are more clickable */
 .light-text {
   color: white;
-  font-size: 36px;
-}
-
-/* Navigation arrow styles */
-.absolute {
-  z-index: 10;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 /* Transition for hover effects */
@@ -701,6 +802,46 @@ onMounted(async () => {
 }
 
 .transition-opacity {
+  transition: opacity 0.3s ease;
+}
+
+/* Navigation arrow styles */
+.absolute {
+  z-index: 10;
+}
+
+/* Added CSS for the gallery navigation buttons */
+.gallery-nav-button {
+  font-size: 36px;
+  color: white;
   transition: opacity 0.2s ease;
+}
+
+/* Enhanced button styles */
+button {
+  outline: none !important;
+}
+
+button:focus {
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
+}
+
+/* Gradient animation for main booking button */
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.from-rose-500.to-red-600:hover {
+  background-size: 200% 200%;
+  animation: gradient-shift 3s ease infinite;
 }
 </style>

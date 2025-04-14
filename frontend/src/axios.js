@@ -1,86 +1,98 @@
 import axios from 'axios';
-import { useAuthStore } from './stores/auth';
+import { useAuthStore } from '@/stores/auth';
 
-// Create axios instance with baseURL
+// Create Axios instance
 const instance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
-  timeout: 10000, // Add a timeout
-  retries: 3,     // Add retries count
-  retryDelay: 1000 // Delay between retries in milliseconds
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000',
+  timeout: 30000, // Increase timeout to 30 seconds for file uploads
+  withCredentials: true // Include cookies in requests
 });
 
-// Add a request interceptor to automatically add auth token to protected routes
-instance.interceptors.request.use(async function (config) {
-  // List of endpoints that require authentication
-  const protectedEndpoints = [
-    '/camping-spots/owner',
-    '/dashboard',
-    '/users/profile',
-    '/users/full-info',
-    '/users/sync'
-  ];
-  
-  // Check if the request is for a protected endpoint
-  const isProtectedRequest = protectedEndpoints.some(endpoint => 
-    config.url.includes(endpoint)
-  );
-  
-  if (isProtectedRequest) {
+// Fix the API path handling in the request interceptor
+instance.interceptors.request.use(
+  async (config) => {
+    // Don't modify URLs for external requests
+    if (!config.url.startsWith('http')) {
+      // Make sure all API paths start with /
+      if (!config.url.startsWith('/')) {
+        config.url = `/${config.url}`;
+      }
+    }
+    
     try {
-      // Get the auth store
+      // Get the auth store (will only work in setup context)
       const authStore = useAuthStore();
       const token = await authStore.getAuthToken();
       
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
-      } else {
-        console.warn('No auth token available for protected endpoint:', config.url);
       }
     } catch (error) {
-      console.error('Error setting auth token:', error);
+      // If we can't get the auth store or token, just proceed without auth
+      console.log('Not able to add auth token to request:', error);
     }
+    
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
   }
-  
-  return config;
-}, function (error) {
-  return Promise.reject(error);
-});
+);
 
-// Add response interceptor for retries on network errors
-instance.interceptors.response.use(null, async function(error) {
-  const config = error.config;
-  
-  // If we've reached max retries or it's not a network error, reject
-  if (!config || !config.retries || error.code !== 'ERR_NETWORK') {
-    return Promise.reject(error);
+// Keep track of failed requests to prevent loops
+const failedRequestsCount = {};
+
+// Reset counts every 5 minutes
+setInterval(() => {
+  for (const key in failedRequestsCount) {
+    delete failedRequestsCount[key];
   }
-  
-  // Set retry count if it doesn't exist
-  config._retryCount = config._retryCount || 0;
-  
-  // Check if we've maxed out retries
-  if (config._retryCount >= config.retries) {
-    // Check if it's potentially a server down issue
-    if (error.code === 'ERR_NETWORK') {
-      console.warn('Server connection failed after multiple retries. The backend server might be down.');
+}, 300000);
+
+// Add response interceptor for better error handling
+instance.interceptors.response.use(
+  response => response,
+  error => {
+    console.error('Axios error intercepted:', error);
+    
+    // Track failed requests to detect potential loops
+    const requestUrl = error.config?.url;
+    if (requestUrl) {
+      failedRequestsCount[requestUrl] = (failedRequestsCount[requestUrl] || 0) + 1;
+      
+      // If the same request fails more than 5 times in a row, log a warning
+      if (failedRequestsCount[requestUrl] > 5) {
+        console.warn(`Request to ${requestUrl} has failed ${failedRequestsCount[requestUrl]} times. Possible infinite loop detected.`);
+      }
     }
+    
+    // Handle network errors and CORS issues
+    if (error.code === 'ERR_NETWORK') {
+      console.warn('Network error - backend server may be down');
+    } else if (error.message && error.message.includes('CORS')) {
+      console.error('CORS error detected:', error.message);
+    }
+    
+    // Handle request timeout
+    if (error.code === 'ECONNABORTED') {
+      console.error('Request timed out');
+    }
+    
+    // Log detailed error info for debugging
+    if (error.response) {
+      console.error('Error response data:', error.response.data);
+      console.error('Error response status:', error.response.status);
+    }
+    
+    // Handle global error cases
+    if (error.response?.status === 401) {
+      console.warn('Authentication error - you may need to login again');
+      // Don't trigger automatic redirects here to prevent loops
+    }
+    
+    // Continue with the error
     return Promise.reject(error);
   }
-  
-  // Increase retry count
-  config._retryCount += 1;
-  console.log(`Retry attempt ${config._retryCount} for ${config.url}`);
-  
-  // Create new promise to handle retry
-  const delayRetry = new Promise(resolve => {
-    setTimeout(() => {
-      console.log(`Retrying request to ${config.url}`);
-      resolve();
-    }, config.retryDelay || 1000);
-  });
-  
-  // Return the promise with retry
-  return delayRetry.then(() => instance(config));
-});
+);
 
 export default instance;

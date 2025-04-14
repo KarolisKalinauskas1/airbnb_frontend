@@ -4,20 +4,23 @@
       <!-- Back Button -->
       <button 
         @click="goBack" 
-        class="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+        class="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors hover:shadow"
       >
-        <span class="text-xl">←</span> Back
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+        </svg>
+        Back
       </button>
 
       <div v-if="loading" class="flex justify-center py-20">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
+        <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-red-500"></div>
       </div>
       
       <div v-else class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <!-- Booking Form Section -->
         <div class="lg:col-span-2 space-y-8">
-          <div class="bg-white p-6 rounded-lg shadow-md">
-            <h1 class="text-2xl font-semibold mb-6">Complete your booking</h1>
+          <div class="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-all">
+            <h1 class="text-2xl font-semibold mb-6 border-b pb-4">Complete your booking</h1>
 
             <!-- Trip Details -->
             <div class="mb-8">
@@ -31,7 +34,7 @@
                 </div>
                 <button 
                   @click="editingDates = !editingDates" 
-                  class="text-red-600 underline cursor-pointer"
+                  class="text-red-500 underline cursor-pointer hover:text-red-700"
                 >
                   {{ editingDates ? 'Close' : 'Edit' }}
                 </button>
@@ -42,6 +45,7 @@
                   v-model:startDate="dates.startDate"
                   v-model:endDate="dates.endDate"
                   @dateChange="handleDateChange"
+                  class="w-full"
                 />
                 
                 <!-- Warning if selected dates are now blocked -->
@@ -62,7 +66,7 @@
                 <button 
                   type="button"
                   @click="editingGuests = !editingGuests"
-                  class="text-red-600 underline cursor-pointer"
+                  class="text-red-500 underline cursor-pointer hover:text-red-700"
                 >
                   {{ editingGuests ? 'Close' : 'Edit' }}
                 </button>
@@ -86,74 +90,99 @@
 
             <!-- Cancellation Policy -->
             <div class="mb-6 p-4 bg-gray-50 rounded-lg">
-              <h3 class="font-medium mb-2">Cancellation Policy</h3>
-              <p class="text-sm text-gray-600">Free cancellation for 48 hours. Cancel before checkin to receive a partial refund. Review the full policy.</p>
+              <h3 class="font-medium mb-2 flex items-center">
+                <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Cancellation Policy
+              </h3>
+              <p class="text-sm text-gray-600">Free cancellation for 48 hours before check-in. After that, cancel before check-in to receive a partial refund. <button class="text-red-500 underline">Review the full policy</button></p>
             </div>
+          </div>
+          
+          <!-- Ground Rules -->
+          <div class="bg-white p-6 rounded-xl shadow-md hover:shadow-lg transition-all">
+            <h2 class="text-lg font-medium mb-4">Ground rules</h2>
+            <p class="text-gray-600 text-sm mb-5">We ask all guests to remember a few simple rules to be a great guest.</p>
+            
+            <ul class="space-y-3 text-sm">
+              <li class="flex items-start">
+                <svg class="w-5 h-5 mr-2 text-gray-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Follow the camping site rules</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-5 h-5 mr-2 text-gray-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Respect your host's camping area and amenities</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-5 h-5 mr-2 text-gray-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Leave the spot as you found it</span>
+              </li>
+            </ul>
           </div>
         </div>
 
         <!-- Order Summary Section -->
         <div class="lg:col-span-1 space-y-6">
-          <div class="bg-white p-6 rounded-lg shadow-md">
-            <h2 class="text-lg font-medium border-b pb-4 mb-4">Booking Summary</h2>
-            
-            <!-- Spot Preview -->
-            <div class="flex gap-4 mb-6">
-              <div class="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden">
-                <img 
-                  v-if="spot?.images?.length" 
-                  :src="spot.images[0].image_url" 
-                  alt="Camping spot"
-                  class="w-full h-full object-cover"
-                />
-                <div v-else class="w-full h-full bg-gray-200 flex items-center justify-center text-gray-400">
-                  No image
+          <div class="sticky top-6">
+            <div class="bg-white p-6 rounded-xl shadow-lg hover:shadow-xl transition-all border border-gray-100">
+              <h2 class="text-lg font-medium border-b pb-4 mb-4">Booking Summary</h2>
+              
+              <!-- Spot Preview -->
+              <div class="flex gap-4 mb-6">
+                <div class="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden">
+                  <img 
+                    v-if="spot?.images?.length" 
+                    :src="spot.images[0].image_url" 
+                    alt="Camping spot"
+                    class="w-full h-full object-cover"
+                  />
+                  <div v-else class="w-full h-full bg-gray-200 flex items-center justify-center text-gray-400">
+                    No image
+                  </div>
+                </div>
+                <div>
+                  <h3 class="font-medium">{{ spot?.title }}</h3>
+                  <p class="text-sm text-gray-600">{{ formatLocation(spot?.location) }}</p>
+                  <div class="mt-1 text-sm flex items-center">
+                    <span class="text-yellow-500">★</span>
+                    <span>4.9 ({{ spot?.reviews?.length || '52' }} reviews)</span>
+                  </div>
                 </div>
               </div>
-              <div>
-                <h3 class="font-medium">{{ spot?.title }}</h3>
-                <p class="text-sm text-gray-600">{{ formatLocation(spot?.location) }}</p>
-                <div class="mt-1 text-sm">
-                  <span class="text-yellow-500">★</span>
-                  <span>4.9 (52 reviews)</span>
-                </div>
+              
+              <!-- Use the CheckoutSummary component -->
+              <CheckoutSummary 
+                :basePrice="spot?.price_per_night || 0" 
+                :nights="nights"
+                :serviceFeePercent="10"
+              />
+              
+              <!-- Error Message -->
+              <div v-if="bookingError" class="mt-6 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p class="text-red-700 text-sm">{{ bookingError }}</p>
               </div>
+              
+              <!-- Checkout Button -->
+              <button 
+                @click="processBooking"
+                :disabled="loading || datesAreBlocked"
+                class="w-full mt-6 bg-gradient-to-r from-rose-500 to-red-600 text-white py-4 rounded-lg font-medium hover:from-rose-600 hover:to-red-700 transition-all shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                :class="{'opacity-50 cursor-not-allowed transform-none shadow-none': loading || datesAreBlocked}"
+              >
+                {{ loading ? 'Processing...' : 'Confirm and Pay' }}
+              </button>
+              
+              <p class="mt-4 text-xs text-gray-500 text-center">
+                By confirming, you agree to the <a href="#" class="text-red-600 hover:underline">Terms of Service</a> and <a href="#" class="text-red-600 hover:underline">Privacy Policy</a>.
+              </p>
             </div>
-            
-            <!-- Price Breakdown -->
-            <div class="space-y-3 mb-6">
-              <div class="flex justify-between">
-                <p>€{{ spot?.price_per_night }} × {{ nights }} nights</p>
-                <p>€{{ totalPrice }}</p>
-              </div>
-              <div class="flex justify-between">
-                <p>Service fee</p>
-                <p>€{{ serviceFee }}</p>
-              </div>
-              <div class="flex justify-between font-bold border-t pt-3 mt-3">
-                <p>Total</p>
-                <p>€{{ grandTotal }}</p>
-              </div>
-            </div>
-            
-            <!-- Error Message -->
-            <div v-if="bookingError" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p class="text-red-700 text-sm">{{ bookingError }}</p>
-            </div>
-            
-            <!-- Checkout Button -->
-            <button 
-              @click="processBooking"
-              :disabled="loading || datesAreBlocked"
-              class="w-full bg-red-500 text-white py-3 rounded-lg font-medium hover:bg-red-600 transition-colors"
-              :class="{'opacity-50 cursor-not-allowed': loading || datesAreBlocked}"
-            >
-              {{ loading ? 'Processing...' : 'Confirm and Pay' }}
-            </button>
-            
-            <p class="mt-4 text-xs text-gray-500 text-center">
-              By confirming, you agree to the <a href="#" class="text-red-600">Terms of Service</a> and <a href="#" class="text-red-600">Privacy Policy</a>.
-            </p>
           </div>
         </div>
       </div>
@@ -167,6 +196,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import axios from '@/axios'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
+import CheckoutSummary from '@/components/CheckoutSummary.vue'
 import { useToast } from 'vue-toastification'
 
 const toast = useToast()
@@ -263,13 +293,22 @@ const formatDateRange = (startDate, endDate) => {
 }
 
 const handleDateChange = () => {
+  // Update URL with selected dates
   router.replace({ 
     query: { 
       ...route.query,
       startDate: dates.value.startDate,
-      endDate: dates.value.endDate
+      endDate: dates.value.endDate,
+      guests: guestCount.value
     }
-  })
+  });
+  
+  // Save to localStorage as backup
+  localStorage.setItem('campingDates', JSON.stringify({
+    startDate: dates.value.startDate,
+    endDate: dates.value.endDate,
+    lastUpdated: new Date().toISOString()
+  }));
 }
 
 const validateForm = () => {
@@ -315,13 +354,19 @@ const processBooking = async () => {
   bookingError.value = null;
 
   try {
-    const { data } = await axios.post('/bookings/create-checkout-session', {
-      camping_spot_id: route.params.id,
+    const basePrice = spot.value.price_per_night * nights.value;
+    const serviceFee = basePrice * 0.1; // 10% service fee
+    const totalAmount = basePrice + serviceFee;
+    
+    // Use camper_id instead of camping_spot_id
+    const { data } = await axios.post('/api/bookings/create-checkout-session', {
+      camper_id: spot.value.camping_spot_id, // This is the field name expected by the backend
       user_id: authStore.fullUser.user_id,
       start_date: dates.value.startDate,
       end_date: dates.value.endDate,
       number_of_guests: guestCount.value,
-      base_price: spot.value.price_per_night
+      cost: basePrice.toFixed(2),       // Base cost without service fee
+      total: totalAmount.toFixed(2)     // Total amount including service fee
     });
     
     toast.success('Redirecting to payment...');
@@ -333,14 +378,9 @@ const processBooking = async () => {
     }, 500);
   } catch (error) {
     console.error('Booking Error:', error);
+    loading.value = false;
     bookingError.value = error.response?.data?.error || 'Failed to process booking';
     toast.error(bookingError.value);
-  } finally {
-    // Don't reset loading state here since we're redirecting
-    // Only reset if there was an error
-    if (bookingError.value) {
-      loading.value = false;
-    }
   }
 };
 
@@ -411,7 +451,29 @@ watch([() => dates.value.startDate, () => dates.value.endDate], () => {
   border-radius: 0.5rem;
 }
 
+.rounded-xl {
+  border-radius: 0.75rem;
+}
+
 .shadow-md {
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.shadow-lg {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.shadow-xl {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Improve buttons */
+button {
+  outline: none !important;
+}
+
+button:focus {
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
 }
 </style>

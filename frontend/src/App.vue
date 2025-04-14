@@ -24,33 +24,79 @@ import { useAuthStore } from '@/stores/auth'
 import { storeToRefs } from 'pinia'
 import NavComponent from '@/components/NavComponent.vue'
 import axios from '@/axios'
+import { monitorFunctionCall } from '@/utils/loopBreaker'
 
 const authStore = useAuthStore()
 const { loading } = storeToRefs(authStore)
 const backendDown = ref(false)
 
-// Check if backend is available
+// Check if backend is available with loop detection
 const checkBackendStatus = async () => {
-  try {
-    await axios.get('/', { timeout: 3000 })
-    backendDown.value = false
-  } catch (error) {
-    backendDown.value = true
-    console.warn('Backend server is not responding')
+  // Use the loop breaker utility to prevent infinite checks
+  if (!monitorFunctionCall('checkBackendStatus', { 
+    timeWindow: 60000, // 1 minute
+    maxCallsBeforeWarning: 3,
+    maxCallsBeforeBlocking: 5
+  })) {
+    console.warn('Too many backend status checks in short period, using cached status');
+    return backendDown.value === false;
   }
-}
+  
+  // Set a flag to avoid multiple checks in quick succession
+  const lastChecked = localStorage.getItem('lastBackendCheck');
+  const now = Date.now();
+  
+  // Only check once per minute unless forced
+  if (lastChecked && (now - parseInt(lastChecked)) < 60000) {
+    console.log('Backend was checked recently, using cached status');
+    backendDown.value = localStorage.getItem('backendStatus') === 'down';
+    return backendDown.value === false;
+  }
+  
+  try {
+    // Use only the health endpoint for checking
+    const response = await axios.get('/api/health', { 
+      timeout: 3000,
+      // Don't follow redirects
+      maxRedirects: 0,
+      // Accept all status codes as successful for connection test
+      validateStatus: status => status < 500
+    });
+    
+    if (response.status === 200) {
+      console.log('Backend server is responsive');
+      backendDown.value = false;
+      localStorage.setItem('backendStatus', 'up');
+      localStorage.setItem('lastBackendCheck', now.toString());
+      return true;
+    }
+    
+    console.warn('Backend returned non-200 status:', response.status);
+    backendDown.value = true;
+    localStorage.setItem('backendStatus', 'down');
+    localStorage.setItem('lastBackendCheck', now.toString());
+    return false;
+  } catch (error) {
+    console.error('Backend connection error:', error.message);
+    backendDown.value = true;
+    localStorage.setItem('backendStatus', 'down');
+    localStorage.setItem('lastBackendCheck', now.toString());
+    return false;
+  }
+};
 
 // Immediately initialize auth on app mount
 onMounted(async () => {
-  await checkBackendStatus()
+  await checkBackendStatus();
   
   try {
-    console.log('App mounted, initializing auth...')
-    await authStore.initAuth()
+    console.log('App mounted, initializing auth...');
+    await authStore.initAuth();
   } catch (error) {
-    console.error('Failed to initialize auth:', error)
+    console.error('Failed to initialize auth:', error);
+    // Don't retry here - let the individual components handle retries
   }
-})
+});
 </script>
 
 <style>

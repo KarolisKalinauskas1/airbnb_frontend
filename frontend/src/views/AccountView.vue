@@ -1,19 +1,22 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '@/lib/supabase'
 import axios from 'axios'
 import BookingCard from '@/components/BookingCard.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 const user = ref(null)
 const fullUser = ref(null)
 
-const activeTab = ref('info')
+// Initialize activeTab from route query or default to 'info'
+const activeTab = ref(route.query.tab === 'bookings' ? 'upcoming' : (route.query.tab || 'info'))
 const upcomingBookings = ref([])
 const previousBookings = ref([])
+const highlightedBookingId = ref(route.query.id ? parseInt(route.query.id) : null)
 
 const tabButton = (tab) =>
   `px-4 py-2 border-b-2 ${
@@ -28,6 +31,22 @@ onMounted(async () => {
   // Use the cached data from Pinia store
   fullUser.value = authStore.fullUser
   filterBookings()
+  
+  // If we have a specific booking ID to highlight, check for it
+  if (highlightedBookingId.value) {
+    setTimeout(() => {
+      const bookingElement = document.getElementById(`booking-${highlightedBookingId.value}`)
+      if (bookingElement) {
+        bookingElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        bookingElement.classList.add('highlight-booking')
+        
+        // Remove highlight after a few seconds
+        setTimeout(() => {
+          bookingElement.classList.remove('highlight-booking')
+        }, 3000)
+      }
+    }, 500)
+  }
 })
 
 // Add a watcher for authStore.fullUser
@@ -64,9 +83,29 @@ const filterBookings = () => {
     return b.status_id === 3 || b.status_id === 4 || (endDate <= now && b.status_id === 2)
   })
 
+  // If we have a highlighted booking ID, activate the appropriate tab
+  if (highlightedBookingId.value) {
+    const inUpcoming = upcomingBookings.value.some(b => b.booking_id === highlightedBookingId.value)
+    const inPrevious = previousBookings.value.some(b => b.booking_id === highlightedBookingId.value)
+    
+    if (inUpcoming) {
+      activeTab.value = 'upcoming'
+      // Reset URL to remove query params
+      router.replace({ path: '/account', query: {} }, { replace: true })
+    } else if (inPrevious) {
+      activeTab.value = 'previous'
+      // Reset URL to remove query params
+      router.replace({ path: '/account', query: {} }, { replace: true })
+    }
+  }
+
   if (previousBookings.value.length === 0 && activeTab.value === 'previous') {
     activeTab.value = 'info'
   }
+  
+  // Sort bookings by date
+  upcomingBookings.value.sort((a, b) => new Date(a.start_date) - new Date(b.start_date))
+  previousBookings.value.sort((a, b) => new Date(b.start_date) - new Date(a.start_date))
 }
 
 // Password change logic
@@ -116,6 +155,17 @@ const changePassword = async () => {
     newPassword.value = ''
     confirmPassword.value = ''
   }
+}
+
+const refreshKey = ref(0)
+
+// Add a method to handle booking changes
+const handleBookingChanged = async (bookingId) => {
+  // Refresh all user data to get updated bookings
+  await authStore.fetchFullUserInfo(true)
+  
+  // Increment the refresh key to force re-render of the components
+  refreshKey.value++
 }
 
 </script>
@@ -205,13 +255,17 @@ const changePassword = async () => {
       </div>
 
       <!-- Upcoming Bookings -->
-      <div v-if="user && activeTab === 'upcoming'">
+      <div v-if="user && activeTab === 'upcoming'" class="w-full">
         <h2 class="text-xl font-semibold mb-4">Upcoming Bookings</h2>
-        <div v-if="upcomingBookings.length > 0">
+        <div v-if="upcomingBookings.length > 0" class="space-y-4">
           <BookingCard
             v-for="booking in upcomingBookings"
-            :key="booking.booking_id"
+            :key="`${booking.booking_id}-${refreshKey}`"
             :booking="booking"
+            :class="{ 'ring-2 ring-red-500 ring-offset-2': booking.booking_id === highlightedBookingId }"
+            :id="`booking-${booking.booking_id}`"
+            refresh-on-action
+            @booking-changed="handleBookingChanged"
           />
         </div>
         <div v-else class="text-center p-8 bg-gray-50 rounded-lg">
@@ -225,8 +279,12 @@ const changePassword = async () => {
         <div v-if="previousBookings.length > 0" class="space-y-4">
           <BookingCard
             v-for="booking in previousBookings"
-            :key="booking.booking_id"
+            :key="`${booking.booking_id}-${refreshKey}`"
             :booking="booking"
+            :class="{ 'ring-2 ring-red-500 ring-offset-2': booking.booking_id === highlightedBookingId }"
+            :id="`booking-${booking.booking_id}`"
+            refresh-on-action
+            @booking-changed="handleBookingChanged"
           />
         </div>
         <div v-else class="text-center p-8 bg-gray-50 rounded-lg border border-gray-200">
@@ -241,3 +299,16 @@ const changePassword = async () => {
     </div>
   </div>
 </template>
+
+<style>
+/* Add animation for highlighted booking */
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.highlight-booking {
+  animation: pulse 2s infinite;
+}
+</style>

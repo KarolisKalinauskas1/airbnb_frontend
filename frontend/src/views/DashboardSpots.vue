@@ -206,19 +206,53 @@ function closeAddModal() {
 
 async function handleSaveSpot(spotData) {
   try {
-    if (editingSpot.value) {
-      await axios.put(`/camping-spots/${editingSpot.value.camping_spot_id}`, spotData)
-      toast.success('Spot updated successfully')
-    } else {
-      await axios.post('/camping-spots', spotData)
-      toast.success('Spot created successfully')
+    // Check if the auth store has been initialized properly
+    if (!authStore.fullUser?.user_id) {
+      toast.error('Authentication data not loaded. Please refresh the page and try again.');
+      return;
     }
     
-    closeAddModal()
-    await fetchSpots()
+    // Log the form data to verify what's being sent
+    console.log("Sending camping spot data:");
+    for (let [key, value] of spotData.entries()) {
+      console.log(`${key}: ${typeof value === 'object' ? 'File or Object' : value}`);
+    }
+    
+    let response;
+    try {
+      if (editingSpot.value) {
+        console.log(`Updating existing spot ID: ${editingSpot.value.camping_spot_id}`);
+        response = await axios.put(`/camping-spots/${editingSpot.value.camping_spot_id}`, spotData);
+        toast.success('Spot updated successfully');
+      } else {
+        console.log('Creating new camping spot');
+        response = await axios.post('/camping-spots', spotData);
+        toast.success('Spot created successfully');
+      }
+      
+      console.log('Response data:', response.data);
+      closeAddModal();
+      await fetchSpots();
+    } catch (apiError) {
+      console.error('API Error:', apiError);
+      
+      if (apiError.response) {
+        // Server responded with an error
+        console.error('Error response:', apiError.response.data);
+        const errorMessage = apiError.response.data?.error || 'Server error occurred';
+        const errorDetails = apiError.response.data?.details ? `: ${apiError.response.data.details}` : '';
+        toast.error(`${errorMessage}${errorDetails}`);
+      } else if (apiError.request) {
+        // Request was made but no response
+        toast.error('No response from server. Please check your connection.');
+      } else {
+        // Error setting up the request
+        toast.error(`Request setup error: ${apiError.message}`);
+      }
+    }
   } catch (error) {
-    console.error('Failed to save spot:', error)
-    toast.error(error.response?.data?.error || 'Failed to save camping spot')
+    console.error('Failed to process form submission:', error);
+    toast.error('Failed to process form. Please try again.');
   }
 }
 

@@ -13,21 +13,19 @@
       <form @submit.prevent="handleSubmit" class="space-y-4 max-h-[70vh] overflow-y-auto pr-4">
         <!-- Basic Information -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium" :class="[validationErrors.title ? 'text-red-700' : 'text-gray-700']">
-              Title *
-              <span v-if="validationErrors.title" class="text-xs ml-1">({{ validationErrors.title }})</span>
-            </label>
-            <input 
-              v-model="form.title" 
-              type="text" 
-              name="title"
-              required
-              :class="[
-                'mt-1 w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-offset-2 transition-all',
-                validationErrors.title ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-red-500'
-              ]"
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-black-700 mb-2">Title</label>
+            <input
+              v-model="form.title"
+              type="text"
+              class="w-full p-2 border border-gray-300 rounded"
+              :class="{'border-red-500': errors.title}"
+              maxlength="100"
             >
+            <div v-if="errors.title" class="text-red-500 text-sm mt-1">{{ errors.title }}</div>
+            <div class="text-xs text-gray-500 mt-1">
+              {{ form.title.length }}/100 characters
+            </div>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-700">Price per night (€) *</label>
@@ -44,15 +42,18 @@
         </div>
 
         <!-- Description -->
-        <div>
-          <label class="block text-sm font-medium text-gray-700">Description *</label>
-          <textarea 
-            v-model="form.description" 
-            name="description"
-            rows="3" 
-            required 
-            class="mt-1 w-full px-3 py-2 border rounded-md"
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-black-700 mb-2">Description</label>
+          <textarea
+            v-model="form.description"
+            class="w-full p-2 border border-gray-300 rounded h-32"
+            :class="{'border-red-500': errors.description}"
+            maxlength="2000"
           ></textarea>
+          <div v-if="errors.description" class="text-red-500 text-sm mt-1">{{ errors.description }}</div>
+          <div class="text-xs text-gray-500 mt-1">
+            {{ form.description.length }}/2000 characters
+          </div>
         </div>
 
         <div>
@@ -194,6 +195,8 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import axios from '@/axios'
+import { useToast } from 'vue-toastification'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps({
   spot: {
@@ -203,6 +206,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['close', 'submit'])
+const toast = useToast()
+const authStore = useAuthStore()
 
 const availableAmenities = ref([])
 const countries = ref([])
@@ -220,6 +225,11 @@ const form = reactive({
   country: '',
   amenities: [],
   images: []
+})
+
+const errors = reactive({
+  title: '',
+  description: ''
 })
 
 const getImageUrl = (image) => {
@@ -280,48 +290,102 @@ const fetchCountries = async () => {
   }
 }
 
-const handleSubmit = async () => {
-  // Create FormData instance
-  const formData = new FormData();
+const validateForm = () => {
+  // Reset errors
+  Object.keys(errors).forEach(key => errors[key] = '');
   
-  const location = {
-    address_line1: form.address_line1,
-    address_line2: form.address_line2 || '',
-    city: form.city,
-    country_id: parseInt(form.country),
-    postal_code: form.postal_code
-  };
-
-  if (props.spot?.location?.location_id) {
-    location.location_id = props.spot.location.location_id;
+  let isValid = true;
+  
+  // Validate title
+  if (!form.title.trim()) {
+    errors.title = 'Title is required';
+    isValid = false;
+  } else if (form.title.length > 100) {
+    errors.title = 'Title must be less than 100 characters';
+    isValid = false;
   }
-
-  const requestData = {
-    title: form.title,
-    description: form.description,
-    price_per_night: Number(form.price),
-    max_guests: Number(form.max_guests),
-    location: location,
-    amenities: form.amenities.map(id => parseInt(id))
-  };
-
-  if (props.spot) {
-    requestData.existing_images = props.spot.images.map(img => img.image_id);
+  
+  // Validate description
+  if (!form.description.trim()) {
+    errors.description = 'Description is required';
+    isValid = false;
+  } else if (form.description.length > 2000) {
+    errors.description = 'Description must be less than 2000 characters';
+    isValid = false;
   }
+  
+  // ... rest of validation ...
+  
+  return isValid;
+};
 
-  // Append form data
-  Object.entries(requestData).forEach(([key, value]) => {
-    formData.append(key, typeof value === 'object' ? JSON.stringify(value) : value);
-  });
-
-  // Append new images
-  form.images.forEach(image => {
-    if (image instanceof File) {
-      formData.append('images', image);
+const handleSubmit = async () => {
+  try {
+    // Create FormData instance
+    const formData = new FormData();
+    
+    // Validate required fields
+    if (!form.title || !form.description || !form.price || !form.max_guests ||
+        !form.address_line1 || !form.city || !form.postal_code || !form.country) {
+      toast.error('Please fill in all required fields');
+      return;
     }
-  });
+    
+    // Prepare location data
+    const location = {
+      address_line1: form.address_line1,
+      address_line2: form.address_line2 || '',
+      city: form.city,
+      country_id: parseInt(form.country),
+      postal_code: form.postal_code
+    };
 
-  emit('submit', formData);
+    if (props.spot?.location?.location_id) {
+      location.location_id = props.spot.location.location_id;
+    }
+
+    // Ensure we have user data before proceeding
+    if (!authStore.fullUser?.user_id) {
+      toast.error('You must be logged in to create a camping spot');
+      return;
+    }
+
+    // Add all form data as strings/numbers
+    formData.append('title', form.title);
+    formData.append('description', form.description);
+    formData.append('price_per_night', form.price);
+    formData.append('max_guests', form.max_guests);
+    formData.append('owner_id', authStore.fullUser.user_id.toString());
+    
+    // JSON stringify objects
+    formData.append('location', JSON.stringify(location));
+    formData.append('amenities', JSON.stringify(form.amenities));
+
+    // Include existing images if editing
+    if (props.spot?.images?.length) {
+      formData.append('existing_images', JSON.stringify(props.spot.images.map(img => img.image_id)));
+    }
+
+    // Append new images
+    if (form.images) {
+      form.images.forEach(image => {
+        if (image instanceof File) {
+          formData.append('images', image);
+        }
+      });
+    }
+
+    // Log what we're sending to help with debugging
+    console.log("Form data being sent:");
+    for (let [key, value] of formData.entries()) {
+      console.log(`${key}: ${typeof value === 'object' ? 'File or Object' : value}`);
+    }
+
+    emit('submit', formData);
+  } catch (error) {
+    console.error('Error preparing form data:', error);
+    toast.error('Error preparing form data. Please try again.');
+  }
 }
 
 // Initialize form if editing

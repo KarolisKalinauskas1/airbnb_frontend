@@ -10,6 +10,41 @@ import PaymentView from '@/views/PaymentView.vue'
 import BookingSuccessView from '@/views/BookingSuccessView.vue'
 import BookingFailedView from '@/views/BookingFailedView.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useDatesStore } from '@/stores/dates'
+import axios from '@/axios'
+
+const bookingAuthGuard = async (to, from, next) => {
+  const authStore = useAuthStore()
+  const bookingId = to.params.id
+  
+  if (!authStore.user) {
+    // Not logged in - redirect to login
+    next({
+      path: '/auth',
+      query: { redirect: to.fullPath }
+    })
+    return
+  }
+
+  if (!bookingId) {
+    next()
+    return
+  }
+
+  try {
+    // Try to access the booking - the backend will verify permissions
+    await axios.get(`/api/bookings/${bookingId}`)
+    next()
+  } catch (error) {
+    if (error.response?.status === 403) {
+      // Unauthorized access
+      next('/account')
+    } else {
+      // Other errors - proceed but the component will handle display
+      next()
+    }
+  }
+}
 
 const routes = [
   { path: '/', name: 'home', component: HomeView },
@@ -25,7 +60,12 @@ const routes = [
     path: '/dashboard',
     name: 'dashboard',
     component: DashboardView,
-    meta: { requiresAuth: true, requiresSeller: true }
+    meta: { 
+      requiresAuth: true, 
+      requiresSeller: true,
+      // Add this to ensure proper handling of refresh
+      props: route => ({ forceRefresh: Date.now() }) 
+    }
   },
   {
     path: '/dashboard/spots',
@@ -75,6 +115,7 @@ const routes = [
     path: '/booking/:id',
     name: 'booking-details',
     component: () => import('../views/BookingDetailsView.vue'),
+    beforeEnter: bookingAuthGuard,
     meta: { requiresAuth: true }
   },
   {
@@ -91,6 +132,11 @@ const routes = [
     name: 'payment',
     component: () => import('../views/PaymentView.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/diagnostics',
+    name: 'Diagnostics',
+    component: () => import('@/views/DiagnosticView.vue')
   }
 ]
 
@@ -115,6 +161,14 @@ router.beforeEach(async (to, from, next) => {
   const isAuthenticated = !!authStore.user
   const isOwner = authStore.fullUser?.isowner === 1
   
+  // Add this code to handle JSON errors on refresh
+  if (document.body && document.body.textContent && 
+      document.body.textContent.includes('{"error":"Not Found","status":404}')) {
+    // We've hit the raw JSON error, reload the page through the frontend
+    window.location.href = window.location.origin + to.fullPath;
+    return;
+  }
+
   if (requiresAuth && !isAuthenticated) {
     // Redirect to login page if authentication is required but user is not authenticated
     next({ 

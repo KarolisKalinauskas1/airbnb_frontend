@@ -64,13 +64,29 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import DashboardLayout from '@/components/DashboardLayout.vue'
 import { useDashboardStore } from '@/stores/dashboard'
 import { storeToRefs } from 'pinia'
+import { onBeforeRouteUpdate } from 'vue-router'
+import { useToast } from 'vue-toastification'
+import { useAuthStore } from '@/stores/auth'
 
+const router = useRouter()
+const route = useRoute()
 const dashboardStore = useDashboardStore()
+const authStore = useAuthStore()
 const { dashboardData, loading, error } = storeToRefs(dashboardStore)
+const toast = useToast()
+
+// Define these variables only once at the top level of your script
+const retryCount = ref(0);
+const maxRetries = 2;
+const dataLoadedInSession = ref(false);
+const loadError = ref(false);
+const errorMessage = ref('');
+const authPromptShown = ref(false)
 
 const formatDate = (dateString) => {
   if (!dateString) return 'N/A'
@@ -98,7 +114,90 @@ const getStatusClass = (status) => {
   }
 }
 
-onMounted(async () => {
-  await dashboardStore.fetchDashboardData()
-})
+// Error handling function
+const handleLoadError = (error) => {
+  loadError.value = true;
+  errorMessage.value = error.response?.data?.error || error.message || 'Failed to load dashboard data';
+  console.error('Dashboard load error:', errorMessage.value);
+  
+  if (error.response?.status === 401 && !authPromptShown.value) {
+    authPromptShown.value = true;
+    setTimeout(() => {
+      router.push('/auth?redirect=' + encodeURIComponent(route.fullPath));
+    }, 100);
+  }
+};
+
+// Single definition of loadDashboardData function
+const loadDashboardData = async () => {
+  if (dashboardStore.loading) {
+    console.log('Dashboard already loading, skipping duplicate request');
+    return;
+  }
+  
+  if (dataLoadedInSession.value && !route.query.refresh) {
+    console.log('Using already loaded dashboard data from this session');
+    return;
+  }
+  
+  loadError.value = false;
+  errorMessage.value = '';
+  
+  if (!authStore.isLoggedIn) {
+    try {
+      const isLoggedIn = await authStore.checkAuth();
+      if (!isLoggedIn) {
+        return router.push('/auth?redirect=' + encodeURIComponent(route.fullPath));
+      }
+    } catch (error) {
+      console.error('Auth check failed:', error);
+    }
+  }
+  
+  try {
+    await dashboardStore.fetchDashboardData();
+    dataLoadedInSession.value = true;
+    retryCount.value = 0;
+  } catch (err) {
+    console.error('Dashboard load error:', err);
+    
+    if (err.response?.status === 401 && retryCount.value < maxRetries) {
+      retryCount.value++;
+      console.log(`Authentication error. Retrying (${retryCount.value}/${maxRetries})...`);
+      
+      setTimeout(async () => {
+        try {
+          await authStore.checkAuth();
+          await loadDashboardData();
+        } catch (authErr) {
+          console.error('Auth refresh failed:', authErr);
+          handleLoadError(err);
+        }
+      }, 2000);
+    } else {
+      handleLoadError(err);
+    }
+  }
+};
+
+// Simplified route watcher to prevent loops
+watch(() => route.query.refresh, (newVal) => {
+  if (newVal === 'true') {
+    console.log('Forced refresh requested');
+    dataLoadedInSession.value = false;
+    retryCount.value = 0;
+    // Remove the query parameter to prevent repeated refreshes
+    router.replace({ query: { ...route.query, refresh: undefined }});
+    loadDashboardData();
+  }
+}, { immediate: false });
+
+// Use onMounted with a small delay to prevent immediate triggering
+onMounted(() => {
+  // Small delay to ensure everything is properly initialized
+  setTimeout(() => {
+    loadDashboardData();
+  }, 100);
+});
+
 </script>
