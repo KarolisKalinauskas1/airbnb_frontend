@@ -1,108 +1,90 @@
 /**
- * Utility to detect and break potential infinite loops
+ * Loop Prevention Utility
+ * 
+ * This utility monitors function calls to prevent infinite loops
+ * by tracking how often a function is called in a given time period.
  */
 
-// Track calls to specific functions with timestamps
-const functionCalls = {};
+// Track function calls with timestamps
+const functionCallRegistry = {};
 
-// Configuration
-const config = {
-  // Maximum calls to a function within the timeWindow before warning
-  maxCallsBeforeWarning: 5,
-  // Time window in milliseconds to track calls (default: 5 seconds)
-  timeWindow: 5000,
-  // Maximum calls before actually blocking execution 
-  maxCallsBeforeBlocking: 10,
-  // Is blocking enabled (as opposed to just warning)
-  blockingEnabled: true,
-  // Log detailed information about calls
-  verboseLogging: false
+/**
+ * Default settings for function call monitoring
+ */
+const DEFAULT_SETTINGS = {
+  timeWindow: 5000,           // 5 seconds
+  maxCallsBeforeWarning: 3,   // Warn after 3 calls
+  maxCallsBeforeBlocking: 5,  // Block after 5 calls
 };
 
 /**
  * Monitors function calls and detects potential infinite loops
  * @param {string} functionId - Unique identifier for the function
- * @param {object} options - Optional configuration that overrides defaults
- * @returns {boolean} - Returns false if execution should be blocked
+ * @param {object} options - Configuration options
+ * @returns {boolean} - true if the call should proceed, false if it should be blocked
  */
-export const monitorFunctionCall = (functionId, options = {}) => {
-  const now = Date.now();
-  const mergedOptions = { ...config, ...options };
-  
-  // Initialize tracking for this function if it doesn't exist
-  if (!functionCalls[functionId]) {
-    functionCalls[functionId] = [];
-  }
-  
-  // Remove calls outside the time window
-  functionCalls[functionId] = functionCalls[functionId].filter(
-    timestamp => (now - timestamp) < mergedOptions.timeWindow
-  );
-  
-  // Add current call
-  functionCalls[functionId].push(now);
-  
-  // Get count of recent calls
-  const recentCallsCount = functionCalls[functionId].length;
-  
-  // Log if verbose
-  if (mergedOptions.verboseLogging) {
-    console.log(`Function ${functionId} called ${recentCallsCount} times in the last ${mergedOptions.timeWindow}ms`);
-  }
-  
-  // Check if we need to warn
-  if (recentCallsCount >= mergedOptions.maxCallsBeforeWarning) {
-    console.warn(`Potential infinite loop detected: Function ${functionId} called ${recentCallsCount} times in ${mergedOptions.timeWindow}ms`);
-  }
-  
-  // Check if we need to block
-  if (mergedOptions.blockingEnabled && recentCallsCount >= mergedOptions.maxCallsBeforeBlocking) {
-    console.error(`Infinite loop prevented: Blocking execution of ${functionId} after ${recentCallsCount} calls in ${mergedOptions.timeWindow}ms`);
-    return false;
-  }
-  
-  return true;
-};
-
-/**
- * Reset tracking for a specific function or all functions
- * @param {string} functionId - Optional function ID to reset, or null for all
- */
-export const resetTracking = (functionId = null) => {
-  if (functionId) {
-    delete functionCalls[functionId];
-  } else {
-    Object.keys(functionCalls).forEach(key => {
-      delete functionCalls[key];
-    });
-  }
-};
-
-/**
- * Get current call stats for debugging
- */
-export const getCallStats = () => {
-  const now = Date.now();
-  const stats = {};
-  
-  Object.keys(functionCalls).forEach(functionId => {
-    // Count only calls within the time window
-    const recentCalls = functionCalls[functionId].filter(
-      timestamp => (now - timestamp) < config.timeWindow
+export function monitorFunctionCall(functionId, options = {}) {
+  try {
+    const settings = { ...DEFAULT_SETTINGS, ...options };
+    const now = Date.now();
+    
+    // Initialize tracking for this function
+    if (!functionCallRegistry[functionId]) {
+      functionCallRegistry[functionId] = [];
+    }
+    
+    // Clean up old calls outside the time window
+    functionCallRegistry[functionId] = functionCallRegistry[functionId].filter(
+      timestamp => (now - timestamp) < settings.timeWindow
     );
     
-    stats[functionId] = {
-      recentCalls: recentCalls.length,
-      oldestCall: recentCalls.length > 0 ? now - Math.min(...recentCalls) : null,
-      newestCall: recentCalls.length > 0 ? now - Math.max(...recentCalls) : null
-    };
-  });
-  
-  return stats;
-};
+    // Count recent calls in the time window
+    const recentCallCount = functionCallRegistry[functionId].length;
+    
+    // Add the current call
+    functionCallRegistry[functionId].push(now);
+    
+    // Check if we should warn or block
+    if (recentCallCount >= settings.maxCallsBeforeWarning) {
+      console.warn(`Potential infinite loop detected: '${functionId}' called ${recentCallCount + 1} times in ${settings.timeWindow}ms`);
+      
+      if (recentCallCount >= settings.maxCallsBeforeBlocking) {
+        console.error(`Loop prevention activated: Blocking '${functionId}' after ${recentCallCount + 1} calls in ${settings.timeWindow}ms`);
+        return false;
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error in monitorFunctionCall:', error);
+    return true; // Allow the call if there's an error in monitoring
+  }
+}
 
-export default {
-  monitorFunctionCall,
-  resetTracking,
-  getCallStats
+/**
+ * Reset the call counter for a specific function or all functions
+ * @param {string} functionId - Function identifier to reset, or null to reset all
+ */
+export function resetFunctionCallCounter(functionId = null) {
+  try {
+    if (functionId === null) {
+      Object.keys(functionCallRegistry).forEach(key => {
+        delete functionCallRegistry[key];
+      });
+    } else if (functionCallRegistry[functionId]) {
+      delete functionCallRegistry[functionId];
+    }
+  } catch (error) {
+    console.error('Error in resetFunctionCallCounter:', error);
+  }
+}
+
+// Export a safe version that never throws
+export const safeMonitorFunctionCall = (functionId, options = {}) => {
+  try {
+    return monitorFunctionCall(functionId, options);
+  } catch (error) {
+    console.warn('Error in safeMonitorFunctionCall:', error);
+    return true; // Always allow on error
+  }
 };

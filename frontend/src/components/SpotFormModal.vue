@@ -274,19 +274,49 @@ const removeExistingImage = async (imageId) => {
 
 const fetchAmenities = async () => {
   try {
-    const { data } = await axios.get('/camping-spots/amenities')
-    availableAmenities.value = data
+    // Try with API prefix first
+    try {
+      const { data } = await axios.get('/api/camping-spots/amenities', {
+        headers: { 'Accept': 'application/json' }
+      });
+      availableAmenities.value = data;
+    } catch (apiError) {
+      console.warn('API endpoint failed, trying without /api prefix');
+      
+      // Fallback to non-API endpoint
+      const { data } = await axios.get('/camping-spots/amenities', {
+        headers: { 'Accept': 'application/json' },
+        bypassDedupe: true // Prevent duplicate request cancellation
+      });
+      availableAmenities.value = data;
+    }
   } catch (error) {
-    console.error('Failed to fetch amenities:', error)
+    console.error('Failed to fetch amenities:', error);
+    toast.error('Failed to load amenities. Please try again.');
   }
 }
 
 const fetchCountries = async () => {
   try {
-    const { data } = await axios.get('/camping-spots/countries')
-    countries.value = data
+    // Try with API prefix first
+    try {
+      const { data } = await axios.get('/api/camping-spots/countries', {
+        headers: { 'Accept': 'application/json' }
+      });
+      countries.value = data;
+    } catch (apiError) {
+      console.warn('API endpoint failed, trying without /api prefix');
+      
+      // Fallback to non-API endpoint
+      const { data } = await axios.get('/camping-spots/countries', {
+        headers: { 'Accept': 'application/json' },
+        bypassDedupe: true // Prevent duplicate request cancellation
+      });
+      countries.value = data;
+    }
   } catch (error) {
-    console.error('Failed to fetch countries:', error)
+    console.error('Failed to fetch countries:', error);
+    toast.error('Failed to load countries. Please try again.');
   }
 }
 

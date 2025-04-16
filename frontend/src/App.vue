@@ -1,123 +1,196 @@
 <template>
   <div>
-    <!-- Backend connection alert -->
-    <div v-if="backendDown" class="backend-down-banner">
+    <!-- Auth loop warning banner -->
+    <div v-if="authLoopDetected" class="auth-loop-banner">
       <div class="alert-content">
-        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
         </svg>
-        Backend server not responding. Limited functionality available.
+        <span>Authentication loop detected! Restarting application...</span>
       </div>
     </div>
+
+    <!-- Backend down banner -->
+    <div v-if="backendDown" class="backend-down-banner">
+      <div class="alert-content">
+        <svg xmlns="http://www.w3.org/2000/svg" class="icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <span>Server connection issues detected. Some features may be limited.</span>
+      </div>
+    </div>
+
+    <!-- Add API health check banner -->
+    <ApiHealthCheck />
     
     <NavComponent />
-    <div v-if="loading" class="global-loading">
-      <div class="loading-spinner"></div>
-    </div>
-    <RouterView v-else />
+    <main>
+      <router-view v-slot="{ Component }">
+        <template v-if="Component">
+          <suspense>
+            <component :is="Component" />
+            <template #fallback>
+              <div class="flex justify-center items-center h-64">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
+              </div>
+            </template>
+          </suspense>
+        </template>
+      </router-view>
+    </main>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import NavComponent from '@/components/NavComponent.vue'
+import ApiHealthCheck from '@/components/ApiHealthCheck.vue'
 import axios from '@/axios'
-import { monitorFunctionCall } from '@/utils/loopBreaker'
+
+// Add auth loop detection
+const authLoopDetected = ref(false)
+const lastAuthAttempts = ref([])
+const MAX_AUTH_HISTORY = 10
+
+function isOffline() {
+  return typeof navigator !== 'undefined' && !navigator.onLine;
+}
+
+function isAuthLoop() {
+  const now = Date.now();
+  const recentAttempts = lastAuthAttempts.value.filter(
+    time => now - time < 10000 // Look at attempts in last 10 seconds
+  );
+  
+  // If we have 5+ auth attempts in 10 seconds, that's a loop
+  return recentAttempts.length >= 5;
+}
+
+function trackAuthAttempt() {
+  lastAuthAttempts.value.push(Date.now());
+  if (lastAuthAttempts.value.length > MAX_AUTH_HISTORY) {
+    lastAuthAttempts.value.shift(); // Remove oldest
+  }
+  
+  // Check if we're in a loop
+  if (isAuthLoop()) {
+    authLoopDetected.value = true;
+    console.error('Auth loop detected! Breaking cycle.');
+    // Force reset auth state to break the loop
+    localStorage.removeItem('userData');
+    
+    // Reset states
+    setTimeout(() => {
+      authLoopDetected.value = false;
+      lastAuthAttempts.value = [];
+      // Force page reload to recover
+      window.location.href = '/';
+    }, 3000);
+  }
+}
+
+// Simple fallback implementations
+function safeMonitorCall() {
+  return true; // Always allow
+}
+
+function safeResetCounter() {
+  // Does nothing
+}
 
 const authStore = useAuthStore()
 const { loading } = storeToRefs(authStore)
 const backendDown = ref(false)
+const router = useRouter()
+const previousPath = ref('/')
 
-// Check if backend is available with loop detection
+// Reset request tracking when route changes to avoid issues with cached requests
+watch(() => router.currentRoute.value.path, (newPath, oldPath) => {
+  console.log('Route changed:', oldPath, '->', newPath)
+  
+  // Only reset for major route changes (not query param changes)
+  if (oldPath !== newPath) {
+    console.log('Major route change detected, resetting request state')
+    axios.resetRequestStats()
+    safeResetCounter()
+  }
+  
+  previousPath.value = newPath
+}, { immediate: true })
+
+// Check if backend is available
 const checkBackendStatus = async () => {
-  // Use the loop breaker utility to prevent infinite checks
-  if (!monitorFunctionCall('checkBackendStatus', { 
-    timeWindow: 60000, // 1 minute
-    maxCallsBeforeWarning: 3,
-    maxCallsBeforeBlocking: 5
-  })) {
-    console.warn('Too many backend status checks in short period, using cached status');
-    return backendDown.value === false;
-  }
-  
-  // Set a flag to avoid multiple checks in quick succession
-  const lastChecked = localStorage.getItem('lastBackendCheck');
-  const now = Date.now();
-  
-  // Only check once per minute unless forced
-  if (lastChecked && (now - parseInt(lastChecked)) < 60000) {
-    console.log('Backend was checked recently, using cached status');
-    backendDown.value = localStorage.getItem('backendStatus') === 'down';
-    return backendDown.value === false;
-  }
-  
+  // Always allow the check
   try {
-    // Use only the health endpoint for checking
-    const response = await axios.get('/api/health', { 
-      timeout: 3000,
-      // Don't follow redirects
-      maxRedirects: 0,
-      // Accept all status codes as successful for connection test
-      validateStatus: status => status < 500
-    });
-    
-    if (response.status === 200) {
-      console.log('Backend server is responsive');
-      backendDown.value = false;
-      localStorage.setItem('backendStatus', 'up');
-      localStorage.setItem('lastBackendCheck', now.toString());
-      return true;
-    }
-    
-    console.warn('Backend returned non-200 status:', response.status);
-    backendDown.value = true;
-    localStorage.setItem('backendStatus', 'down');
-    localStorage.setItem('lastBackendCheck', now.toString());
-    return false;
+    await axios.get('/health', { 
+      timeout: 5000,
+      headers: {
+        'Accept': 'application/json'
+      },
+      bypassDedupe: true // Always make this request
+    })
+    backendDown.value = false
   } catch (error) {
-    console.error('Backend connection error:', error.message);
-    backendDown.value = true;
-    localStorage.setItem('backendStatus', 'down');
-    localStorage.setItem('lastBackendCheck', now.toString());
-    return false;
+    console.error('Backend connectivity issue:', error)
+    backendDown.value = true
   }
-};
+}
 
-// Immediately initialize auth on app mount
+// Periodically check API status
 onMounted(async () => {
-  await checkBackendStatus();
+  // Check on mount
+  checkBackendStatus()
   
-  try {
-    console.log('App mounted, initializing auth...');
-    await authStore.initAuth();
-  } catch (error) {
-    console.error('Failed to initialize auth:', error);
-    // Don't retry here - let the individual components handle retries
+  // Then check every 30 seconds
+  const interval = setInterval(checkBackendStatus, 30000)
+  
+  // Clean up on unmount
+  onUnmounted(() => {
+    clearInterval(interval)
+  })
+})
+
+// Listen for auth store initialization
+watch(() => authStore.initializationAttempts, (newCount) => {
+  if (newCount > 0) {
+    trackAuthAttempt();
   }
 });
 </script>
 
 <style>
-.backend-down-banner {
+.auth-loop-banner {
+  background-color: #FEF2F2;
+  border-bottom: 1px solid #F87171;
+  color: #B91C1C;
+  padding: 0.5rem 1rem;
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  background-color: #f8d7da;
-  color: #721c24;
-  padding: 8px 16px;
-  text-align: center;
-  z-index: 10000;
-  font-size: 14px;
-  border-bottom: 1px solid #f5c6cb;
+  right: 0;
+  z-index: 60;
+}
+
+.backend-down-banner {
+  background-color: #FEF2F2;
+  border-bottom: 1px solid #F87171;
+  color: #B91C1C;
+  padding: 0.5rem 1rem;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
 }
 
 .alert-content {
   display: flex;
   align-items: center;
   justify-content: center;
+  font-weight: 500;
 }
 
 .global-loading {

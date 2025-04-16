@@ -149,7 +149,8 @@
 
 <script setup>
 import { ref, reactive, onMounted, watch } from 'vue'
-import axios from '@/axios'
+import { fetchWithFallback } from '@/utils/apiFallback'
+import { useToast } from 'vue-toastification'
 
 const props = defineProps({
   isSticky: Boolean,
@@ -170,19 +171,19 @@ const filters = reactive({
 
 const availableAmenities = ref([])
 
+const toast = useToast()
+
 const fetchAmenities = async () => {
   try {
-    const { data } = await axios.get('/camping-spots/amenities')
-    availableAmenities.value = data
-  } catch (error) {
-    console.error('Failed to fetch amenities:', error)
-    // Import toast dynamically to avoid undefined reference
-    import('vue-toastification').then(toastModule => {
-      const { useToast } = toastModule;
-      useToast().error('Failed to load amenities');
-    }).catch(err => {
-      console.error('Could not show toast notification:', err);
+    const data = await fetchWithFallback({
+      paths: ['/api/camping-spots/amenities', '/camping-spots/amenities'],
+      method: 'get'
     });
+    
+    availableAmenities.value = data;
+  } catch (error) {
+    console.error('Failed to fetch amenities:', error);
+    toast.error('Failed to load amenities. Please refresh the page.');
   }
 }
 

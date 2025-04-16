@@ -1,0 +1,78 @@
+/**
+ * Utilities for handling offline data and fallbacks
+ */
+
+/**
+ * Get dashboard data from local storage or return default data
+ * This provides a fallback when the server is unreachable
+ */
+export const getDashboardData = () => {
+  try {
+    const savedData = sessionStorage.getItem('dashboardData');
+    if (savedData) {
+      console.log('Retrieved dashboard data from session storage');
+      return JSON.parse(savedData);
+    }
+  } catch (error) {
+    console.error('Failed to retrieve dashboard data from storage:', error);
+  }
+  
+  // Return default data structure if nothing is stored
+  return {
+    revenue: {
+      total: 0,
+      monthly: 0,
+      average: 0,
+      projected: 0,
+      growth: 0,
+      cancelled: 0
+    },
+    bookings: {
+      total: 0,
+      monthly: 0,
+      averageDuration: 0,
+      occupancyRate: 0,
+      growth: 0,
+      active: 0
+    },
+    popularSpots: [],
+    spotPerformance: [],
+    recentBookings: [],
+    totalSpots: 0
+  };
+};
+
+/**
+ * Save dashboard data to session storage
+ * @param {Object} data - Dashboard data to save
+ */
+export const saveDashboardData = (data) => {
+  try {
+    sessionStorage.setItem('dashboardData', JSON.stringify(data));
+    console.log('Dashboard data saved to session storage');
+    return true;
+  } catch (error) {
+    console.error('Failed to save dashboard data to storage:', error);
+    return false;
+  }
+};
+
+/**
+ * Check if device is offline
+ */
+export const isOffline = () => {
+  return !navigator.onLine;
+};
+
+/**
+ * Clear all offline stored data
+ */
+export const clearOfflineData = () => {
+  try {
+    sessionStorage.removeItem('dashboardData');
+    return true;
+  } catch (error) {
+    console.error('Failed to clear offline data:', error);
+    return false;
+  }
+};

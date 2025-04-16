@@ -8,7 +8,11 @@
     </div>
 
     <!-- Performance Summary -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-white p-4 rounded-lg shadow">
+        <h3 class="text-lg font-medium">Total Spots</h3>
+        <p class="text-2xl font-bold">{{ spots.length }}</p>
+      </div>
       <div class="bg-white p-4 rounded-lg shadow">
         <h3 class="text-lg font-medium">Total Revenue</h3>
         <p class="text-2xl font-bold">€{{ totalRevenue }}</p>
@@ -152,24 +156,31 @@ const selectSpot = (spot) => {
 
 const updateSpotPrice = async (newPrice) => {
   try {
-    if (!selectedSpot.value) return
+    if (!selectedSpot.value) return;
     
-    await axios.patch(`/camping-spots/${selectedSpot.value.camping_spot_id}/price`, {
+    // Show loading state or toast
+    toast.info('Updating price...');
+    
+    const response = await axios.patch(`/api/camping-spots/${selectedSpot.value.camping_spot_id}/price`, {
       price_per_night: newPrice
-    })
+    });
     
-    // Update the price in the selectedSpot and in spots array
-    selectedSpot.value.price_per_night = newPrice
-    
-    const spotIndex = spots.value.findIndex(s => s.camping_spot_id === selectedSpot.value.camping_spot_id)
-    if (spotIndex !== -1) {
-      spots.value[spotIndex].price_per_night = newPrice
+    if (response.data) {
+      // Update the price in the selectedSpot and in spots array
+      selectedSpot.value.price_per_night = newPrice;
+      
+      const spotIndex = spots.value.findIndex(s => s.camping_spot_id === selectedSpot.value.camping_spot_id);
+      if (spotIndex !== -1) {
+        spots.value[spotIndex].price_per_night = newPrice;
+      }
+      
+      toast.success('Price updated successfully!');
+    } else {
+      throw new Error('Invalid response data');
     }
-    
-    toast.success('Price updated successfully!')
   } catch (error) {
-    console.error('Failed to update price:', error)
-    toast.error('Failed to update price. Please try again.')
+    console.error('Failed to update price:', error);
+    toast.error(error.response?.data?.error || 'Failed to update price. Please try again.');
   }
 }
 

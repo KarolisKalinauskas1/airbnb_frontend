@@ -176,7 +176,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '@/lib/supabase'
 import axios from 'axios'
@@ -186,10 +186,11 @@ const currentForm = ref('login')
 const email = ref('')
 const password = ref('')
 const fullName = ref('')
-const license = ref('') // Fixed: Removed extra quote
+const license = ref('')
 const showPassword = ref(false)
 const showRegisterPassword = ref(false)
 const showSellerPassword = ref(false)
+const initComplete = ref(false)  // Track initialization to prevent loops
 
 const router = useRouter()
 const route = useRoute()
@@ -218,6 +219,7 @@ const fetchAndStoreUser = async () => {
   }
 }
 
+// Modified to prevent loops
 const handleLogin = async () => {
   try {
     const { success, error, isOwner } = await authStore.handleLogin({
@@ -252,6 +254,46 @@ const handleLogin = async () => {
     alert(error.message)
   }
 }
+
+// Add a fix to prevent loops when component mounts
+onMounted(async () => {
+  // Prevent running initialization multiple times
+  if (initComplete.value) return
+  
+  try {
+    // Check if user is already authenticated
+    if (authStore.isLoggedIn) {
+      console.log('User already logged in, redirecting away from auth page')
+      // If the user is already logged in, they shouldn't be on the login page
+      if (authStore.isSeller) {
+        router.push('/dashboard')
+      } else {
+        router.push('/campers')
+      }
+      return
+    }
+    
+    // Do lightweight auth check without triggering full initialization
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user) {
+      console.log('Session found on auth page, redirecting')
+      // User has a session but is on login page - redirect to appropriate place
+      const { data } = await axios.get('/users/full-info', {
+        headers: { Authorization: `Bearer ${session.access_token}` }
+      }).catch(() => ({ data: null }))
+      
+      if (data?.isowner) {
+        router.push('/dashboard')
+      } else {
+        router.push('/campers')
+      }
+    }
+  } catch (err) {
+    console.error('Auth page init error:', err)
+  } finally {
+    initComplete.value = true
+  }
+})
 
 const handleRegister = async () => {
   const { data, error } = await supabase.auth.signUp({

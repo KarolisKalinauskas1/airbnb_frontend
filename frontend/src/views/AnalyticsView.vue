@@ -6,6 +6,34 @@
     <div v-else-if="error" class="text-center py-8 text-red-600 bg-red-50 rounded-lg">{{ error }}</div>
     <template v-else>
       <div class="space-y-8">
+        <!-- Dashboard Overview with added Total Spots card -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+          <div class="p-5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+            <h3 class="text-sm font-medium text-gray-600">Total Revenue</h3>
+            <p class="text-2xl font-bold text-gray-800">€{{ formatCurrency(dashboardData.revenue.total) }}</p>
+            <p class="text-sm" :class="dashboardData.revenue.growth >= 0 ? 'text-green-600' : 'text-red-600'">
+              {{ dashboardData.revenue.growth >= 0 ? '↑' : '↓' }} {{ Math.abs(dashboardData.revenue.growth) }}% from last month
+            </p>
+          </div>
+          <div class="p-5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+            <h3 class="text-sm font-medium text-gray-600">Total Bookings</h3>
+            <p class="text-2xl font-bold text-gray-800">{{ dashboardData.bookings.total }}</p>
+            <p class="text-sm" :class="dashboardData.bookings.growth >= 0 ? 'text-green-600' : 'text-red-600'">
+              {{ dashboardData.bookings.growth >= 0 ? '↑' : '↓' }} {{ Math.abs(dashboardData.bookings.growth) }}% from last month
+            </p>
+          </div>
+          <div class="p-5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+            <h3 class="text-sm font-medium text-gray-600">Total Spots</h3>
+            <p class="text-2xl font-bold text-gray-800">{{ dashboardData.totalSpots || dashboardData.spotPerformance?.length || 0 }}</p>
+            <p class="text-xs text-gray-500">Active camping spots</p>
+          </div>
+          <div class="p-5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors">
+            <h3 class="text-sm font-medium text-gray-600">Average Duration</h3>
+            <p class="text-2xl font-bold text-gray-800">{{ dashboardData.bookings.averageDuration.toFixed(1) }} days</p>
+            <p class="text-xs text-gray-500">Completed & confirmed bookings</p>
+          </div>
+        </div>
+
         <!-- Revenue Overview with improved layout -->
         <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-200">
           <h2 class="text-xl font-semibold mb-6 text-gray-800 border-b pb-3">Revenue Overview</h2>
@@ -144,13 +172,17 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import DashboardLayout from '@/components/DashboardLayout.vue'
 import { storeToRefs } from 'pinia'
 import { useDashboardStore } from '@/stores/dashboard'
+import circuitBreaker from '@/utils/circuitBreaker'
+import { isOffline } from '@/utils/offlineDataHandler'
 
 const dashboardStore = useDashboardStore()
 const { dashboardData, loading, error } = storeToRefs(dashboardStore)
+const dataLoaded = ref(false);
+const loadAttempts = ref(0);
 
 const formatDate = (dateString) => {
   if (!dateString) return 'N/A'
@@ -168,7 +200,51 @@ const maxPerformance = computed(() => {
   return Math.max(...dashboardData.value.spotPerformance.map(spot => spot.performance || 0))
 })
 
-onMounted(async () => {
-  await dashboardStore.fetchDashboardData()
-})
+const loadAnalyticsData = async () => {
+  try {
+    // Check if we already have dashboard data
+    if (dataLoaded.value) {
+      console.log('Analytics data already loaded, skipping');
+      return;
+    }
+    
+    if (isOffline()) {
+      console.log('Device is offline, using cached data');
+      dataLoaded.value = true;
+      return;
+    }
+    
+    // Use a simple approach to prevent excessive API calls
+    if (loadAttempts.value > 3) {
+      console.error('Too many load attempts, aborting');
+      return;
+    }
+    
+    loadAttempts.value++;
+    
+    try {
+      await dashboardStore.fetchDashboardData();
+      dataLoaded.value = true;
+    } catch (err) {
+      console.error('Failed to load analytics data:', err);
+      
+      // Retry once if it's a reference error (import issue)
+      if (err instanceof ReferenceError && loadAttempts.value <= 1) {
+        console.log('Retrying after reference error...');
+        setTimeout(() => {
+          loadAnalyticsData();
+        }, 1000);
+      }
+    }
+  } catch (err) {
+    console.error('Error in loadAnalyticsData:', err);
+  }
+};
+
+onMounted(() => {
+  // Slight delay to ensure components are mounted
+  setTimeout(() => {
+    loadAnalyticsData();
+  }, 500);
+});
 </script>

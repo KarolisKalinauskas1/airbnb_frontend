@@ -1,0 +1,101 @@
+/**
+ * Token Handler Utility
+ * 
+ * Provides functions for managing authentication tokens:
+ * - Checking token expiration
+ * - Refreshing tokens
+ * - Storing tokens safely
+ */
+import { supabase } from '@/lib/supabase';
+
+// Constants
+const TOKEN_REFRESH_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+/**
+ * Parse JWT token to extract payload data
+ * @param {string} token - The JWT token to parse
+ * @returns {Object|null} The decoded payload or null if invalid
+ */
+export function parseJwt(token) {
+  if (!token) return null;
+  try {
+    // For JWT tokens: split by dots, take the middle part (payload), and decode
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    console.error('Error parsing JWT:', e);
+    return null;
+  }
+}
+
+/**
+ * Check if a token is expired or about to expire
+ * @param {string} token - The JWT token to check
+ * @returns {boolean} True if token is expired or will expire soon
+ */
+export function isTokenExpiring(token) {
+  if (!token) return true;
+  
+  const payload = parseJwt(token);
+  if (!payload || !payload.exp) return true;
+  
+  const expirationTime = payload.exp * 1000; // Convert to milliseconds
+  const currentTime = Date.now();
+  
+  // Return true if token is expired or will expire within the threshold
+  return currentTime > expirationTime - TOKEN_REFRESH_THRESHOLD_MS;
+}
+
+/**
+ * Refresh the auth token if needed
+ * @returns {Promise<string|null>} The new token or null if refresh failed
+ */
+export async function refreshTokenIfNeeded() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session || !session.access_token) return null;
+    
+    // Check if token needs refresh
+    if (isTokenExpiring(session.access_token)) {
+      console.log('Token is expiring soon, refreshing...');
+      const { data, error } = await supabase.auth.refreshSession();
+      
+      if (error || !data.session) {
+        console.error('Error refreshing token:', error);
+        return null;
+      }
+      
+      console.log('Token refreshed successfully');
+      return data.session.access_token;
+    }
+    
+    return session.access_token;
+  } catch (error) {
+    console.error('Error in refreshTokenIfNeeded:', error);
+    return null;
+  }
+}
+
+/**
+ * Get the current auth token (refreshing if needed)
+ * @returns {Promise<string|null>} The current token or null
+ */
+export async function getAuthToken() {
+  return await refreshTokenIfNeeded();
+}
+
+/**
+ * Check if user is authenticated with a valid token
+ * @returns {Promise<boolean>} True if user has a valid token
+ */
+export async function isAuthenticated() {
+  const token = await getAuthToken();
+  return !!token;
+}

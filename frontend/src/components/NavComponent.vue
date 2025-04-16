@@ -36,7 +36,7 @@ const navItems = computed(() => {
 
 const handleLogout = async () => {
   try {
-    const { success } = await authStore.handleLogout()
+    const { success } = await authStore.logout()
     if (success) {
       // Handle navigation in the component
       router.push('/auth')

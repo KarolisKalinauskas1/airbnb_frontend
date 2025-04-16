@@ -1,6 +1,11 @@
 @import './base.css';
-@import "tailwindcss";
 
+/* Replace deprecated Tailwind directives with working ones */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* Custom styles */
 #app {
   box-sizing: border-box;
 }
@@ -27,7 +32,7 @@
   color: #000000 !important;
 }
 
-/* Global styles to ensure all interactive elements have pointer cursor */
+/* Cursor pointer for interactive elements */
 button, 
 [type="button"],
 [type="submit"],
@@ -38,10 +43,10 @@ select,
 input[type="date"],
 input[type="checkbox"],
 input[type="radio"] {
-  cursor: pointer;
+  cursor: pointer !important;
 }
 
-/* Apply cursor-pointer to common interactive class names */
+/* Classes for cursor pointer */
 .btn,
 .button,
 .link,
@@ -50,7 +55,7 @@ input[type="radio"] {
 .hover\:bg-red-100,
 .hover\:bg-gray-50,
 .hover\:bg-gray-100 {
-  cursor: pointer;
+  cursor: pointer !important;
 }
 
 

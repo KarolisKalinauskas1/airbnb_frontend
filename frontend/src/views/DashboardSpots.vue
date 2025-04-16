@@ -1,7 +1,10 @@
 <template>
   <DashboardLayout>
     <div class="mb-6 flex justify-between items-center">
-      <h1 class="text-2xl font-semibold">My Camping Spots</h1>
+      <div>
+        <h1 class="text-2xl font-semibold">My Camping Spots</h1>
+        <p class="text-gray-600">Total spots: {{ spots.length }}</p>
+      </div>
       <button @click="showAddModal = true" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors">
         Add New Spot
       </button>
@@ -92,9 +95,8 @@
     </div>
 
     <!-- Availability Management Modal -->
-    <div v-if="showAvailabilityModal && selectedSpot" 
-         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div class="bg-white rounded-lg w-full max-w-4xl shadow-xl relative max-h-[90vh] overflow-y-auto">
+    <div v-if="showAvailabilityModal && selectedSpot" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-start justify-center overflow-y-auto">
+      <div class="bg-white rounded-lg w-full max-w-2xl my-10 mx-4 max-h-[90vh] overflow-y-auto shadow-xl">
         <div class="sticky top-0 bg-white border-b z-10 p-6">
           <div class="flex justify-between items-center">
             <h2 class="text-xl font-semibold">Manage: {{ selectedSpot.title }}</h2>
@@ -129,14 +131,18 @@
                 Click "Block Dates" to enter blocking mode, then select your date range.
               </p>
               
-              <!-- Using our fixed calendar component -->
-              <AvailabilityCalendar 
-                :camping-spot-id="selectedSpot.camping_spot_id"
-                :base-price="selectedSpot.price_per_night"
-                :is-owner="true"
-                :owner-id="authStore.fullUser?.user_id"
-                @date-selected="handleCalendarDateSelected"
-              />
+              <div v-if="selectedSpot && selectedSpot.camping_spot_id">
+                <AvailabilityCalendar 
+                  :camping-spot-id="selectedSpot.camping_spot_id"
+                  :base-price="selectedSpot.price_per_night"
+                  :is-owner="true"
+                  :owner-id="authStore.fullUser?.user_id"
+                  @date-selected="handleCalendarDateSelected"
+                />
+              </div>
+              <div v-else class="p-4 bg-gray-100 rounded-lg text-gray-600 text-center">
+                Please select a spot to manage availability
+              </div>
             </div>
           </div>
         </div>
@@ -181,23 +187,106 @@ async function fetchSpots() {
       return;
     }
     
-    const { data } = await axios.get('/camping-spots/owner', {
-      headers: {
-        Authorization: `Bearer ${token}`
+    try {
+      // First try the API version of the endpoint
+      const { data } = await axios.get('/api/camping-spots/owner', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Accept': 'application/json'
+        }
+      });
+      
+      spots.value = data;
+    } catch (apiError) {
+      console.warn('API endpoint failed, trying without /api prefix:', apiError.message);
+      
+      try {
+        // Fallback to the non-API version
+        const { data } = await axios.get('/camping-spots/owner', {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Accept': 'application/json'
+          },
+          bypassDedupe: true // Bypass duplicate detection for fallback
+        });
+        
+        spots.value = data;
+      } catch (nonApiError) {
+        console.error('All API attempts failed:');
+        console.error('- API path error:', apiError);
+        console.error('- Non-API path error:', nonApiError);
+        throw new Error('Failed to fetch camping spots from any endpoint');
       }
-    });
-    
-    spots.value = data;
+    }
   } catch (error) {
     console.error('Failed to fetch spots:', error);
     
     if (error.response?.status === 401) {
       toast.error('Authentication required. Please log in again.');
     } else {
-      toast.error('Failed to load camping spots');
+      toast.error(error.message || 'Failed to load camping spots');
     }
   }
 }
+
+const loadSpots = async () => {
+  loading.value = true;
+  error.value = null;
+  
+  try {
+    const token = await authStore.getAuthToken();
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+    
+    let data;
+    
+    try {
+      // Use our new API service
+      data = await apiService.get('/camping-spots/owner');
+    } catch (apiError) {
+      console.error('Failed to load spots:', apiError);
+      
+      // If it's a redirect error, try to follow the redirect manually
+      if (apiError.response?.data?.message === 'This API endpoint does not support redirects') {
+        if (apiError.response.data.redirectTarget) {
+          console.log(`Manually following redirect to: ${apiError.response.data.redirectTarget}`);
+          
+          const response = await axios.get(apiError.response.data.redirectTarget, {
+            headers: {
+              'Accept': 'application/json',
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          
+          data = response.data;
+        } else {
+          throw apiError;
+        }
+      } else {
+        throw apiError;
+      }
+    }
+    
+    if (Array.isArray(data)) {
+      spots.value = data;
+    } else {
+      console.error('Unexpected data format:', data);
+      throw new Error('Invalid data format received from server');
+    }
+  } catch (error) {
+    console.error('Error loading spots:', error);
+    
+    if (error.response?.status === 401) {
+      router.push('/auth?redirect=' + encodeURIComponent(route.fullPath));
+    } else {
+      error.value = error.message || 'Failed to load camping spots';
+      toast.error(error.value);
+    }
+  } finally {
+    loading.value = false;
+  }
+};
 
 function closeAddModal() {
   showAddModal.value = false
@@ -278,7 +367,12 @@ const manageAvailability = (spot) => {
 
 // This function handles the date selection from our calendar component
 const handleCalendarDateSelected = (dateRange) => {
-  // The calendar now handles blocking dates internally
+  // Check if we have a valid dateRange and selectedSpot before proceeding
+  if (!dateRange || !selectedSpot.value || !selectedSpot.value.camping_spot_id) {
+    console.error('Invalid date range or no spot selected');
+    return;
+  }
+
   console.log('Dates blocked:', dateRange);
   
   // Refresh the list of spots when we come back

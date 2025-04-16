@@ -12,7 +12,7 @@
       <!-- Current Price -->
       <div class="flex justify-between items-center mb-2">
         <span class="text-gray-600">Current Price</span>
-        <span class="font-semibold">€{{ currentPrice }}</span>
+        <span class="font-semibold">€{{ formatPrice(currentPrice) }}</span>
       </div>
       
       <!-- Last Updated Info -->
@@ -29,14 +29,14 @@
             'text-amber-600': suggestion.suggestedPrice < props.currentPrice,
             'text-blue-600': suggestion.suggestedPrice == props.currentPrice
           }">
-            €{{ suggestion.suggestedPrice }} 
+            €{{ formatPrice(suggestion.suggestedPrice) }} 
             <span class="text-xs">{{ priceComparison.text }}</span>
           </span>
         </div>
         
         <!-- Range -->
         <div class="text-xs text-gray-500 mb-2">
-          Range: €{{ suggestion.minSuggestion }} - €{{ suggestion.maxSuggestion }}
+          Range: €{{ formatPrice(suggestion.minSuggestion) }} - €{{ formatPrice(suggestion.maxSuggestion) }}
         </div>
         
         <!-- Reason -->
@@ -112,7 +112,7 @@
             </li>
             <li v-if="suggestion.factors.marketAverage" class="flex justify-between">
               <span>Market average:</span>
-              <span>€{{ suggestion.factors.marketAverage }}</span>
+              <span>€{{ formatPrice(suggestion.factors.marketAverage) }}</span>
             </li>
           </ul>
         </div>
@@ -133,7 +133,7 @@
         <h3 class="text-lg font-semibold mb-3">Confirm Price Update</h3>
         
         <div class="mb-4">
-          <p>Are you sure you want to update the price from <span class="font-bold">€{{ currentPrice }}</span> to <span class="font-bold">€{{ priceToUpdate }}</span>?</p>
+          <p>Are you sure you want to update the price from <span class="font-bold">€{{ formatPrice(currentPrice) }}</span> to <span class="font-bold">€{{ formatPrice(priceToUpdate) }}</span>?</p>
           
           <div class="mt-2 text-sm text-gray-600">
             This will affect any future bookings.
@@ -245,34 +245,113 @@ const capitalizeFirst = (str) => {
   return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
+// Format price to 0 decimal places
+const formatPrice = (price) => {
+  if (price === null || price === undefined) return '0';
+  return Math.round(Number(price));
+};
+
 // Fetch price suggestion from API
 const fetchSuggestion = async () => {
+  if (!props.campingSpotId) return;
+  
   loading.value = true;
   error.value = null;
   
   try {
-    const { data } = await axios.get(`/camping-spots/${props.campingSpotId}/price-suggestion`);
+    let response = null;
     
-    newPrice.value = data.suggested_price;
-    marketDetails.value = data.market_details;
-
-    // Update suggestion object
+    // Try API endpoint first
+    try {
+      console.log('Trying API endpoint for price suggestion...');
+      response = await axios.get(`/api/camping-spots/${props.campingSpotId}/price-suggestion`, {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        transformResponse: [function(data) {
+          try {
+            return JSON.parse(data);
+          } catch (e) {
+            console.warn('Failed to parse API price suggestion response as JSON:', e);
+            return { error: 'Invalid JSON response', raw: data };
+          }
+        }]
+      });
+    } catch (apiError) {
+      console.warn('API endpoint for price suggestion failed:', apiError.message);
+      
+      // Try without API prefix as fallback
+      response = await axios.get(`/camping-spots/${props.campingSpotId}/price-suggestion`, {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        bypassDedupe: true,
+        transformResponse: [function(data) {
+          try {
+            return JSON.parse(data);
+          } catch (e) {
+            console.warn('Failed to parse non-API price suggestion response as JSON:', e);
+            return { error: 'Invalid JSON response', raw: data };
+          }
+        }]
+      });
+    }
+    
+    if (response.data.error) {
+      throw new Error(response.data.error);
+    }
+    
+    const data = response.data;
+    
+    if (!data || typeof data !== 'object') {
+      throw new Error('Invalid response format');
+    }
+    
+    // Check if we have the minimal required data
+    if (data.suggested_price === undefined) {
+      console.error('Missing suggested_price in response:', data);
+      throw new Error('Incomplete data returned from server');
+    }
+    
+    // Set the suggestion data with fallbacks for missing properties
     suggestion.value = {
       suggestedPrice: data.suggested_price,
-      minSuggestion: data.min_suggestion,
-      maxSuggestion: data.max_suggestion,
-      reason: data.reason,
-      should_update: data.should_update,
+      minSuggestion: data.min_suggestion || Math.round(data.suggested_price * 0.95),
+      maxSuggestion: data.max_suggestion || Math.round(data.suggested_price * 1.05),
+      reason: data.reason || 'Based on market analysis.',
+      should_update: data.should_update || false,
       factors: {
-        season: data.market_details.season,
-        demand: data.market_details.demand,
-        similarSpots: data.market_details.similar_spots,
-        marketAverage: data.market_details.market_average
+        season: (data.market_details && data.market_details.season) || 'standard',
+        demand: (data.market_details && data.market_details.demand) || 'normal',
+        similarSpots: (data.market_details && data.market_details.similar_spots) || 0,
+        marketAverage: (data.market_details && data.market_details.market_average) || null
       }
     };
-  } catch (err) {
-    console.error('Failed to fetch price suggestion:', err);
-    error.value = 'Could not get price suggestions at this time.';
+    
+    // For debugging - ensure market_details exists in the response
+    console.log('Received price suggestion data:', data);
+    console.log('Processed factors:', suggestion.value.factors);
+    
+  } catch (error) {
+    console.error('Failed to fetch price suggestion:', error);
+    error.value = error.message || 'Failed to load price suggestion data';
+    
+    // Provide default values when fetch fails
+    suggestion.value = {
+      suggestedPrice: props.currentPrice,
+      minSuggestion: Math.round(props.currentPrice * 0.95),
+      maxSuggestion: Math.round(props.currentPrice * 1.05),
+      reason: 'Unable to fetch price suggestion data.',
+      should_update: false,
+      factors: {
+        season: 'unknown',
+        demand: 'unknown',
+        similarSpots: 0,
+        marketAverage: null
+      }
+    };
   } finally {
     loading.value = false;
   }

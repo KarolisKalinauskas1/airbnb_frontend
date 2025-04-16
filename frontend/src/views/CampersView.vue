@@ -68,7 +68,7 @@
           <div v-if="loading" class="flex justify-center items-center h-64">
             <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
           </div>
-          <div v-else-if="spots.length === 0" class="text-center py-12">
+          <div v-else-if="!spots || spots.length === 0" class="text-center py-12">
             <p class="text-lg text-gray-600">No camping spots available for the selected dates</p>
           </div>
           <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -106,7 +106,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 import FiltersPanel from '@/components/FiltersPanel.vue'
@@ -116,6 +116,7 @@ import { useAuthStore } from '@/stores/auth'
 import axios from '@/axios'
 import { useDatesStore } from '@/stores/dates'
 import { useToast } from 'vue-toastification'
+import { fetchWithFallback } from '@/utils/apiFallback'
 
 const authStore = useAuthStore()
 const spots = ref([])
@@ -139,6 +140,7 @@ const dates = reactive({
 })
 
 const currentFilters = ref({})
+const errorMessage = ref(null) // Add this missing ref
 
 const route = useRoute()
 const router = useRouter()
@@ -248,86 +250,70 @@ const isOwner = (spot) => {
 }
 
 const fetchSpots = async () => {
-  loading.value = true
-  spots.value = []
-  error.value = null
-
-  // Make sure dates are defined before attempting to fetch spots
   if (!dates.startDate || !dates.endDate) {
-    const today = new Date()
-    const tomorrow = new Date(today)
-    tomorrow.setDate(tomorrow.getDate() + 1)
-    
-    dates.startDate = today.toISOString().slice(0, 10)
-    dates.endDate = tomorrow.toISOString().slice(0, 10)
+    return
   }
 
   try {
-    // Prepare the params for the API call
+    loading.value = true
+    errorMessage.value = null
+    
     const params = {
       startDate: dates.startDate,
       endDate: dates.endDate
     }
     
-    // Add location filters if available
+    // Add location filter if available
     if (coordinates.value) {
-      params.lat = coordinates.value.lat
-      params.lng = coordinates.value.lng
-      params.radius = coordinates.value.radius || 50
+      params.latitude = coordinates.value.lat
+      params.longitude = coordinates.value.lng
+      params.radius = currentFilters.value.radius || 50
     }
     
-    // Add price and amenities filters
-    if (filters.value) {
-      if (filters.value.minPrice) params.minPrice = filters.value.minPrice
-      if (filters.value.maxPrice) params.maxPrice = filters.value.maxPrice
-      if (filters.value.amenities?.length) params.amenities = filters.value.amenities.join(',')
-    }
-
-    // First try the API endpoint
-    let data
+    // Add other filters if they exist
+    if (currentFilters.value.minPrice) params.minPrice = currentFilters.value.minPrice
+    if (currentFilters.value.maxPrice) params.maxPrice = currentFilters.value.maxPrice
+    if (currentFilters.value.guests) params.guests = currentFilters.value.guests
+    if (currentFilters.value.amenities?.length) params.amenities = currentFilters.value.amenities.join(',')
+    
     try {
-      const response = await axios.get('/api/camping-spots', { 
-        params,
-        headers: { 'Accept': 'application/json' }
-      })
-      data = response.data
-      console.log('Fetched from /api/camping-spots successfully')
-    } catch (apiError) {
-      console.warn('API endpoint failed, trying without /api prefix:', apiError.message)
-      const response = await axios.get('/camping-spots', { 
-        params, 
-        headers: { 'Accept': 'application/json' }
-      })
-      data = response.data
-      console.log('Fetched from /camping-spots successfully')
-    }
-
-    // Validate that data is an array
-    if (!data) {
-      throw new Error('No data received from server')
-    }
-    
-    if (!Array.isArray(data)) {
-      console.error('Expected array but received:', data)
-      toast.error('Received invalid data format from server')
+      // Fix: Provide proper parameters to fetchWithFallback
+      const { data } = await fetchWithFallback({
+        paths: ['/api/camping-spots', '/camping-spots'],
+        method: 'get',
+        params: params
+      });
+      
+      // Make sure spots is always an array
+      spots.value = Array.isArray(data) ? data : [];
+    } catch (error) {
+      // Handle canceled requests gracefully
+      if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') {
+        console.log('Request was canceled due to navigation')
+        return // Just return without error, this is normal during navigation
+      }
+      
+      // For API errors, log and show a message
+      console.error('Error fetching spots:', error)
+      errorMessage.value = 'Failed to load camping spots. Please try again.'
       spots.value = []
-      return
+      toast.error('Error loading camping spots')
     }
-
-    // Set spots data
-    spots.value = authStore.fullUser 
-      ? data.filter(spot => spot.owner_id !== authStore.fullUser.user_id)
-      : data
-    
-    console.log('Fetched spots:', spots.value.length)
-  } catch (error) {
-    console.error('Failed to fetch spots:', error)
-    error.value = 'Failed to load camping spots. Please try again later'
-    toast.error('Failed to load camping spots: ' + (error.message || 'Unknown error'))
   } finally {
     loading.value = false
   }
 }
+
+// Add a function to cache spots when they are loaded successfully
+watch(() => spots.value, (newSpots) => {
+  if (newSpots && newSpots.length > 0) {
+    try {
+      localStorage.setItem('campingSpots', JSON.stringify(newSpots));
+    } catch (e) {
+      console.error('Failed to cache spots:', e);
+    }
+  }
+}, { deep: true });
 
 const handleFilters = (newFilters) => {
   // Make sure the newFilters object is properly structured

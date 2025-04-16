@@ -219,12 +219,16 @@ const dateSelectionError = ref(null);
 const blockingMode = ref(false);
 const startDateInput = ref('');
 const endDateInput = ref('');
+const blockedDates = ref([]);
+const isLoading = ref(false);
+const startOfCalendar = ref(new Date());
+const endOfCalendar = ref(new Date(new Date().setMonth(new Date().getMonth() + 3)));
 
 // Calendar title based on current month/year
 const calendarTitle = computed(() => {
-  const now = new Date()
-  return now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-})
+  const now = new Date();
+  return now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+});
 
 // Calculate today's date in YYYY-MM-DD format
 const today = computed(() => {
@@ -301,7 +305,7 @@ const displayMonths = computed(() => {
         hasBooking: !!dayBooking,
         isBlocked: dayBooking?.status_id === 5,
         isToday: isToday(dayDate),
-        isPast: dayDate < new Date(today.setHours(0, 0, 0, 0))
+        isPast: dayDate < new Date(new Date().setHours(0, 0, 0, 0))
       });
     }
     
@@ -333,8 +337,8 @@ function formatDate(date) {
 }
 
 function formatDateRange(start, end) {
-  const startDate = new Date(start);
-  const endDate = new Date(end);
+  const startDate = typeof start === 'string' ? new Date(start) : start;
+  const endDate = typeof end === 'string' ? new Date(end) : end;
   return `${formatDate(startDate)} - ${formatDate(endDate)}`;
 }
 
@@ -386,7 +390,7 @@ async function blockDates() {
     });
     
     // Post directly to the API
-    await axios.post(`/camping-spots/${props.campingSpotId}/availability`, {
+    await axios.post(`/api/camping-spots/${props.campingSpotId}/availability`, {
       startDate: startDateInput.value,
       endDate: endDateInput.value,
       owner_id: props.ownerId
@@ -412,52 +416,12 @@ async function blockDates() {
   }
 }
 
-// Improve the loadBookings function to ensure it correctly emits blocked dates
-async function loadBookings() {
-  if (!props.campingSpotId) return;
-  
-  loading.value = true;
-  error.value = null;
-  
-  try {
-    const startDate = new Date();
-    const endDate = new Date();
-    endDate.setMonth(endDate.getMonth() + 3); // Show 3 months of data
-    
-    const response = await axios.get(`/camping-spots/${props.campingSpotId}/availability`, {
-      params: {
-        startDate: formatDateForInput(startDate),
-        endDate: formatDateForInput(endDate)
-      }
-    });
-    
-    bookings.value = response.data.bookings || [];
-
-    // Emit an event with blocked dates info that parent components can use
-    // Format the data properly to ensure it works with parent components
-    const blockedDates = bookings.value.map(booking => ({
-      start: booking.start_date,
-      end: booking.end_date,
-      status: booking.status_id,
-      booking_id: booking.booking_id
-    }));
-    
-    emit('blocked-dates-loaded', blockedDates);
-    console.log("Emitting blocked dates:", blockedDates);
-  } catch (err) {
-    console.error('Failed to load availability:', err);
-    error.value = 'Failed to load availability data';
-  } finally {
-    loading.value = false;
-  }
-}
-
 // Unblock dates (for owner)
 async function unblockDates(bookingId) {
   if (!props.isOwner || !props.campingSpotId) return;
   
   try {
-    await axios.delete(`/camping-spots/${props.campingSpotId}/availability/${bookingId}`);
+    await axios.delete(`/api/camping-spots/${props.campingSpotId}/availability/${bookingId}`);
     toast.success('Date range unblocked successfully');
     await loadBookings();
   } catch (err) {
@@ -466,16 +430,96 @@ async function unblockDates(bookingId) {
   }
 }
 
-// Watch for changes to camping spot ID
+// Improved loadBookings function that handles API fallback
+const loadBookings = async () => {
+  if (!props.campingSpotId) return;
+  
+  isLoading.value = true;
+  loading.value = true;
+  error.value = null;
+  
+  try {
+    // Try API endpoint first, then fallback
+    try {
+      console.log('Fetching availability data...');
+      const response = await axios.get(`/api/camping-spots/${props.campingSpotId}/availability`, {
+        params: { 
+          startDate: startOfCalendar.value.toISOString().slice(0, 10),
+          endDate: endOfCalendar.value.toISOString().slice(0, 10)
+        },
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      // Process the response
+      if (response.data.bookings) {
+        // Process the blocked dates
+        const blockedBookings = response.data.bookings || [];
+        bookings.value = blockedBookings;
+        blockedDates.value = blockedBookings.map(booking => ({
+          startDate: new Date(booking.start_date),
+          endDate: new Date(booking.end_date),
+          isOwnerBlock: booking.status_id === 5,
+          bookingId: booking.booking_id
+        }));
+        
+        console.log('Emitting blocked dates:', blockedDates.value);
+        emit('blocked-dates-loaded', blockedBookings);
+      } else {
+        throw new Error('Invalid response format');
+      }
+    } catch (apiError) {
+      console.warn('API endpoint for availability failed:', apiError.message);
+      
+      // Try fallback endpoint
+      const fallbackResponse = await axios.get(`/camping-spots/${props.campingSpotId}/availability`, {
+        params: { 
+          startDate: startOfCalendar.value.toISOString().slice(0, 10),
+          endDate: endOfCalendar.value.toISOString().slice(0, 10)
+        },
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      // Process the blocked dates
+      const blockedBookings = fallbackResponse.data.bookings || [];
+      bookings.value = blockedBookings;
+      blockedDates.value = blockedBookings.map(booking => ({
+        startDate: new Date(booking.start_date),
+        endDate: new Date(booking.end_date),
+        isOwnerBlock: booking.status_id === 5,
+        bookingId: booking.booking_id
+      }));
+      
+      console.log('Emitting blocked dates (fallback):', blockedDates.value);
+      emit('blocked-dates-loaded', blockedBookings);
+    }
+  } catch (err) {
+    console.error('Failed to load availability:', err);
+    error.value = err.message || 'Failed to load availability data';
+    
+    // Always emit something, even if empty
+    console.log('Emitting empty blocked dates due to error');
+    emit('blocked-dates-loaded', []);
+  } finally {
+    isLoading.value = false;
+    loading.value = false;
+  }
+};
+
+// Fix the watches to reference loadBookings after it's declared
+onMounted(() => {
+  loadBookings();
+});
+
+// Move this watch AFTER loadBookings is defined
 watch(() => props.campingSpotId, () => {
   if (props.campingSpotId) {
     loadBookings();
   }
 }, { immediate: true });
-
-onMounted(() => {
-  loadBookings();
-});
 </script>
 
 <style scoped>

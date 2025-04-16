@@ -12,7 +12,9 @@ export const authDebugger = {
     if (session) {
       console.log('User ID:', session.user.id)
       console.log('Email:', session.user.email)
-      console.log('Token expires at:', new Date(session.expires_at * 1000).toLocaleString())
+      const expiresAt = new Date(session.expires_at * 1000);
+      console.log('Token expires at:', expiresAt.toLocaleString())
+      console.log('Token expired:', expiresAt < new Date() ? 'Yes' : 'No')
     }
     
     // Check localStorage for user data
@@ -23,6 +25,15 @@ export const authDebugger = {
         const parsed = JSON.parse(userData)
         console.log('User ID from localStorage:', parsed.user_id)
         console.log('Is owner:', parsed.isowner === 1 ? 'Yes' : 'No')
+        
+        // Check for data timestamp
+        const lastFetchTime = localStorage.getItem('last_user_fetch_time');
+        if (lastFetchTime) {
+          const fetchTime = new Date(parseInt(lastFetchTime));
+          console.log('Last user data fetch:', fetchTime.toLocaleString());
+          const ageInMinutes = (Date.now() - parseInt(lastFetchTime)) / (1000 * 60);
+          console.log('Data age (minutes):', ageInMinutes.toFixed(1));
+        }
       } catch (e) {
         console.error('Failed to parse userData:', e)
       }
@@ -63,7 +74,8 @@ export const authDebugger = {
     
     return {
       hasSession: !!session,
-      hasLocalUserData: !!userData
+      hasLocalUserData: !!userData,
+      isTokenExpired: session ? new Date(session.expires_at * 1000) < new Date() : null
     }
   },
   
@@ -76,46 +88,59 @@ export const authDebugger = {
     }
     
     try {
-      // Try to refresh the token
-      const { error } = await supabase.auth.refreshSession()
-      if (error) {
-        console.error('Failed to refresh session:', error)
-        return false
+      // Check if token is expired or about to expire
+      const expiresAt = new Date(session.expires_at * 1000);
+      const isExpired = expiresAt < new Date();
+      const expiresInMinutes = (expiresAt - new Date()) / (1000 * 60);
+      
+      // If token is expired or will expire in next 5 minutes, refresh it
+      if (isExpired || expiresInMinutes < 5) {
+        console.log(`Token ${isExpired ? 'is expired' : 'expires soon'}, refreshing...`);
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        
+        if (refreshError) {
+          console.error('Failed to refresh session:', refreshError);
+          return false;
+        }
+        
+        console.log('Session refreshed successfully');
       }
       
       // Try both API paths
-      let userData = null
+      let userData = null;
       
       try {
         const response = await axios.get('/api/users/full-info', {
           headers: {
             Authorization: `Bearer ${session.access_token}`
           }
-        })
-        userData = response.data
+        });
+        userData = response.data;
       } catch (error) {
-        console.log('Failed with /api prefix, trying without...')
+        console.log('Failed with /api prefix, trying without...');
         try {
           const response = await axios.get('/users/full-info', {
             headers: {
               Authorization: `Bearer ${session.access_token}`
             }
-          })
-          userData = response.data
+          });
+          userData = response.data;
         } catch (innerError) {
-          console.error('Both API paths failed:', innerError)
+          console.error('Both API paths failed:', innerError);
         }
       }
       
       if (userData) {
-        localStorage.setItem('userData', JSON.stringify(userData))
-        console.log('✅ Fixed: User data retrieved and stored')
-        return true
+        userData.isowner = Number(userData.isowner);
+        localStorage.setItem('userData', JSON.stringify(userData));
+        localStorage.setItem('last_user_fetch_time', Date.now().toString());
+        console.log('✅ Fixed: User data retrieved and stored');
+        return true;
       }
     } catch (error) {
-      console.error('Failed to fix auth state:', error)
+      console.error('Failed to fix auth state:', error);
     }
     
-    return false
+    return false;
   }
 }
