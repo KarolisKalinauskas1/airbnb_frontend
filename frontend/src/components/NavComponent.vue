@@ -1,68 +1,75 @@
 <script setup>
-import { computed, watch, onMounted, ref } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { storeToRefs } from 'pinia'
 
 const router = useRouter()
 const authStore = useAuthStore()
-const { user, fullUser, isInitialized } = storeToRefs(authStore)
 const isLoading = ref(true)
 
-// Check if user is Owner (seller)
-const isOwner = computed(() => {
-  return fullUser.value?.isowner === 1 || fullUser.value?.isowner === true
+// Fix the authentication checks to be more reliable
+const isAuthenticated = computed(() => {
+  return !!authStore.token || authStore.isLoggedIn;
 })
 
-// Return nav items based on user role
-const navItems = computed(() => {
+const userName = computed(() => authStore.fullUser?.full_name || 'User')
+const isSeller = computed(() => authStore.fullUser?.isowner === 1)
+
+// Compute menu items based on auth state with correct routes
+const menuItems = computed(() => {
   const items = [
     { name: 'Home', path: '/' },
+    { name: 'Browse Campers', path: '/campers' }
   ]
-
-  if (user.value || fullUser.value) {
-    if (isOwner.value) {
+  
+  if (isAuthenticated.value) {
+    // Account link for logged in users
+    items.push({ name: 'Account', path: '/account' })
+    
+    // Only add Dashboard link for sellers/owners
+    if (isSeller.value) {
       items.push({ name: 'Dashboard', path: '/dashboard' })
     }
-    items.push({ name: 'Campers', path: '/campers' })
-    items.push({ name: 'Account', path: '/account' })
   } else {
-    items.push({ name: 'Campers', path: '/campers' })
+    // Guest users get the login option
     items.push({ name: 'Login', path: '/auth' })
   }
-
+  
   return items
 })
 
 const handleLogout = async () => {
   try {
-    const { success } = await authStore.logout()
-    if (success) {
-      // Handle navigation in the component
-      router.push('/auth')
-    }
+    console.log('Attempting logout...')
+    await authStore.logout()
+    console.log('Logout successful, redirecting to home')
+    router.push('/')
   } catch (error) {
-    console.error('Logout failed:', error)
-    // Try to navigate anyway
-    router.push('/auth')
+    console.error('Logout error:', error)
   }
 }
 
-// Initialize auth state if needed
+// Initialize auth state
 onMounted(async () => {
-  if (!isInitialized.value) {
+  try {
+    isLoading.value = true
+    console.log('NavComponent: Initializing auth...')
     await authStore.initAuth()
+  } catch (error) {
+    console.error('NavComponent: Auth initialization error:', error)
+  } finally {
+    isLoading.value = false
   }
-  isLoading.value = false
 })
 
 // For debugging - log auth state changes
-watch(() => [user.value, fullUser.value], ([newUser, newFullUser]) => {
+watch(() => [isAuthenticated.value, authStore.fullUser], ([newIsLoggedIn, newFullUser]) => {
   console.log('NavComponent: Auth state changed', {
-    user: newUser ? 'logged in' : 'logged out',
-    fullUser: newFullUser ? 'loaded' : 'not loaded'
+    loggedIn: newIsLoggedIn ? 'yes' : 'no',
+    fullUser: newFullUser ? 'loaded' : 'not loaded',
+    isSeller: newFullUser?.isowner === 1 ? 'yes' : 'no'
   })
-})
+}, { immediate: false })
 </script>
 
 <template>
@@ -74,7 +81,7 @@ watch(() => [user.value, fullUser.value], ([newUser, newFullUser]) => {
 
       <div class="nav-links">
         <RouterLink
-          v-for="item in navItems"
+          v-for="item in menuItems"
           :key="item.path"
           :to="item.path"
           class="nav-link"
@@ -84,7 +91,7 @@ watch(() => [user.value, fullUser.value], ([newUser, newFullUser]) => {
         </RouterLink>
 
         <button 
-          v-if="user" 
+          v-if="isAuthenticated" 
           @click="handleLogout" 
           class="logout-button"
         >

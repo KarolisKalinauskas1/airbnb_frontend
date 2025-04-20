@@ -1,91 +1,128 @@
 import axios from '@/axios';
 
 /**
- * Try fetching from multiple API paths with fallback
- * @param {Object} options - Configuration options
- * @returns {Promise<Object>} - Response data
+ * Fetches data with fallback from API to regular endpoint
+ * 
+ * @param {string|Object} endpoint - The endpoint to fetch from (without /api prefix) or an options object
+ * @param {Object} [options] - Options for the request
+ * @returns {Promise<any>} The response data
  */
-export async function fetchWithFallback({ 
-  paths = [], 
-  method = 'get', 
-  params = {}, 
-  data = null, 
-  headers = {} 
-}) {
-  if (paths.length === 0) {
-    throw new Error('No API paths provided');
+export async function fetchWithFallback(endpoint, options = {}) {
+  // Handle case where endpoint is passed as an object with paths
+  if (typeof endpoint === 'object' && endpoint.paths) {
+    return fetchWithPathFallback(endpoint.paths, {
+      ...endpoint,
+      ...options
+    });
   }
+
+  const {
+    params = {},
+    headers = {},
+    method = 'get',
+    data = null,
+  } = options;
+
+  // Always include Accept header for JSON
+  const requestHeaders = {
+    'Accept': 'application/json',
+    ...headers
+  };
+
+  // Ensure endpoint is a string
+  const endpointStr = typeof endpoint === 'string' ? endpoint : '';
   
-  let lastError = null;
-  
-  // Add cache-busting parameter to prevent browser caching
-  const cacheBuster = Date.now();
-  if (params) {
-    params._cb = cacheBuster;
-  }
-  
-  // Try each path in sequence
-  for (const [index, path] of paths.entries()) {
+  // Standardize the endpoint format
+  const normalizedEndpoint = endpointStr.startsWith('/') ? endpointStr : `/${endpointStr}`;
+
+  try {
+    // Try the API endpoint first (with /api prefix)
+    console.log(`Trying API endpoint: /api${normalizedEndpoint}`);
+    const apiResponse = await axios({
+      method,
+      url: `/api${normalizedEndpoint}`,
+      params,
+      headers: requestHeaders,
+      data,
+    });
+
+    console.log(`Successfully fetched from /api${normalizedEndpoint}`);
+    return apiResponse.data;
+  } catch (apiError) {
+    // If API endpoint failed, try the regular endpoint
+    console.warn(`API endpoint failed, trying regular endpoint: ${normalizedEndpoint}`, apiError.message);
+
     try {
-      console.log(`Trying API path ${index + 1}/${paths.length}: ${path}`);
-      
-      const config = {
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          // Removed X-Requested-With header which can cause CORS issues
-          ...headers
-        },
+      const regularResponse = await axios({
+        method,
+        url: normalizedEndpoint,
         params,
-        // Only bypass deduplication for fallback paths
-        bypassDedupe: index > 0,
-        timeout: 8000, // 8 second timeout
-        validateStatus: function (status) {
-          return status >= 200 && status < 300; // Only accept success status codes
-        }
-      };
-      
-      let response;
-      if (method.toLowerCase() === 'get') {
-        response = await axios.get(path, config);
-      } else if (method.toLowerCase() === 'post') {
-        response = await axios.post(path, data, config);
-      } else if (method.toLowerCase() === 'put') {
-        response = await axios.put(path, data, config);
-      } else if (method.toLowerCase() === 'delete') {
-        response = await axios.delete(path, config);
-      } else if (method.toLowerCase() === 'patch') {
-        response = await axios.patch(path, data, config);
-      } else {
-        throw new Error(`Unsupported method: ${method}`);
+        headers: requestHeaders,
+        data,
+        // Avoid infinite redirects
+        maxRedirects: 0,
+      });
+
+      // Check if we got HTML instead of JSON
+      if (typeof regularResponse.data === 'string' && regularResponse.data.includes('<!DOCTYPE html>')) {
+        throw new Error('Server returned HTML instead of JSON');
       }
+
+      console.log(`Successfully fetched from ${normalizedEndpoint}`);
+      return regularResponse.data;
+    } catch (regularError) {
+      console.error('Both API and regular endpoints failed:', regularError.message);
+      throw regularError;
+    }
+  }
+}
+
+/**
+ * Fetches data with multiple path fallbacks
+ * 
+ * @param {string[]} paths - Array of paths to try in order
+ * @param {Object} options - Request options
+ * @returns {Promise<any>} The response data
+ */
+async function fetchWithPathFallback(paths, options = {}) {
+  if (!Array.isArray(paths) || paths.length === 0) {
+    throw new Error('At least one path must be provided');
+  }
+
+  const {
+    params = {},
+    headers = {},
+    method = 'get',
+    data = null,
+  } = options;
+
+  // Always include Accept header for JSON
+  const requestHeaders = {
+    'Accept': 'application/json',
+    ...headers
+  };
+
+  let lastError;
+  
+  for (const path of paths) {
+    try {
+      console.log(`Trying endpoint: ${path}`);
+      const response = await axios({
+        method,
+        url: path,
+        params,
+        headers: requestHeaders,
+        data,
+      });
       
-      // If we get here, the request succeeded
       console.log(`Successfully fetched from ${path}`);
-      
       return response.data;
     } catch (error) {
-      // Skip handling if this was an intentional cancellation
-      if (error.name === 'CanceledError' || error.name === 'AbortError') {
-        console.log(`Request to ${path} was canceled`);
-        lastError = error;
-        continue;
-      }
-      
       console.warn(`Failed to fetch from ${path}:`, error.message);
-      
-      // Special handling for CORS errors
-      if (error.message?.includes('CORS')) {
-        console.error('CORS error detected. This is a server configuration issue.');
-        // We'll throw this immediately as trying other paths won't help with CORS
-        throw new Error('CORS policy error: The server is not properly configured to accept requests from this origin.');
-      }
-      
       lastError = error;
     }
   }
   
-  // If we get here, all paths failed
-  console.error('All API paths failed');
-  throw lastError || new Error('Failed to fetch from any path');
+  // If we've exhausted all paths, throw the last error
+  throw lastError;
 }

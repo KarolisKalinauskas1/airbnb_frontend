@@ -1,39 +1,39 @@
 <template>
   <div class="date-range-container">
-    <div class="grid grid-cols-2 gap-2">
-      <div class="date-input-group">
-        <label class="block text-sm font-medium mb-1">Check in</label>
-        <input
-          type="date"
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Check-in</label>
+        <input 
+          type="date" 
+          class="w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 focus:outline-none focus:ring-red-500 focus:border-red-500 date-input"
+          :min="today" 
           :value="localStartDate"
-          :min="today"
-          class="date-input"
-          :class="{ 'border-red-500': validationError }"
-          @input="handleStartDateChange($event)"
-        >
+          :disabled="checkingAvailability"
+          @change="handleStartDateChange($event)"
+        />
       </div>
-      <div class="date-input-group">
-        <label class="block text-sm font-medium mb-1">Check out</label>
-        <input
-          type="date"
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Check-out</label>
+        <input 
+          type="date" 
+          class="w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 focus:outline-none focus:ring-red-500 focus:border-red-500 date-input"
+          :min="minEndDate" 
           :value="localEndDate"
-          :min="minEndDate"
-          class="date-input"
-          :class="{ 'border-red-500': validationError }"
-          @input="handleEndDateChange($event)"
-        >
+          :disabled="checkingAvailability"
+          @change="handleEndDateChange($event)"
+        />
       </div>
-    </div>
-    
-    <!-- Validation error message -->
-    <div v-if="validationError" class="mt-2 text-sm text-red-600">
-      {{ validationError }}
     </div>
     
     <!-- Loading indicator while checking availability -->
     <div v-if="checkingAvailability" class="mt-2 text-sm text-blue-600 flex items-center">
       <div class="mr-2 h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       Checking availability...
+    </div>
+    
+    <!-- Error display -->
+    <div v-if="validationError && !checkingAvailability" class="mt-2 text-sm text-red-600">
+      {{ validationError }}
     </div>
     
     <!-- Display selected dates for clarity -->
@@ -56,36 +56,37 @@ const props = defineProps({
   campingSpotId: {
     type: [String, Number],
     default: null
-  }
+  },
+  disabled: Boolean
 })
 
 const emit = defineEmits(['update:startDate', 'update:endDate', 'dateChange'])
-
-const toast = useToast()
 const route = useRoute()
+const toast = useToast()
+
 const localStartDate = ref(props.startDate || '')
 const localEndDate = ref(props.endDate || '')
 const validationError = ref('')
 const checkingAvailability = ref(false)
 const unavailableDates = ref([])
 
-// Get today's date as YYYY-MM-DD string
+// Calculate today's date for min attribute
 const today = computed(() => {
   const date = new Date()
-  date.setHours(0, 0, 0, 0)
   return date.toISOString().split('T')[0]
 })
 
-// Compute the minimum allowed end date (always day after start date)
+// Calculate minimum end date based on start date
 const minEndDate = computed(() => {
   if (!localStartDate.value) return today.value
   
-  // Ensure next day is calculated correctly
-  const nextDay = new Date(localStartDate.value)
-  nextDay.setDate(nextDay.getDate() + 1)
+  const startDate = new Date(localStartDate.value)
+  const nextDay = new Date(startDate)
+  nextDay.setDate(startDate.getDate() + 1)
   return nextDay.toISOString().split('T')[0]
 })
 
+// Calculate number of nights
 const calculateNights = computed(() => {
   if (!localStartDate.value || !localEndDate.value) return 0
   
@@ -108,7 +109,7 @@ const loadUnavailableDates = async () => {
     if (!id) return
     
     try {
-      const response = await axios.get(`/camping-spots/${id}/availability`, {
+      const response = await axios.get(`/api/camping-spots/${id}/availability`, {
         params: {
           startDate: new Date().toISOString().split('T')[0],
           endDate: new Date(Date.now() + (90 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0] // 90 days from now
@@ -142,7 +143,7 @@ const checkDatesAvailability = async (start, end) => {
     startDate.setHours(0, 0, 0, 0)
     endDate.setHours(0, 0, 0, 0)
     
-    const response = await axios.get(`/camping-spots/${spotId}/availability`, {
+    const response = await axios.get(`/api/camping-spots/${spotId}/availability`, {
       params: {
         startDate: start,
         endDate: end
@@ -177,251 +178,94 @@ const formatDate = (dateString) => {
 
 const handleStartDateChange = async (event) => {
   const newStartDate = event.target.value;
-  validationError.value = '';
   
-  // Validate that the new start date isn't in the past
-  const selectedDate = new Date(newStartDate);
-  selectedDate.setHours(0, 0, 0, 0);
+  // Only update if the date changed
+  if (newStartDate === localStartDate.value) return
   
-  const currentDate = new Date();
-  currentDate.setHours(0, 0, 0, 0);
+  localStartDate.value = newStartDate
+  emit('update:startDate', newStartDate)
   
-  if (selectedDate < currentDate) {
-    validationError.value = 'Cannot select dates in the past';
-    // Reset to today if past date is selected
-    localStartDate.value = today.value;
-    event.target.value = localStartDate.value;
-    return;
-  }
-  
-  // Accept the new start date
-  localStartDate.value = newStartDate;
-  
-  // If end date exists but is now before or same as start date, update it
+  // If we have an end date, verify the range is valid
   if (localEndDate.value) {
-    const startDate = new Date(newStartDate);
-    const endDate = new Date(localEndDate.value);
+    const startDate = new Date(newStartDate)
+    const endDate = new Date(localEndDate.value)
     
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
-    
-    // If end date is same as or before start date, set it to the day after
-    if (endDate <= startDate) {
-      const newEndDate = new Date(startDate);
-      newEndDate.setDate(startDate.getDate() + 1);
-      localEndDate.value = newEndDate.toISOString().split('T')[0];
+    if (startDate >= endDate) {
+      // If start date is greater than or equal to end date, update end date
+      const newEndDate = new Date(startDate)
+      newEndDate.setDate(startDate.getDate() + 1)
+      localEndDate.value = newEndDate.toISOString().split('T')[0]
+      emit('update:endDate', localEndDate.value)
     }
     
-    // Check availability when both dates are set
-    await checkDatesAvailability(localStartDate.value, localEndDate.value);
+    // Check availability of the new date range
+    await checkDatesAvailability(localStartDate.value, localEndDate.value)
+    
+    // Emit date change event after validation
+    emit('dateChange', { startDate: localStartDate.value, endDate: localEndDate.value })
   }
-  
-  emitDates();
 }
 
 const handleEndDateChange = async (event) => {
-  const newEndDate = event.target.value;
-  validationError.value = '';
+  const newEndDate = event.target.value
   
-  // Only allow end dates that are after the start date
+  // Only update if the date changed
+  if (newEndDate === localEndDate.value) return
+  
+  localEndDate.value = newEndDate
+  emit('update:endDate', newEndDate)
+  
+  // If we have a start date, check availability
   if (localStartDate.value) {
-    const startDate = new Date(localStartDate.value);
-    const endDate = new Date(newEndDate);
+    await checkDatesAvailability(localStartDate.value, newEndDate)
     
-    startDate.setHours(0, 0, 0, 0);
-    endDate.setHours(0, 0, 0, 0);
-    
-    if (endDate <= startDate) {
-      validationError.value = 'End date must be after start date';
-      return;
-    }
-    
-    localEndDate.value = newEndDate;
-    
-    // Check availability when both dates are set
-    await checkDatesAvailability(localStartDate.value, localEndDate.value);
-    emitDates();
-  } else {
-    // If no start date, set end date normally but remind to set start date
-    localEndDate.value = newEndDate;
-    validationError.value = 'Please select a start date first';
-  }
-}
-
-const emitDates = () => {
-  if (localStartDate.value && localEndDate.value) {
-    if (!validationError.value) {
-      emit('update:startDate', localStartDate.value)
-      emit('update:endDate', localEndDate.value)
-      emit('dateChange', {
-        startDate: localStartDate.value,
-        endDate: localEndDate.value
-      })
-    }
+    // Emit date change event after validation
+    emit('dateChange', { startDate: localStartDate.value, endDate: localEndDate.value })
   }
 }
 
 // Watch for prop changes
 watch(() => props.startDate, (newVal) => {
   if (newVal !== localStartDate.value) {
-    localStartDate.value = newVal;
-    
-    // Check availability when both dates are set
-    if (localEndDate.value) {
-      checkDatesAvailability(localStartDate.value, localEndDate.value);
-    }
-    
-    // Ensure end date is after start date
-    if (localEndDate.value) {
-      const startDate = new Date(newVal);
-      const endDate = new Date(localEndDate.value);
-      
-      if (endDate <= startDate) {
-        const nextDay = new Date(startDate);
-        nextDay.setDate(startDate.getDate() + 1);
-        localEndDate.value = nextDay.toISOString().split('T')[0];
-      }
-    }
+    localStartDate.value = newVal
   }
 })
 
 watch(() => props.endDate, (newVal) => {
   if (newVal !== localEndDate.value) {
-    // Only accept end date if it's after start date
-    if (localStartDate.value) {
-      const startDate = new Date(localStartDate.value);
-      const endDate = new Date(newVal);
-      
-      if (endDate > startDate) {
-        localEndDate.value = newVal;
-        
-        // Check availability when both dates are set
-        checkDatesAvailability(localStartDate.value, localEndDate.value);
-      } else {
-        // Set to day after start date
-        const nextDay = new Date(startDate);
-        nextDay.setDate(startDate.getDate() + 1);
-        localEndDate.value = nextDay.toISOString().split('T')[0];
-        
-        // Emit the corrected date
-        setTimeout(() => emitDates(), 0);
-      }
-    } else {
-      localEndDate.value = newVal;
-    }
+    localEndDate.value = newVal
   }
 })
 
-// Initialize the component
-onMounted(async () => {
-  loadUnavailableDates();
+onMounted(() => {
+  // Load unavailable dates on mount
+  loadUnavailableDates()
   
-  // If only start date is set, set end date to next day
-  if (localStartDate.value && !localEndDate.value) {
-    const startDate = new Date(localStartDate.value);
-    const nextDay = new Date(startDate);
-    nextDay.setDate(startDate.getDate() + 1);
-    localEndDate.value = nextDay.toISOString().split('T')[0];
+  // Check if we have dates from URL or props
+  if (route.query.start && !localStartDate.value) {
+    localStartDate.value = route.query.start
+    emit('update:startDate', route.query.start)
   }
   
-  // Check availability of initially set dates
+  if (route.query.end && !localEndDate.value) {
+    localEndDate.value = route.query.end
+    emit('update:endDate', route.query.end)
+  }
+  
+  // If we have both dates, check availability
   if (localStartDate.value && localEndDate.value) {
-    await checkDatesAvailability(localStartDate.value, localEndDate.value);
-    emitDates();
+    checkDatesAvailability(localStartDate.value, localEndDate.value)
   }
 })
 </script>
 
 <style scoped>
 .date-range-container {
-  background: white;
-  border-radius: 1rem;
-  padding: 1rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.date-input-group {
-  position: relative;
-}
-
-.date-input {
   width: 100%;
-  padding: 0.75rem 1rem;
-  border: 1px solid #E5E7EB;
-  border-radius: 0.75rem;
-  font-size: 1rem;
-  color: #374151;
-  background: #F9FAFB;
-  transition: all 0.2s;
-  cursor: pointer;
 }
 
-.date-input:hover {
-  border-color: #FF385C;
-  background: #FFF8F6;
-}
-
-.date-input:focus {
-  outline: none;
-  border-color: #FF385C;
-  box-shadow: 0 0 0 3px rgba(255, 56, 92, 0.1);
-}
-
-.date-input.border-red-500 {
-  border-color: #EF4444;
-  background-color: #FEF2F2;
-}
-
-input[type="date"] {
-  appearance: none;
-  -webkit-appearance: none;
-  position: relative;
-  padding-right: 30px !important;
-  color: #374151;
-}
-
-input[type="date"]::-webkit-calendar-picker-indicator {
-  background: transparent;
-  bottom: 0;
-  color: transparent;
-  cursor: pointer;
-  height: auto;
-  left: auto;
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 20px;
-}
-
-input[type="date"]::before {
-  content: '📅';
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-/* Make touch targets easier to hit on mobile */
-@media (max-width: 640px) {
-  .date-input {
-    padding: 0.875rem 1rem;
-    font-size: 1.05rem;
-  }
-}
-
-/* Animation for validation error */
-@keyframes shake {
-  0% { transform: translateX(0); }
-  25% { transform: translateX(-5px); }
-  50% { transform: translateX(5px); }
-  75% { transform: translateX(-5px); }
-  100% { transform: translateX(0); }
-}
-
-.border-red-500 {
-  animation: shake 0.4s ease-in-out;
+.date-input:disabled {
+  background-color: #f3f4f6;
+  cursor: not-allowed;
 }
 </style>

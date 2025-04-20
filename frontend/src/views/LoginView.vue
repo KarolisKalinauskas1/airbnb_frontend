@@ -35,28 +35,50 @@
         <!-- Login Form -->
         <div v-if="currentForm === 'login'" class="flex flex-col gap-6">
           <div class="space-y-10">
-            <form @submit.prevent="handleLogin" class="space-y-8">
-              <div class="space-y-6">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                  <input v-model="email" type="email" placeholder="Enter your email" required 
-                         class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200" />
-                </div>
-                <div class="relative">
-                  <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                  <div class="relative">
-                    <input v-model="password" :type="showPassword ? 'text' : 'password'" placeholder="Enter your password" required 
-                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all duration-200" />
-                    <button type="button" @click="showPassword = !showPassword" 
-                            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 cursor-pointer">
-                      <span class="text-xl">{{ showPassword ? '🙈' : '👁️' }}</span>
-                    </button>
-                  </div>
-                </div>
+            <form @submit.prevent="handleLogin" class="space-y-4">
+              <div>
+                <label for="email" class="block text-gray-700 mb-1">Email Address</label>
+                <input 
+                  id="email" 
+                  type="email" 
+                  v-model="loginForm.email"
+                  class="w-full p-2 border rounded-md" 
+                  autocomplete="email"
+                  required
+                >
+                <div v-if="loginErrors.email" class="text-red-600 text-sm mt-1">{{ loginErrors.email }}</div>
               </div>
-              <button type="submit" 
-                      class="w-full py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg font-semibold hover:from-red-600 hover:to-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all duration-200 cursor-pointer">
-                Sign in
+              
+              <div>
+                <label for="password" class="block text-gray-700 mb-1">Password</label>
+                <div class="relative">
+                  <input 
+                    id="password" 
+                    :type="showPassword ? 'text' : 'password'" 
+                    v-model="loginForm.password"
+                    class="w-full p-2 border rounded-md" 
+                    autocomplete="current-password"
+                    required
+                  >
+                  <button 
+                    type="button" 
+                    @click="showPassword = !showPassword" 
+                    class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500"
+                  >
+                    {{ showPassword ? 'Hide' : 'Show' }}
+                  </button>
+                </div>
+                <div v-if="loginErrors.password" class="text-red-600 text-sm mt-1">{{ loginErrors.password }}</div>
+              </div>
+              
+              <div v-if="error" class="text-red-600">{{ error }}</div>
+              
+              <button 
+                type="submit" 
+                class="w-full bg-red-500 hover:bg-red-600 text-white py-2 rounded-md"
+                :disabled="loading"
+              >
+                {{ loading ? 'Logging in...' : 'Login' }}
               </button>
             </form>
             <div class="space-y-6 text-center">
@@ -179,7 +201,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '@/lib/supabase'
-import axios from 'axios'
+import axios from '@/axios'
 import { useAuthStore } from '@/stores/auth'
 
 const currentForm = ref('login')
@@ -191,68 +213,130 @@ const showPassword = ref(false)
 const showRegisterPassword = ref(false)
 const showSellerPassword = ref(false)
 const initComplete = ref(false)  // Track initialization to prevent loops
+const loading = ref(false)
+const error = ref(null)
+
+// Add proper form data and validation
+const loginForm = ref({
+  email: '',
+  password: '',
+})
+const loginErrors = ref({
+  email: '',
+  password: '',
+})
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
-// 🔁 Fetch full user data from backend and store in Pinia + localStorage
+// Fetch full user data from backend and store in Pinia + localStorage
 const fetchAndStoreUser = async () => {
   try {
-    const {
-      data: { session }
-    } = await supabase.auth.getSession()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) return
 
-    const token = session?.access_token
-    if (!token) return
-
-    const { data } = await axios.get('/users/full-info', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-
-    authStore.fullUser = data
-    localStorage.setItem('userData', JSON.stringify(data))
+    try {
+      const userData = await authStore.fetchFullUserInfo(true)
+      console.log('User data fetched successfully:', !!userData)
+    } catch (err) {
+      console.error('Failed to fetch full user info:', err)
+    }
   } catch (err) {
-    console.error('Failed to fetch full user info:', err)
+    console.error('Error in fetchAndStoreUser:', err)
   }
 }
 
-// Modified to prevent loops
-const handleLogin = async () => {
-  try {
-    const { success, error, isOwner } = await authStore.handleLogin({
-      email: email.value,
-      password: password.value
-    })
-
-    if (!success) throw new Error(error)
-
-    // Check if we came from booking
-    const redirectPath = route.query.redirect
-    const startDate = route.query.startDate
-    const endDate = route.query.endDate
-    const guests = route.query.guests
-
-    if (redirectPath && redirectPath.includes('create-booking')) {
-      router.push({
-        path: redirectPath,
-        query: {
-          startDate,
-          endDate,
-          guests
-        }
-      })
-    } else if (isOwner) {
-      router.push('/dashboard')
-    } else {
-      router.push('/campers')
-    }
-  } catch (error) {
-    console.error('Login error:', error)
-    alert(error.message)
+// Modified to prevent loops and use proper form variables
+const handleLogin = async (e) => {
+  e.preventDefault();
+  
+  // Reset error
+  error.value = null;
+  
+  // Validate form
+  loginErrors.value.email = !loginForm.value.email ? 'Email is required' : '';
+  loginErrors.value.password = !loginForm.value.password ? 'Password is required' : '';
+  
+  if (loginErrors.value.email || loginErrors.value.password) {
+    return;
   }
+  
+  try {
+    loading.value = true;
+    
+    await authStore.login(loginForm.value.email, loginForm.value.password);
+    
+    // Check for redirect or navigate to dashboard
+    if (route.query.redirect) {
+      router.push(route.query.redirect);
+    } else if (authStore.isSeller) {
+      router.push('/dashboard');
+    } else {
+      router.push('/campers');
+    }
+  } catch (err) {
+    console.error('Login error:', err);
+    error.value = err.message || 'Login failed. Please check your credentials.';
+  } finally {
+    loading.value = false;
+  }
+};
+
+const handleRegister = async () => {
+  try {
+    loading.value = true;
+    error.value = null;
+    
+    await authStore.register({
+      email: email.value,
+      password: password.value,
+      full_name: fullName.value
+    });
+
+    router.push(route.query.redirect || '/campers');
+  } catch (err) {
+    console.error('Registration error:', err);
+    error.value = err.message;
+  } finally {
+    loading.value = false;
+  }
+}
+
+const handleRegisterSeller = async () => {
+  try {
+    loading.value = true;
+    error.value = null;
+    
+    await authStore.register({
+      email: email.value,
+      password: password.value,
+      full_name: fullName.value,
+      is_seller: true,
+      license: license.value
+    });
+
+    router.push('/dashboard');
+  } catch (err) {
+    console.error('Seller registration error:', err);
+    error.value = err.message;
+  } finally {
+    loading.value = false;
+  }
+}
+
+const handleForgotPassword = async () => {
+  const { error } = await supabase.auth.resetPasswordForEmail(email.value)
+  if (error) alert(error.message)
+  else alert('Password reset email sent')
+}
+
+const loginWithGoogle = async () => {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin + '/login-redirect' }
+  })
+  if (error) alert(error.message)
 }
 
 // Add a fix to prevent loops when component mounts
@@ -294,85 +378,6 @@ onMounted(async () => {
     initComplete.value = true
   }
 })
-
-const handleRegister = async () => {
-  const { data, error } = await supabase.auth.signUp({
-    email: email.value,
-    password: password.value,
-    options: { data: { full_name: fullName.value } }
-  })
-  if (error) return alert(error.message)
-
-  const user = data.user
-  if (user) {
-    await axios.post('/users', {
-      email: email.value,
-      full_name: fullName.value,
-      isowner: false,
-      auth_user_id: user.id
-    })
-
-    await fetchAndStoreUser()
-    setTimeout(() => {
-      router.push(route.query.redirect || '/')
-    }, 50)
-  }
-}
-
-const handleRegisterSeller = async () => {
-  try {
-    // First register with Supabase
-    const { data, error } = await supabase.auth.signUp({
-      email: email.value,
-      password: password.value,
-      options: { 
-        data: { 
-          full_name: fullName.value,
-          isowner: 1,
-          license: license.value 
-        } 
-      }
-    })
-    if (error) throw error
-
-    const user = data.user
-    if (user) {
-      // Then create user in your database
-      await axios.post('/users', {
-        email: email.value,
-        full_name: fullName.value,
-        is_seller: true,
-        license: license.value,
-        auth_user_id: user.id
-      })
-
-      // Login after registration
-      await authStore.handleLogin({
-        email: email.value,
-        password: password.value
-      })
-
-      router.push('/dashboard')
-    }
-  } catch (error) {
-    console.error('Registration error:', error)
-    alert(error.message)
-  }
-}
-
-const handleForgotPassword = async () => {
-  const { error } = await supabase.auth.resetPasswordForEmail(email.value)
-  if (error) alert(error.message)
-  else alert('Password reset email sent')
-}
-
-const loginWithGoogle = async () => {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: window.location.origin + '/login-redirect' }
-  })
-  if (error) alert(error.message)
-}
 
 </script>
 

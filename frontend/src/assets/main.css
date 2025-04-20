@@ -1,35 +1,27 @@
 @import './base.css';
 
-/* Replace deprecated Tailwind directives with working ones */
-@import 'tailwindcss/base';
-@import 'tailwindcss/components';
-@import 'tailwindcss/utilities';
+/* Use @tailwind directives which is the recommended way */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* Custom styles */
-#app {
-  box-sizing: border-box;
-}
+@layer components {
+  .btn-airbnb {
+    @apply px-5 py-3 bg-red-500 text-white rounded-lg font-medium transition transform hover:bg-red-600 active:scale-95;
+  }
 
-/* Make text black by default */
-#app .text-gray-500:not(nav *),
-#app .text-gray-600:not(nav *),
-#app .text-gray-700:not(nav *),
-#app .text-gray-800:not(nav *),
-#app .text-gray-900:not(nav *),
-#app [class*="text-gray-"]:not(nav *) {
-  color: #000000 !important;
-}
+  .card-airbnb {
+    @apply bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300;
+  }
 
-/* Slightly lighter for descriptions but still very readable */
-#app .text-gray-600.line-clamp-2,
-#app p.text-sm.text-gray-600,
-#app p.text-gray-600 {
-  color: #1a1a1a !important;
-}
+  .heading-airbnb {
+    @apply text-gray-900 font-medium;
+  }
 
-/* Date and metadata text - slightly lighter but still readable */
-#app .text-sm.text-gray-500 {
-  color: #000000 !important;
+  .text-airbnb {
+    @apply text-gray-900;
+  }
 }
 
 /* Cursor pointer for interactive elements */
@@ -56,6 +48,49 @@ input[type="radio"] {
 .hover\:bg-gray-50,
 .hover\:bg-gray-100 {
   cursor: pointer !important;
+}
+
+/* Custom scrollbar styles */
+.overflow-y-auto {
+  scrollbar-width: thin;
+  scrollbar-color: #9CA3AF transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar {
+  width: 6px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background-color: #9CA3AF;
+  border-radius: 3px;
+}
+
+/* Sticky sidebar utility class */
+.sticky {
+  position: sticky;
+}
+
+.top-20 {
+  top: 5rem;
+}
+
+/* Ensure proper height for sticky elements */
+.min-h-screen {
+  min-height: 100vh;
+}
+
+/* Sticky sidebar utility classes */
+.sticky-sidebar {
+  position: sticky;
+  top: 5rem;
+  max-height: calc(100vh - 8rem);
+  overflow-y: auto;
+  z-index: 30;
+  align-self: flex-start;
 }
 
 

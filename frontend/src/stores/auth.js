@@ -1,411 +1,398 @@
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
-import { supabase } from '@/lib/supabase'
-import axios from '@/axios'
-import router from '@/router'
+import { defineStore } from 'pinia';
+import { ref, computed } from 'vue';
+import axios from '@/axios';
+import { useRouter } from 'vue-router';
+import { supabase } from '@/lib/supabase';
 
-// Create a unique abort controller for user info fetches that persists between calls
-let fetchAbortController = new AbortController()
+// Check if we have valid Supabase configuration
+const hasSupabaseConfig = 
+  import.meta.env.VITE_SUPABASE_URL && 
+  import.meta.env.VITE_SUPABASE_ANON_KEY &&
+  !import.meta.env.VITE_SUPABASE_URL.includes('your-project');
+
+if (!hasSupabaseConfig) {
+  console.error('Missing or invalid Supabase configuration!');
+}
 
 export const useAuthStore = defineStore('auth', () => {
-  // State
-  const user = ref(null)
-  const fullUser = ref(null)
-  const loading = ref(false)
-  const error = ref(null)
-  const initializationDone = ref(false)
-  const fetchInProgress = ref(false)
-  
-  // Add initialization tracking to prevent loops
-  const initializationAttempts = ref(0)
-  const MAX_INIT_ATTEMPTS = 3
-  const lastInitTime = ref(0)
-  const MIN_INIT_INTERVAL = 2000 // 2 seconds
-  
+  const token = ref(localStorage.getItem('token') || null);
+  const user = ref(null);
+  const fullUser = ref(null);
+  const loading = ref(false);
+  const error = ref(null);
+  const isInitialized = ref(false);
+  const initializationAttempts = ref(0);
+  const router = useRouter();
+  const backendAvailable = ref(true); // Track if backend is available
+
   // Computed properties
-  const isLoggedIn = computed(() => !!user.value)
-  const isSeller = computed(() => !!fullUser.value?.isowner)
-  const isInitialized = computed(() => initializationDone.value)
+  const isLoggedIn = computed(() => {
+    return !!token.value;
+  });
 
-  // Track API connection failures
-  const apiConnectionFailures = ref(0)
-  const MAX_API_FAILURES = 3
+  const isAuthenticated = computed(() => {
+    return isLoggedIn.value;
+  });
 
-  // Method to handle API connection failures
-  const handleApiConnectionFailure = () => {
-    apiConnectionFailures.value++
-    console.warn(`API connection failure count: ${apiConnectionFailures.value}/${MAX_API_FAILURES}`)
-    
-    if (apiConnectionFailures.value >= MAX_API_FAILURES) {
-      console.error('Maximum API connection failures reached. Setting offline mode.')
-      error.value = 'Unable to connect to the server. Please check your internet connection.'
-    }
-  }
+  const isSeller = computed(() => fullUser.value?.isowner === 1);
+  const userName = computed(() => fullUser.value?.full_name || user.value?.user_metadata?.full_name || 'User');
 
-  // Reset API connection failures
-  const resetApiConnectionFailures = () => {
-    apiConnectionFailures.value = 0
-  }
+  // Clear error message
+  const clearError = () => {
+    error.value = null;
+  };
 
-  // Auth methods
+  // Initialize auth state from persistence
   const initAuth = async () => {
-    // *** Added loop prevention logic ***
-    const now = Date.now()
-    
-    // If already initialized, just return the current state
-    if (initializationDone.value) {
-      console.log('Auth already initialized')
-      return { isLoggedIn: isLoggedIn.value, isSeller: isSeller.value }
+    // Check if already initialized or too many attempts
+    if (initializationAttempts.value > 3) {
+      console.warn('Too many initialization attempts, aborting');
+      return false;
     }
     
-    // Prevent multiple rapid init calls
-    if (now - lastInitTime.value < MIN_INIT_INTERVAL) {
-      console.log('Rejecting auth init attempt: too soon after last attempt')
-      return { isLoggedIn: isLoggedIn.value, isSeller: isSeller.value }
-    }
-    
-    // Track initialization attempts to prevent infinite loops
-    initializationAttempts.value++
-    lastInitTime.value = now
-    
-    if (initializationAttempts.value > MAX_INIT_ATTEMPTS) {
-      console.error('Too many auth initialization attempts - possible loop detected')
-      initializationDone.value = true // Force initialization to complete
-      return { isLoggedIn: isLoggedIn.value, isSeller: isSeller.value }
-    }
-
-    loading.value = true
-    error.value = null
-
     try {
-      console.log('Initializing auth state')
-      // Get the current session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      initializationAttempts.value++;
+      console.log(`Initializing auth store (attempt ${initializationAttempts.value})`);
       
-      if (sessionError) {
-        console.error('Session error:', sessionError)
-        throw sessionError
+      // Check if already initialized
+      if (isInitialized.value) {
+        console.log('Auth store already initialized, skipping.');
+        return true;
       }
+      
+      loading.value = true;
+      
+      // Get session from Supabase
+      const { data: { session } } = await supabase.auth.getSession();
       
       if (session) {
-        console.log('Active session found')
-        user.value = session.user
+        // Store the session token
+        token.value = session.access_token;
+        localStorage.setItem('token', session.access_token);
         
-        // Check localStorage first for cached user data to avoid unnecessary requests
+        // Set the user
+        user.value = session.user;
+        
+        // Try to get full user data
         try {
-          const cachedUserData = localStorage.getItem('userData')
-          if (cachedUserData) {
-            const parsedData = JSON.parse(cachedUserData)
-            console.log('Using cached user data initially')
-            fullUser.value = parsedData
-            
-            // Silently refresh in the background without blocking UI
-            setTimeout(() => {
-              fetchFullUserInfo(false).catch(err => {
-                console.warn('Background refresh of user data failed:', err.message)
-              })
-            }, 1000)
-          } else {
-            // No cached data, must fetch but don't block initialization
-            setTimeout(() => {
-              fetchFullUserInfo(false).catch(err => {
-                console.warn('Initial user data fetch failed:', err.message)
-              })
-            }, 100)
+          await fetchFullUserInfo(false);
+        } catch (err) {
+          console.warn('Failed to fetch full user info during init:', err.message);
+          
+          // If we failed to fetch, try loading from localStorage
+          const storedUserData = localStorage.getItem('userData');
+          if (storedUserData) {
+            try {
+              fullUser.value = JSON.parse(storedUserData);
+              console.log('Loaded user data from localStorage');
+            } catch (parseErr) {
+              console.error('Failed to parse stored user data:', parseErr);
+            }
           }
-        } catch (e) {
-          console.error('Error processing cached user data:', e)
-          // Don't block initialization with fetch
-          setTimeout(() => {
-            fetchFullUserInfo(false).catch(err => console.warn('User info fetch failed:', err))
-          }, 100)
         }
       } else {
-        console.log('No active session')
-      }
-      
-      // Set up auth state change listener
-      const { data: { subscription } } = await supabase.auth.onAuthStateChange(
-        async (event, session) => {
-          console.log('Auth state changed:', event)
-          
-          if (event === 'SIGNED_IN' && session) {
-            user.value = session.user
-            // Don't await here to prevent blocking
-            fetchFullUserInfo().catch(err => console.warn('Auth state change user fetch failed:', err))
-          } else if (event === 'SIGNED_OUT') {
-            user.value = null
-            fullUser.value = null
-            localStorage.removeItem('userData')
-          }
+        // Check if we have localStorage data without session
+        const storedUserData = localStorage.getItem('userData');
+        if (storedUserData) {
+          console.warn('Found user data in localStorage but no active session. Clearing stale data.');
+          localStorage.removeItem('userData');
         }
-      )
-      
-      resetApiConnectionFailures()
-      return {
-        subscription,
-        isLoggedIn: isLoggedIn.value,
-        isSeller: isSeller.value
       }
+      
+      isInitialized.value = true;
+      console.log('Auth store initialization complete');
+      return true;
     } catch (err) {
-      console.error('Auth initialization error:', err)
-      error.value = 'Failed to initialize authentication'
-      handleApiConnectionFailure()
-      return { isLoggedIn: false, isSeller: false }
+      console.error('Auth store initialization error:', err);
+      return false;
     } finally {
-      loading.value = false
-      initializationDone.value = true
+      loading.value = false;
     }
-  }
+  };
 
-  const getAuthToken = async () => {
-    try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      
-      if (sessionError) {
-        console.error('Session error:', sessionError)
-        return null
-      }
-      
-      if (!session) {
-        console.warn('No active session found')
-        return null
-      }
-      
-      return session.access_token
-    } catch (err) {
-      console.error('Error getting auth token:', err)
-      return null
-    }
-  }
-
-  const fetchFullUserInfo = async (forceRefresh = false) => {
-    // Don't fetch if we're not logged in
-    if (!user.value && !forceRefresh) {
-      console.log('No user data, skipping full user info fetch')
-      return null
-    }
-
-    // Prevent concurrent fetch operations
-    if (fetchInProgress.value) {
-      console.log('User info fetch already in progress, skipping duplicate request')
-      return fullUser.value
-    }
-
-    // Cancel any existing fetches before starting a new one
-    try {
-      fetchAbortController.abort()
-    } catch (e) {
-      console.warn('Error aborting previous request:', e)
-    }
-    
-    fetchAbortController = new AbortController()
-    fetchInProgress.value = true
-    
-    try {
-      // Get a fresh token using the token handler
-      const token = await getAuthToken()
-      if (!token) {
-        console.error('No valid session available when trying to fetch user info')
-        return null
-      }
-
-      loading.value = true
-      let response = null
-
-      // Try API paths first, then non-API paths
-      const paths = [
-        '/api/users/full-info',
-        '/users/full-info'
-      ]
-      let lastError = null
-      
-      for (const path of paths) {
-        try {
-          console.log(`Attempting to fetch user info from ${path}`)
-          const resp = await axios.get(path, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Accept': 'application/json'
-            },
-            withCredentials: true,
-            signal: fetchAbortController.signal,
-            timeout: 8000 // Increased timeout
-          })
-          
-          // If we got here, the request succeeded
-          if (resp.status === 200 && resp.data) {
-            console.log(`Successfully fetched user info from ${path}`)
-            response = resp
-            break
-          }
-        } catch (error) {
-          // Skip handling if this was an intentional cancellation
-          if (error.name === 'CanceledError' || error.name === 'AbortError') {
-            console.log(`Request to ${path} was canceled - this is expected during navigation`)
-            lastError = error
-            continue
-          }
-          
-          console.warn(`Failed to fetch from ${path}:`, error.message)
-          lastError = error
-          
-          // Special handling for network errors - no need to try other paths
-          if (error.code === 'ERR_NETWORK') {
-            console.error('Network error, server may be down')
-            handleApiConnectionFailure()
-            throw error
-          }
-          // Continue to try the next path
-        }
-      }
-      
-      // If we didn't get a response from any path, throw the last error
-      if (!response) {
-        console.error('All paths failed to fetch user info')
-        throw lastError || new Error('Failed to fetch user info')
-      }
-      
-      // Process the response
-      if (response.data) {
-        // Make sure isowner is a boolean for consistency
-        const userData = response.data
-        userData.isowner = userData.isowner === '1' || userData.isowner === 1 || userData.isowner === true
-        
-        fullUser.value = userData
-        
-        // Save the timestamp for when we last fetched the data
-        try {
-          localStorage.setItem('userData', JSON.stringify(userData))
-          localStorage.setItem('last_user_fetch_time', Date.now().toString())
-        } catch (e) {
-          console.warn('Could not save user data to localStorage:', e)
-        }
-        
-        resetApiConnectionFailures()
-        return fullUser.value
-      } else {
-        throw new Error('Invalid response data')
-      }
-    } catch (err) {
-      console.error('Full user info fetch error:', err)
-      // Don't clear fullUser if we already have it - keep using the stale data
-      return fullUser.value
-    } finally {
-      loading.value = false
-      fetchInProgress.value = false
-    }
-  }
-
+  // Login function
   const login = async (email, password) => {
-    loading.value = true
-    error.value = null
-
+    clearError();
+    loading.value = true;
+    
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
+      // Use Supabase directly for authentication
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password
-      })
+      });
 
-      if (authError) throw authError
-
-      user.value = data.user
-      await fetchFullUserInfo()
-      return true
-    } catch (err) {
-      console.error('Login error:', err)
-      error.value = err.message || 'Failed to log in'
-      return false
-    } finally {
-      loading.value = false
-    }
-  }
-
-  const register = async (email, password, fullName, isSeller = false, license = '') => {
-    loading.value = true
-    error.value = null
-
-    try {
-      // Register with Supabase
-      const { data, error: authError } = await supabase.auth.signUp({
-        email,
-        password
-      })
-
-      if (authError) throw authError
-
-      // Get the user ID from the newly created user
-      const userId = data.user.id
-
-      // Create user profile in our database
-      const response = await axios.post('/api/users', {
-        email,
-        full_name: fullName,
-        auth_user_id: userId,
-        is_seller: isSeller,
-        license
-      })
-
-      if (response.status !== 201) {
-        throw new Error('Failed to create user profile')
+      if (authError) {
+        throw authError;
       }
 
-      user.value = data.user
-      await fetchFullUserInfo()
-      return true
-    } catch (err) {
-      console.error('Registration error:', err)
-      error.value = err.message || 'Failed to register'
-      return false
-    } finally {
-      loading.value = false
-    }
-  }
+      if (!authData || !authData.session) {
+        throw new Error('Authentication failed - no session returned');
+      }
 
+      // Store the token
+      token.value = authData.session.access_token;
+      localStorage.setItem('token', authData.session.access_token);
+      
+      // Set the user
+      user.value = authData.user;
+
+      // Fetch full user details from our backend
+      try {
+        await fetchFullUserInfo(true);
+      } catch (fetchError) {
+        console.warn('Unable to fetch full user data from backend. Using basic user data.');
+        // Create minimal user data
+        fullUser.value = {
+          full_name: authData.user.user_metadata?.full_name || email.split('@')[0],
+          email: email,
+          isowner: authData.user.user_metadata?.isowner || 0
+        };
+        localStorage.setItem('userData', JSON.stringify(fullUser.value));
+      }
+
+      return { success: true, user: fullUser.value };
+    } catch (err) {
+      console.error('Login error:', err);
+      error.value = err.message || 'Login failed. Please check your credentials.';
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Handle successful login
+  const handleLoginSuccess = (data) => {
+    // Create a token
+    token.value = data.access_token || data.token;
+    localStorage.setItem('token', token.value);
+    
+    // Fetch full user info
+    fetchFullUserInfo();
+  };
+
+  // Registration function
+  const register = async (userData) => {
+    clearError();
+    loading.value = true;
+    
+    try {
+      // Register directly with Supabase
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: userData.email,
+        password: userData.password,
+        options: {
+          data: {
+            full_name: userData.full_name,
+            isowner: userData.is_seller ? 1 : 0
+          }
+        }
+      });
+
+      if (authError) {
+        throw authError;
+      }
+
+      // Try to sync the user with our database
+      try {
+        await axios.post('/api/users', {
+          email: userData.email,
+          full_name: userData.full_name,
+          isowner: userData.is_seller ? 1 : 0,
+          license: userData.license,
+          auth_user_id: authData.user.id
+        });
+      } catch (syncError) {
+        console.warn('Could not sync user with backend database. Will try later.', syncError);
+      }
+
+      // Store the token
+      if (authData.session) {
+        token.value = authData.session.access_token;
+        localStorage.setItem('token', authData.session.access_token);
+        
+        // Set the user
+        user.value = authData.user;
+
+        // Create minimal user data if backend is unavailable
+        fullUser.value = {
+          full_name: userData.full_name,
+          email: userData.email,
+          isowner: userData.is_seller ? 1 : 0
+        };
+        localStorage.setItem('userData', JSON.stringify(fullUser.value));
+
+        // Try to fetch full user details (don't throw if fails)
+        try {
+          await fetchFullUserInfo(false);
+        } catch (fetchError) {
+          console.warn('Could not fetch user details from backend', fetchError);
+        }
+      }
+
+      return { success: true, user: authData.user };
+    } catch (err) {
+      console.error('Registration error:', err);
+      error.value = err.response?.data?.error || err.message || 'Registration failed. Please try again.';
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  // Logout function
   const logout = async () => {
-    loading.value = true
-    error.value = null
-
     try {
-      const { error: logoutError } = await supabase.auth.signOut()
-      if (logoutError) throw logoutError
-
-      user.value = null
-      fullUser.value = null
+      // Sign out from Supabase
+      const { error: signOutError } = await supabase.auth.signOut();
       
-      // Redirect to home after logout
-      if (router.currentRoute.value.meta.requiresAuth) {
-        router.push('/')
+      if (signOutError) {
+        console.error('Error during sign out:', signOutError);
       }
       
-      return true
+      // Clear local state
+      token.value = null;
+      user.value = null;
+      fullUser.value = null;
+      
+      // Clear storage
+      localStorage.removeItem('token');
+      localStorage.removeItem('userData');
+      localStorage.removeItem('last_user_fetch_time');
+      
+      console.log('Logout completed, all state and storage cleared');
+      
+      // Redirect to home page (root path)
+      if (router) router.push('/');
+      
+      return true;
     } catch (err) {
-      console.error('Logout error:', err)
-      error.value = err.message || 'Failed to log out'
-      return false
-    } finally {
-      loading.value = false
+      console.error('Logout error:', err);
+      error.value = err.message;
+      return false;
     }
-  }
+  };
 
+  // Fetch detailed user information
+  const fetchFullUserInfo = async (throwError = true) => {
+    if (!token.value) {
+      if (throwError) {
+        throw new Error('No authentication token available');
+      }
+      return null;
+    }
+    
+    try {
+      // First try the API endpoint with the standard prefix
+      try {
+        const response = await axios.get('/api/users/full-info', {
+          headers: {
+            Authorization: `Bearer ${token.value}`
+          }
+        });
+        
+        fullUser.value = response.data;
+        localStorage.setItem('userData', JSON.stringify(response.data));
+        localStorage.setItem('last_user_fetch_time', Date.now().toString());
+        backendAvailable.value = true; // Backend is working
+        
+        return response.data;
+      } catch (apiPrefixError) {
+        // If that fails, try without the prefix
+        console.log('API prefix route failed, trying without prefix', apiPrefixError);
+        
+        try {
+          const response = await axios.get('/users/full-info', {
+            headers: {
+              Authorization: `Bearer ${token.value}`
+            }
+          });
+          
+          fullUser.value = response.data;
+          localStorage.setItem('userData', JSON.stringify(response.data));
+          localStorage.setItem('last_user_fetch_time', Date.now().toString());
+          backendAvailable.value = true; // Backend is working
+          
+          return response.data;
+        } catch (error) {
+          // If both fail, backend might be down
+          backendAvailable.value = false;
+          throw error;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch user info:', err);
+      
+      // Try to load from localStorage as a last resort
+      const storedUserData = localStorage.getItem('userData');
+      if (storedUserData) {
+        try {
+          const userData = JSON.parse(storedUserData);
+          fullUser.value = userData;
+          console.log('Loaded user data from localStorage as fallback');
+          return userData;
+        } catch (e) {
+          console.error('Failed to parse stored user data:', e);
+        }
+      }
+      
+      if (throwError) {
+        throw err;
+      }
+      return null;
+    }
+  };
+
+  // Add the getAuthToken function
+  const getAuthToken = async () => {
+    // Check if token exists in store
+    if (token.value) {
+      return token.value;
+    }
+
+    // Try to get from localStorage as fallback
+    const storedToken = localStorage.getItem('token');
+    if (storedToken) {
+      token.value = storedToken;
+      return storedToken;
+    }
+
+    // Try to get fresh token from Supabase
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data?.session?.access_token) {
+        token.value = data.session.access_token;
+        localStorage.setItem('token', data.session.access_token);
+        return data.session.access_token;
+      }
+    } catch (err) {
+      console.error('Error getting auth token:', err);
+    }
+
+    return null;
+  };
+
+  // Return the store with all the methods and properties
   return {
-    // State
+    token,
     user,
     fullUser,
     loading,
     error,
-    
-    // Computed
+    backendAvailable,
+    initializationAttempts,
+    isInitialized,
+    isAuthenticated,
     isLoggedIn,
     isSeller,
-    isInitialized,
-    
-    // Methods
-    initAuth,
+    userName,
     login,
-    register,
     logout,
+    register,
+    initAuth,
     fetchFullUserInfo,
+    handleLoginSuccess,
+    clearError,
     getAuthToken
-  }
-})
+  };
+});

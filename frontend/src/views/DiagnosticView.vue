@@ -85,6 +85,7 @@ import { ref, onMounted } from 'vue';
 import { useAuthStore } from '@/stores/auth';
 import axios from '@/axios';
 import { testCorsSetup } from '@/utils/corsTest';
+import { getRequestStats, resetAllRequests } from '@/utils/requestTracker';
 
 const authStore = useAuthStore();
 
@@ -101,6 +102,25 @@ const corsStatus = ref({
   data: null,
   diagnostics: null
 });
+
+const requestStats = ref({
+  pending: 0,
+  details: []
+});
+
+const resetRequests = () => {
+  try {
+    const count = resetAllRequests();
+    console.log(`Reset ${count} pending requests`);
+    // Update UI if needed
+  } catch (error) {
+    console.error('Error resetting requests:', error);
+  }
+};
+
+const updateRequestStats = () => {
+  requestStats.value = getRequestStats();
+};
 
 async function checkApiConnection() {
   apiStatus.value.loading = true;

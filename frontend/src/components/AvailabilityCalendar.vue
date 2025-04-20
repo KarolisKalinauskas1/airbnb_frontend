@@ -149,32 +149,51 @@
                 <div v-for="n in month.firstDay" :key="`empty-start-${n}`" class="bg-white py-4"></div>
                 
                 <!-- Days of the month -->
-                <div v-for="day in month.days" :key="`day-${day.date}`" 
-                     class="bg-white p-2 min-h-[60px] text-center relative"
-                     :class="getDayClasses(day)">
-                  <span class="text-sm">{{ day.dayOfMonth }}</span>
+                <div v-for="(day, index) in month.days" :key="`day-${day.date}-${index}`" 
+                     :class="getDayClasses(day)"
+                     class="py-3 border-t">
+                  <span>{{ day.dayOfMonth }}</span>
                   
-                  <div v-if="day.hasBooking" class="absolute inset-0 opacity-40 pointer-events-none"
-                       :class="day.isBlocked ? 'bg-red-100' : 'bg-blue-100'">
-                  </div>
-                  
-                  <div v-if="day.isToday" class="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full"></div>
+                  <!-- Color indicator dot -->
+                  <span v-if="day.hasBooking" 
+                       class="block w-4 h-1 mx-auto mt-1 rounded-full"
+                       :class="{
+                         'bg-red-500': day.isBlocked,
+                         'bg-blue-500': day.isBooked && !day.isBlocked
+                       }">
+                  </span>
                 </div>
                 
-                <!-- Empty cells for days after the last day of the month -->
+                <!-- Empty cells at the end -->
                 <div v-for="n in month.lastEmptyCells" :key="`empty-end-${n}`" class="bg-white py-4"></div>
+              </div>
+            </div>
+            
+            <!-- Legend with clear labels -->
+            <div class="p-3 border-t flex flex-wrap gap-4">
+              <div class="flex items-center">
+                <div class="w-4 h-4 bg-red-50 border border-red-300 rounded mr-1.5"></div>
+                <span class="text-sm">Unavailable</span>
+              </div>
+              <div class="flex items-center">
+                <div class="w-4 h-4 bg-blue-50 border border-blue-300 rounded mr-1.5"></div>
+                <span class="text-sm">Booked</span>
+              </div>
+              <div class="flex items-center">
+                <div class="w-4 h-4 bg-white border border-gray-300 rounded mr-1.5"></div>
+                <span class="text-sm">Available</span>
               </div>
             </div>
           </div>
           
           <!-- Color legends -->
-          <div class="mt-4 flex flex-wrap gap-4">
-            <div class="flex items-center">
-              <span class="w-4 h-4 inline-block bg-red-100 border border-red-500 rounded-sm mr-2"></span>
+          <div class="mt-4 flex flex-wrap gap-4 calendar-legend">
+            <div class="legend-item">
+              <span class="legend-color legend-blocked"></span>
               <span class="text-sm">{{ isOwner ? 'Blocked by Owner' : 'Unavailable' }}</span>
             </div>
-            <div class="flex items-center">
-              <span class="w-4 h-4 inline-block bg-blue-100 border border-blue-500 rounded-sm mr-2"></span>
+            <div class="legend-item">
+              <span class="legend-color legend-booked"></span>
               <span class="text-sm">{{ isOwner ? 'Booked by Guest' : 'Booked' }}</span>
             </div>
           </div>
@@ -280,34 +299,7 @@ const displayMonths = computed(() => {
     const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
     const firstDayOfMonth = new Date(date.getFullYear(), date.getMonth(), 1).getDay();
     
-    const days = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dayDate = new Date(date.getFullYear(), date.getMonth(), d);
-      const dateStr = formatDateForInput(dayDate);
-      
-      // Check if this day has a booking or is blocked - FIX: use proper date comparison
-      const dayBooking = bookings.value.find(booking => {
-        const bookingStart = new Date(booking.start_date);
-        const bookingEnd = new Date(booking.end_date);
-        
-        // Set times to start of day for accurate date comparison
-        bookingStart.setHours(0, 0, 0, 0);
-        bookingEnd.setHours(0, 0, 0, 0);
-        dayDate.setHours(0, 0, 0, 0);
-        
-        // Include both start and end dates in the comparison (inclusive range)
-        return dayDate >= bookingStart && dayDate <= bookingEnd;
-      });
-      
-      days.push({
-        date: dateStr,
-        dayOfMonth: d,
-        hasBooking: !!dayBooking,
-        isBlocked: dayBooking?.status_id === 5,
-        isToday: isToday(dayDate),
-        isPast: dayDate < new Date(new Date().setHours(0, 0, 0, 0))
-      });
-    }
+    const days = getCalendarDays(date.getFullYear(), date.getMonth());
     
     // Calculate empty cells needed at the end to complete the grid
     const totalCells = Math.ceil((daysInMonth + firstDayOfMonth) / 7) * 7;
@@ -352,13 +344,36 @@ function isToday(date) {
 function getDayClasses(day) {
   const classes = [];
   
-  if (day.isPast) classes.push('text-gray-400');
-  if (day.hasBooking) {
-    if (day.isBlocked) {
-      classes.push('text-red-800');
-    } else {
-      classes.push('text-blue-800');
-    }
+  // Base styling
+  classes.push('text-center', 'relative');
+  
+  // Skip empty cells or past days
+  if (!day.dayOfMonth) {
+    classes.push('bg-white');
+    return classes.join(' ');
+  }
+  
+  // Today styling
+  if (day.isToday) {
+    classes.push('font-bold border-2 border-blue-500');
+  }
+  
+  // Past days
+  if (day.isPast) {
+    classes.push('text-gray-400 bg-gray-50');
+    return classes.join(' ');
+  }
+  
+  // Booking status styling
+  if (day.isBlocked) {
+    // Owner blocked dates
+    classes.push('bg-red-50 text-red-900');
+  } else if (day.isBooked) {
+    // Customer booked dates
+    classes.push('bg-blue-50 text-blue-900');
+  } else {
+    // Available dates
+    classes.push('bg-white hover:bg-gray-50');
   }
   
   return classes.join(' ');
@@ -439,75 +454,154 @@ const loadBookings = async () => {
   error.value = null;
   
   try {
-    // Try API endpoint first, then fallback
+    console.log('Fetching availability data...');
+    // Get current month and 3 months ahead for proper date range
+    const today = new Date();
+    startOfCalendar.value = new Date(today.getFullYear(), today.getMonth(), 1);
+    endOfCalendar.value = new Date(today.getFullYear(), today.getMonth() + 3, 0);
+    
+    // Format dates as strings for API
+    const startDateStr = startOfCalendar.value.toISOString().slice(0, 10);
+    const endDateStr = endOfCalendar.value.toISOString().slice(0, 10);
+    
+    console.log(`Fetching availability from ${startDateStr} to ${endDateStr}`);
+    
     try {
-      console.log('Fetching availability data...');
+      // Try API endpoint first
       const response = await axios.get(`/api/camping-spots/${props.campingSpotId}/availability`, {
         params: { 
-          startDate: startOfCalendar.value.toISOString().slice(0, 10),
-          endDate: endOfCalendar.value.toISOString().slice(0, 10)
+          startDate: startDateStr,
+          endDate: endDateStr
         },
         headers: {
           'Accept': 'application/json'
         }
       });
       
-      // Process the response
-      if (response.data.bookings) {
-        // Process the blocked dates
-        const blockedBookings = response.data.bookings || [];
-        bookings.value = blockedBookings;
-        blockedDates.value = blockedBookings.map(booking => ({
-          startDate: new Date(booking.start_date),
-          endDate: new Date(booking.end_date),
-          isOwnerBlock: booking.status_id === 5,
-          bookingId: booking.booking_id
-        }));
-        
-        console.log('Emitting blocked dates:', blockedDates.value);
-        emit('blocked-dates-loaded', blockedBookings);
-      } else {
-        throw new Error('Invalid response format');
-      }
+      processBookingResponse(response.data);
     } catch (apiError) {
-      console.warn('API endpoint for availability failed:', apiError.message);
+      console.warn('API endpoint failed, trying fallback:', apiError.message);
       
       // Try fallback endpoint
       const fallbackResponse = await axios.get(`/camping-spots/${props.campingSpotId}/availability`, {
         params: { 
-          startDate: startOfCalendar.value.toISOString().slice(0, 10),
-          endDate: endOfCalendar.value.toISOString().slice(0, 10)
+          startDate: startDateStr,
+          endDate: endDateStr
         },
         headers: {
           'Accept': 'application/json'
         }
       });
       
-      // Process the blocked dates
-      const blockedBookings = fallbackResponse.data.bookings || [];
-      bookings.value = blockedBookings;
-      blockedDates.value = blockedBookings.map(booking => ({
-        startDate: new Date(booking.start_date),
-        endDate: new Date(booking.end_date),
-        isOwnerBlock: booking.status_id === 5,
-        bookingId: booking.booking_id
-      }));
-      
-      console.log('Emitting blocked dates (fallback):', blockedDates.value);
-      emit('blocked-dates-loaded', blockedBookings);
+      processBookingResponse(fallbackResponse.data);
     }
-  } catch (err) {
-    console.error('Failed to load availability:', err);
-    error.value = err.message || 'Failed to load availability data';
-    
-    // Always emit something, even if empty
-    console.log('Emitting empty blocked dates due to error');
-    emit('blocked-dates-loaded', []);
+  } catch (error) {
+    console.error('Failed to fetch bookings:', error);
+    error.value = 'Failed to load availability data.';
   } finally {
     isLoading.value = false;
     loading.value = false;
   }
 };
+
+// Process booking response data
+const processBookingResponse = (data) => {
+  console.log('Processing booking data:', data);
+  
+  if (data.bookings && Array.isArray(data.bookings)) {
+    // Process bookings properly
+    bookings.value = data.bookings.map(booking => ({
+      ...booking,
+      // Ensure status_id is properly set
+      status_id: booking.status_id || (booking.isUnavailable ? 5 : 2),
+      // Add explicit flags for clarity
+      isBlocked: booking.status_id === 5,
+      isBooked: booking.status_id === 2 || booking.status_id === 4
+    }));
+    
+    console.log('Processed bookings:', bookings.value);
+  } else {
+    console.warn('No bookings data found in response');
+    bookings.value = [];
+  }
+  
+  // Emit the blocked dates for parent components
+  emit('blocked-dates-loaded', bookings.value);
+};
+
+// Update getCalendarDays to correctly mark days
+function getCalendarDays(year, month) {
+  const days = [];
+  const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0-6 (Sunday-Saturday)
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Add empty cells for days before the first day of the month
+  for (let i = 0; i < firstDayOfMonth; i++) {
+    days.push({
+      date: null,
+      dayOfMonth: null,
+      hasBooking: false,
+      isBlocked: false,
+      isBooked: false,
+      isToday: false,
+      isPast: false
+    });
+  }
+
+  // Add days of the month
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dayDate = new Date(year, month, d);
+    const dateStr = formatDateForInput(dayDate);
+    dayDate.setHours(0, 0, 0, 0);
+    
+    // Find ALL bookings for this day
+    const dayBookings = bookings.value.filter(booking => {
+      if (!booking.start_date || !booking.end_date) return false;
+      
+      const bookingStart = new Date(booking.start_date);
+      const bookingEnd = new Date(booking.end_date);
+      
+      // Set times to start of day for accurate date comparison
+      bookingStart.setHours(0, 0, 0, 0);
+      bookingEnd.setHours(0, 0, 0, 0);
+      
+      // Check if the day falls within the booking range (inclusive)
+      return dayDate >= bookingStart && dayDate <= bookingEnd;
+    });
+    
+    // Determine day status based on bookings
+    const isBlocked = dayBookings.some(booking => booking.status_id === 5);
+    const isBooked = dayBookings.some(booking => booking.status_id === 2 || booking.status_id === 4);
+    
+    days.push({
+      date: dateStr,
+      dayOfMonth: d,
+      hasBooking: dayBookings.length > 0,
+      isBlocked: isBlocked,
+      isBooked: isBooked,
+      isToday: isToday(dayDate),
+      isPast: dayDate < today
+    });
+  }
+  
+  // Calculate empty cells needed at the end to complete the grid
+  const totalCells = Math.ceil((daysInMonth + firstDayOfMonth) / 7) * 7;
+  for (let i = days.length; i < totalCells; i++) {
+    days.push({
+      date: null,
+      dayOfMonth: null,
+      hasBooking: false,
+      isBlocked: false,
+      isBooked: false,
+      isToday: false,
+      isPast: false
+    });
+  }
+  
+  return days;
+}
 
 // Fix the watches to reference loadBookings after it's declared
 onMounted(() => {
@@ -534,6 +628,50 @@ watch(() => props.campingSpotId, () => {
 }
 
 .bg-red-50 {
-  animation: fadeIn 0.3s ease-out;
+  background-color: #fee2e2;
+}
+
+.bg-blue-50 {
+  background-color: #dbeafe;
+}
+
+.text-red-900 {
+  color: #7f1d1d;
+}
+
+.text-blue-900 {
+  color: #1e3a8a;
+}
+
+/* Legend colors */
+.legend-blocked {
+  background-color: rgba(254, 226, 226, 0.6);
+  border: 1px solid #ef4444;
+}
+
+.legend-booked {
+  background-color: rgba(219, 234, 254, 0.6);
+  border: 1px solid #3b82f6;
+}
+
+/* Add a legend section */
+.calendar-legend {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: #4b5563;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.legend-color {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
 }
 </style>

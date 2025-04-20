@@ -1,34 +1,33 @@
 <template>
-  <router-link :to="`/camper/${spot.camping_spot_id}`" class="block">
-    <div class="spot-card">
-      <div class="image-container">
-        <img
-          v-if="spot.images?.[0]"
-          :src="spot.images[0].image_url"
-          :alt="spot.title"
-          class="spot-image"
-        />
-        <div v-else class="placeholder-image">
-          <span>No image available</span>
-        </div>
-        
-        <!-- Price Badge -->
-        <div class="price-badge">
-          €{{ spot.price_per_night }} <span class="text-sm">/night</span>
-        </div>
+  <div class="spot-card" @click="navigateToSpot">
+    <div class="image-container">
+      <img
+        v-if="spot.images && spot.images.length > 0 && spot.images[0]?.image_url"
+        :src="spot.images[0].image_url"
+        :alt="spot.title"
+        class="spot-image"
+      />
+      <div v-else class="placeholder-image">
+        <span>No image available</span>
       </div>
-
-      <div class="content">
-        <h3 class="title">{{ spot.title }}</h3>
-        <p class="location">{{ spot.location?.city }}, {{ spot.location?.country?.name }}</p>
-        <div class="flex items-center gap-2 mt-2">
-          <span class="amenity-tag" v-for="amenity in spot.camping_spot_amenities?.slice(0, 3)" :key="amenity.amenity_id">
-            {{ amenity.amenity.name }}
-          </span>
-        </div>
+      
+      <!-- Price Badge -->
+      <div class="price-badge" v-if="spot.price_per_night">
+        €{{ spot.price_per_night }} <span class="text-sm">/night</span>
       </div>
     </div>
-  </router-link>
+
+    <div class="content">
+      <h3 class="title">{{ spot.title || 'Unnamed Spot' }}</h3>
+      <p class="location">{{ formatLocation(spot.location) }}</p>
+      
+      <div v-if="spot.camping_spot_amenities && spot.camping_spot_amenities.length > 0" class="flex items-center gap-2 mt-2">
+        <span class="amenity-tag" v-for="amenity in spot.camping_spot_amenities?.slice(0, 3)" :key="amenity.amenity_id">
+          {{ amenity.amenity?.name || 'Amenity' }}
+        </span>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -38,6 +37,7 @@
   overflow: hidden;
   transition: all 0.3s ease;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
 }
 
 .spot-card:hover {
@@ -47,6 +47,7 @@
 
 .image-container {
   position: relative;
+  width: 100%;
   aspect-ratio: 4/3;
   overflow: hidden;
 }
@@ -97,10 +98,24 @@
   padding: 0.25rem 0.75rem;
   border-radius: 1rem;
 }
+
+.placeholder-image {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f3f4f6;
+  color: #6b7280;
+  font-size: 0.875rem;
+}
 </style>
 
 <script setup>
-import { computed } from 'vue'
+import { computed } from 'vue';
+import { useRouter } from 'vue-router';
+
+const router = useRouter();
 
 const props = defineProps({
   spot: {
@@ -109,17 +124,51 @@ const props = defineProps({
   },
   startDate: String,
   endDate: String
-})
+});
+
+const formatLocation = (location) => {
+  if (!location) return 'Location not specified';
+  
+  const city = location.city || '';
+  const country = location.country?.name || '';
+  
+  if (city && country) {
+    return `${city}, ${country}`;
+  } else if (city) {
+    return city;
+  } else if (country) {
+    return country;
+  } else {
+    return 'Location not specified';
+  }
+};
+
+const navigateToSpot = () => {
+  if (!props.spot || !props.spot.camping_spot_id) {
+    console.error('Cannot navigate: Invalid spot or missing ID');
+    return;
+  }
+  
+  const query = {};
+  if (props.startDate) query.start = props.startDate;
+  if (props.endDate) query.end = props.endDate;
+  
+  // Navigate directly using router
+  router.push({
+    path: `/camper/${props.spot.camping_spot_id}`,
+    query
+  });
+};
 
 const numberOfDays = computed(() => {
-  if (!props.startDate || !props.endDate) return null
-  const start = new Date(props.startDate)
-  const end = new Date(props.endDate)
-  return Math.ceil((end - start) / (1000 * 60 * 60 * 24))
-})
+  if (!props.startDate || !props.endDate) return null;
+  const start = new Date(props.startDate);
+  const end = new Date(props.endDate);
+  return Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+});
 
 const totalPrice = computed(() => {
-  if (!numberOfDays.value) return null
-  return (props.spot.price_per_night * numberOfDays.value).toFixed(2)
-})
+  if (!numberOfDays.value || !props.spot.price_per_night) return null;
+  return (props.spot.price_per_night * numberOfDays.value).toFixed(2);
+});
 </script>

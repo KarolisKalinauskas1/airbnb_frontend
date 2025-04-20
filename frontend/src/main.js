@@ -37,6 +37,14 @@ const checkBackendStatus = async () => {
 
 const app = createApp(App)
 
+// Add the following lines near where Vue app is created
+import SimpleDateRangeSelector from './components/SimpleDateRangeSelector.vue'
+import SimpleLocationPicker from './components/SimpleLocationPicker.vue'
+
+// Register components globally
+app.component('DateRangePicker', SimpleDateRangeSelector)
+app.component('LocationPicker', SimpleLocationPicker)
+
 // Configure toast notifications
 const toastOptions = {
   position: "top-right",
@@ -61,7 +69,15 @@ app.use(router)
 // Mount the app
 app.mount('#app')
 
-// Initialize auth store early - fix the syntax error here
+// Initialize auth store early but don't block rendering
 import { useAuthStore } from '@/stores/auth';
-const authStore = useAuthStore();
-authStore.initAuth().catch(error => console.error("Auth initialization error:", error));
+try {
+  const authStore = useAuthStore();
+  if (typeof authStore.initAuth === 'function') {
+    authStore.initAuth().catch(error => console.error("Auth initialization error:", error));
+  } else {
+    console.error("Auth initialization method not found - check auth store implementation");
+  }
+} catch (err) {
+  console.error("Failed to initialize auth store:", err);
+}

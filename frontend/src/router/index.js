@@ -1,7 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomeView from '../views/HomeView.vue'
 import LoginView from '../views/LoginView.vue'
-import AccountView from '../views/AccountView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import AnalyticsView from '../views/AnalyticsView.vue'
 import PaymentView from '../views/PaymentView.vue'
@@ -122,84 +120,125 @@ function dashboardGuard(to, from, next) {
   }
 }
 
+// Add this function to handle lazy loading with better error handling
+function lazyLoadView(viewPath) {
+  return () => {
+    const AsyncComponent = import(`../views/${viewPath}.vue`);
+    AsyncComponent.catch(error => {
+      console.error(`Error loading view ${viewPath}:`, error);
+    });
+    return AsyncComponent;
+  };
+}
+
+const routes = [
+  {
+    path: '/', 
+    name: 'Home',
+    component: () => import('@/views/HomeView.vue'), // Point home to the new HomeView
+  },
+  {
+    path: '/campers',
+    name: 'Campers',
+    component: () => import('@/views/CampersView.vue'), // Make campers its own route
+  },
+  {
+    path: '/camping-spot/:id',
+    name: 'CampingSpotDetail',
+    component: () => import('@/views/CampingSpotDetail.vue')
+  },
+  {
+    path: '/camper/:id',
+    name: 'camping-spot-detail',
+    component: () => import('../views/CampingSpotDetail.vue'),
+    // No auth required for viewing camping spots
+  },
+  {
+    path: '/auth',
+    name: 'auth',
+    component: LoginView
+  },
+  {
+    path: '/account',
+    name: 'Account',
+    component: () => import('@/views/AccountView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/dashboard',
+    name: 'dashboard',
+    component: DashboardView,
+    beforeEnter: dashboardGuard,
+    meta: { requiresAuth: true, requiresSeller: true }
+  },
+  {
+    path: '/dashboard/spots',
+    name: 'DashboardSpots',
+    component: lazyLoadView('DashboardSpots'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/dashboard/analytics',
+    name: 'dashboard-analytics',
+    component: AnalyticsView,
+    beforeEnter: dashboardGuard,
+    meta: { requiresAuth: true, requiresSeller: true }
+  },
+  {
+    path: '/payment',
+    name: 'payment',
+    component: PaymentView,
+    meta: { 
+      requiresAuth: true,
+      requiresBookingDetails: true
+    }
+  },
+  {
+    path: '/booking-success',
+    name: 'booking-success',
+    component: BookingSuccessView,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/booking-failed',
+    name: 'booking-failed',
+    component: BookingFailedView,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/booking/:id',
+    name: 'booking-details',
+    component: lazyLoadView('BookingDetailsView'),
+    beforeEnter: bookingAuthGuard,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/404',
+    name: 'NotFound',
+    component: lazyLoadView('NotFound')
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/404'
+  }
+];
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes: [
-    { path: '/', name: 'home', component: HomeView },
-    { path: '/campers', name: 'campers', component: () => import('../views/CampersView.vue') },
-    { path: '/auth', name: 'auth', component: LoginView },
-    {
-      path: '/account',
-      name: 'account',
-      component: AccountView,
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/dashboard',
-      name: 'dashboard',
-      component: DashboardView,
-      beforeEnter: dashboardGuard,
-      meta: { requiresAuth: true, requiresSeller: true }
-    },
-    {
-      path: '/dashboard/spots',
-      name: 'DashboardSpots',
-      component: () => import('@/views/DashboardSpots.vue'),
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/dashboard/analytics',
-      name: 'dashboard-analytics',
-      component: AnalyticsView,
-      beforeEnter: dashboardGuard,
-      meta: { requiresAuth: true, requiresSeller: true }
-    },
-    { 
-      path: '/camper/:id', 
-      name: 'camper-detail',
-      component: () => import('../views/CampingSpotDetail.vue')
-    },
-    {
-      path: '/payment',
-      name: 'payment',
-      component: PaymentView,
-      meta: { 
-        requiresAuth: true,
-        requiresBookingDetails: true
-      }
-    },
-    {
-      path: '/booking-success',
-      name: 'booking-success',
-      component: BookingSuccessView,
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/booking-failed',
-      name: 'booking-failed',
-      component: BookingFailedView,
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/booking/:id',
-      name: 'booking-details',
-      component: () => import('../views/BookingDetailsView.vue'),
-      beforeEnter: bookingAuthGuard,
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/404',
-      name: 'NotFound',
-      component: () => import('../views/NotFound.vue')
-    },
-    {
-      path: '/:pathMatch(.*)*',
-      redirect: '/404'
-    }
-  ]
+  routes
 })
 
+// Fix the authentication guard logic
 router.beforeEach(async (to, from, next) => {
+  // Prevent multiple simultaneous navigation guards from running
+  if (isNavigationRunning) {
+    next(false);
+    return;
+  }
+  
+  isNavigationRunning = true;
+  const now = Date.now();
+  
   // Special handling for auth page to prevent loops
   if (to.path === '/auth') {
     const authStore = useAuthStore();
@@ -207,18 +246,53 @@ router.beforeEach(async (to, from, next) => {
     // If user is already logged in, redirect away from auth page
     if (authStore.isLoggedIn) {
       isNavigationRunning = false;
-      return next(authStore.isSeller ? '/dashboard' : '/campers');
+      const redirectTarget = to.query.redirect || 
+                          (authStore.isSeller ? '/dashboard' : '/');
+      return next(redirectTarget);
     }
     
     // Otherwise proceed to auth page
     isNavigationRunning = false;
     return next();
   }
+
+  // Special handling for account and camper pages
+  if (to.path === '/account' || to.path.startsWith('/camping-spot/') || 
+      to.path.startsWith('/campers')) {
+    const authStore = useAuthStore();
+    
+    // For campers path, allow access without login
+    if (to.path === '/campers' || to.path.startsWith('/camping-spot/')) {
+      isNavigationRunning = false;
+      return next();
+    }
+    
+    // For account page, ensure auth is initialized
+    if (!authStore.isInitialized) {
+      try {
+        console.log('Router guard: Initializing auth for protected route');
+        await authStore.initAuth();
+      } catch (error) {
+        console.error('Router guard: Auth initialization failed:', error);
+      }
+    }
+    
+    // After initialization attempt, check if we're authenticated
+    if (authStore.isLoggedIn) {
+      isNavigationRunning = false;
+      return next();
+    } else {
+      isNavigationRunning = false;
+      return next({ 
+        path: '/auth',
+        query: { redirect: to.fullPath }
+      });
+    }
+  }
   
   // Check if any raw JSON error is shown in the document body
   if (document.body && document.body.textContent && 
       document.body.textContent.includes('{"error":"Not Found","status":404}')) {
-    // We've hit the raw JSON error, reload the page through the frontend
     window.location.href = window.location.origin + to.fullPath;
     return;
   }
@@ -238,26 +312,20 @@ router.beforeEach(async (to, from, next) => {
   const isAuthenticated = authStore.isLoggedIn;
   const isOwner = authStore.isSeller;
   
-  // Don't run multiple route guards simultaneously
-  if (preventDuplicateNavigation(to, from, next)) return;
-  
   // Handle navigation based on auth requirements
   if (requiresAuth && !isAuthenticated) {
     isNavigationRunning = false;
-    // Redirect to login page if authentication is required but user is not authenticated
     next({ 
       path: '/auth',
       query: { redirect: to.fullPath }
     });
   } else if (requiresSeller && (!isAuthenticated || !isOwner)) {
     isNavigationRunning = false;
-    // Redirect to home if owner access is required but user is not an owner
     next({ path: '/' });
   } else {
     isNavigationRunning = false;
-    // Continue to the requested route
     next();
   }
-})
+});
 
 export default router

@@ -1,320 +1,365 @@
 <template>
-  <div class="bg-white p-6 rounded-xl shadow-md space-y-8">
-    <div class="flex justify-between items-center border-b pb-4">
-      <h2 class="text-xl font-semibold text-gray-800">Filters</h2>
+  <div class="filters-panel mb-4">
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+      <!-- Date range picker -->
+      <div class="md:col-span-5 lg:col-span-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Dates</label>
+        <div class="border border-gray-300 rounded-md overflow-hidden">
+          <div class="grid grid-cols-2 gap-0">
+            <div class="p-2 border-r border-gray-300">
+              <div class="text-xs text-gray-500">Check in</div>
+              <div class="text-sm">
+                {{ formatDate(dates.startDate) || 'Select date' }}
+              </div>
+            </div>
+            <div class="p-2">
+              <div class="text-xs text-gray-500">Check out</div>
+              <div class="text-sm">
+                {{ formatDate(dates.endDate) || 'Select date' }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Location picker -->
+      <div class="md:col-span-4 lg:col-span-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Location</label>
+        <div class="border border-gray-300 rounded-md p-2 min-h-[38px]">
+          <div class="text-xs text-gray-500">Where</div>
+          <div class="text-sm">
+            {{ selectedLocation ? (selectedLocation.city || selectedLocation.formatted_address) : 'Select location' }}
+          </div>
+        </div>
+      </div>
+      
+      <!-- Guests picker -->
+      <div class="md:col-span-3 lg:col-span-2">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Guests</label>
+        <div class="relative">
+          <select 
+            v-model="guestCount" 
+            class="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-red-500 focus:border-red-500"
+          >
+            <option v-for="i in 10" :key="i" :value="i">{{ i }} {{ i === 1 ? 'guest' : 'guests' }}</option>
+          </select>
+        </div>
+      </div>
+      
+      <!-- Price range -->
+      <div class="md:col-span-6 lg:col-span-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Price Range</label>
+        <div class="flex items-center space-x-2">
+          <input 
+            v-model="priceRange.min" 
+            type="number" 
+            min="0" 
+            step="10"
+            class="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-red-500 focus:border-red-500" 
+            placeholder="Min" 
+          />
+          <span>-</span>
+          <input 
+            v-model="priceRange.max" 
+            type="number" 
+            min="0" 
+            step="10"
+            class="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-red-500 focus:border-red-500" 
+            placeholder="Max" 
+          />
+        </div>
+      </div>
+      
+      <!-- Radius slider -->
+      <div class="md:col-span-6 lg:col-span-4" v-if="showRadius">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Distance (km): {{ radius }}</label>
+        <input 
+          v-model="radius" 
+          type="range" 
+          min="5" 
+          max="200"
+          step="5"
+          class="w-full" 
+        />
+      </div>
+      
+      <!-- Amenities -->
+      <div class="md:col-span-12 lg:col-span-4">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Amenities</label>
+        <div class="border border-gray-300 rounded-md p-2 max-h-40 overflow-y-auto">
+          <div v-if="isLoading" class="text-center py-2">
+            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-red-500 mx-auto"></div>
+          </div>
+          <div v-else-if="loadingError" class="text-center text-red-500 py-2">
+            {{ loadingError }}
+          </div>
+          <div v-else class="grid grid-cols-2 gap-2">
+            <div v-for="amenity in amenitiesData" :key="amenity.amenity_id" class="flex items-center">
+              <input 
+                :id="'amenity-' + amenity.amenity_id" 
+                type="checkbox" 
+                :value="amenity.amenity_id" 
+                v-model="selectedAmenities"
+                class="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+              />
+              <label :for="'amenity-' + amenity.amenity_id" class="ml-2 block text-sm text-gray-700 truncate">
+                {{ amenity.name }}
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="flex justify-end mt-4">
       <button 
-        @click="resetFilters"
-        class="text-sm text-red-500 hover:text-red-600 cursor-pointer transition-colors duration-200 px-3 py-1 rounded-lg hover:bg-red-50"
+        @click="resetFilters" 
+        class="px-4 py-2 text-gray-700 hover:text-gray-900 mr-2"
       >
         Reset Filters
       </button>
+      <button 
+        @click="applyFilters" 
+        class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+      >
+        Search
+      </button>
     </div>
-
-    <!-- Dates (if provided) -->
-    <div v-if="dates.startDate && dates.endDate" class="border-b pb-4">
-      <label class="block text-sm font-medium text-gray-700 mb-2">Selected Dates</label>
-      <div class="flex items-center gap-2 text-sm text-gray-600">
-        <span>{{ formatDate(dates.startDate) }}</span>
-        <span>→</span>
-        <span>{{ formatDate(dates.endDate) }}</span>
-      </div>
-    </div>
-
-    <!-- Price Range Buttons -->
-    <div class="space-y-4 border-t pt-6">
-      <h3 class="text-base font-medium text-gray-800">Price Range</h3>
-      <div class="grid grid-cols-2 gap-2">
-        <button
-          v-for="range in priceRanges"
-          :key="range.id"
-          @click="selectPriceRange(range)"
-          class="px-4 py-2 rounded-lg border cursor-pointer transition-colors duration-200"
-          :class="selectedPriceRange?.id === range.id ? 'bg-red-50 border-red-500 text-red-700' : 'border-gray-300 hover:bg-gray-50'"
-        >
-          {{ range.label }}
-        </button>
-      </div>
-    </div>
-
-    <!-- Custom Price Range -->
-    <div class="mt-4">
-      <h3 class="text-sm font-medium mb-2">Custom Price Range</h3>
-      <div class="grid grid-cols-2 gap-4">
-        <div>
-          <input
-            type="number"
-            v-model="filters.minPrice"
-            placeholder="Min €"
-            class="w-full px-3 py-2 border rounded-lg"
-            @change="emitFilters"
-          >
-        </div>
-        <div>
-          <input
-            type="number"
-            v-model="filters.maxPrice"
-            placeholder="Max €"
-            class="w-full px-3 py-2 border rounded-lg"
-            @change="emitFilters"
-          >
-        </div>
-      </div>
-    </div>
-
-    <!-- Price Range with better styling -->
-    <div class="border-b pb-4">
-      <label class="block text-sm font-medium text-gray-700 mb-3">Price Range</label>
-      <div class="space-y-4">
-        <div class="flex justify-between text-sm text-gray-600">
-          <span>€{{ filters.minPrice }}</span>
-          <span>€{{ filters.maxPrice }}</span>
-        </div>
-        <div class="relative pt-1">
-          <div class="h-1 bg-gray-200 rounded-full">
-            <div 
-              class="absolute h-1 bg-red-500 rounded-full"
-              :style="{ 
-                left: `${(filters.minPrice / 1000) * 100}%`,
-                right: `${100 - (filters.maxPrice / 1000) * 100}%`
-              }"
-            ></div>
-          </div>
-          <input
-            type="range"
-            v-model="filters.minPrice"
-            :min="0"
-            :max="filters.maxPrice"
-            class="absolute w-full top-0 h-1 appearance-none pointer-events-none opacity-0"
-            @input="updateFilters"
-          >
-          <input
-            type="range"
-            v-model="filters.maxPrice"
-            :min="filters.minPrice"
-            :max="1000"
-            class="absolute w-full top-0 h-1 appearance-none pointer-events-none opacity-0"
-            @input="updateFilters"
-          >
-        </div>
-      </div>
-    </div>
-
-    <!-- Guests Counter -->
-    <div class="space-y-4 border-t pt-6">
-      <h3 class="text-base font-medium text-gray-800">Number of Guests</h3>
-      <div class="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
-        <button 
-          @click="decrementGuests"
-          class="w-10 h-10 rounded-full border-2 border-red-500 flex items-center justify-center hover:bg-red-50 transition-colors text-red-500 text-xl cursor-pointer"
-          :disabled="filters.guests <= 1"
-        >-</button>
-        <span class="text-xl font-medium">{{ filters.guests }}</span>
-        <button 
-          @click="incrementGuests"
-          class="w-10 h-10 rounded-full border-2 border-red-500 flex items-center justify-center hover:bg-red-50 transition-colors text-red-500 text-xl cursor-pointer"
-        >+</button>
-      </div>
-    </div>
-
-    <!-- Amenities Section -->
-    <div class="space-y-4 border-t pt-6">
-      <h3 class="text-base font-medium text-gray-800">Amenities</h3>
-      <div class="space-y-3 max-h-48 overflow-y-auto pr-2">
-        <label 
-          v-for="amenity in availableAmenities" 
-          :key="amenity.amenity_id"
-          class="flex items-center p-3 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors duration-200"
-        >
-          <input
-            type="checkbox"
-            :value="amenity.amenity_id"
-            v-model="filters.amenities"
-            class="rounded-lg border-gray-300 text-red-500 focus:ring-red-500 w-5 h-5 cursor-pointer"
-          >
-          <span class="ml-3 text-gray-700">{{ amenity.name }}</span>
-        </label>
-      </div>
-    </div>
-
-    <!-- Apply Button -->
-    <button 
-      type="button" 
-      @click="applyFilters"
-      class="w-full px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200 text-lg font-medium shadow-sm hover:shadow-md transform hover:-translate-y-0.5 cursor-pointer"
-    >
-      Apply Filters
-    </button>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue'
-import { fetchWithFallback } from '@/utils/apiFallback'
-import { useToast } from 'vue-toastification'
+import { ref, reactive, watch, onMounted, computed } from 'vue';
+import axios from '@/axios';
+import { useToast } from 'vue-toastification';
+import { shouldAllowRequest } from '@/utils/requestThrottler';
 
 const props = defineProps({
-  isSticky: Boolean,
-  dates: {
+  filters: {
     type: Object,
-    default: () => ({ startDate: '', endDate: '' })
+    default: () => ({
+      minPrice: 0,
+      maxPrice: 1000,
+      guests: 1,
+      amenities: [],
+      radius: 50,
+      lat: null,
+      lng: null
+    })
+  },
+  availableAmenities: {
+    type: Array,
+    default: () => []
+  },
+  showRadius: {
+    type: Boolean,
+    default: true
   }
-})
+});
 
-const emit = defineEmits(['filter'])
+const emit = defineEmits(['filter']);
 
-const filters = reactive({
-  minPrice: null,
-  maxPrice: null,
-  guests: 1,
-  amenities: []
-})
+const toast = useToast();
+const isLoading = ref(false);
+const loadingError = ref(null);
 
-const availableAmenities = ref([])
+// Initialize local state from props
+const localFilters = reactive({ ...props.filters });
+const amenitiesData = ref([]);
 
-const toast = useToast()
+// Define dates object for the date pickers
+const dates = reactive({
+  startDate: props.filters.startDate || '',
+  endDate: props.filters.endDate || ''
+});
 
-const fetchAmenities = async () => {
+// Create reactive variables for UI elements
+const priceRange = reactive({
+  min: props.filters.minPrice,
+  max: props.filters.maxPrice
+});
+
+const guestCount = ref(props.filters.guests);
+const selectedAmenities = ref(props.filters.amenities || []);
+const radius = ref(props.filters.radius);
+const selectedLocation = ref(null);
+
+// Helper to format dates consistently
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  
   try {
-    const data = await fetchWithFallback({
-      paths: ['/api/camping-spots/amenities', '/camping-spots/amenities'],
-      method: 'get'
+    const date = new Date(dateStr);
+    // Format as MMM DD, YYYY (e.g., Jan 01, 2023)
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: '2-digit', 
+      year: 'numeric'
     });
+  } catch (err) {
+    console.error('Date formatting error:', err);
+    return dateStr;
+  }
+};
+
+// Watch for changes to UI elements and update localFilters
+watch(priceRange, (newValue) => {
+  localFilters.minPrice = newValue.min;
+  localFilters.maxPrice = newValue.max;
+});
+
+watch(guestCount, (newValue) => {
+  localFilters.guests = newValue;
+});
+
+watch(selectedAmenities, (newValue) => {
+  localFilters.amenities = newValue;
+});
+
+watch(radius, (newValue) => {
+  localFilters.radius = newValue;
+});
+
+watch(selectedLocation, (newValue) => {
+  if (newValue) {
+    localFilters.lat = newValue.lat || null;
+    localFilters.lng = newValue.lng || null;
+  } else {
+    localFilters.lat = null;
+    localFilters.lng = null;
+  }
+});
+
+// Improved fetchAmenities with better error handling
+const fetchAmenities = async () => {
+  if (isLoading.value) return;
+  
+  // Use request throttler to avoid rate limiting
+  if (!shouldAllowRequest('/api/camping-spots/amenities')) {
+    return;
+  }
+  
+  try {
+    isLoading.value = true;
+    loadingError.value = null;
     
-    availableAmenities.value = data;
+    // First try the API endpoint
+    let response;
+    try {
+      response = await axios.get('/api/camping-spots/amenities', { 
+        timeout: 5000,
+        headers: { 'Accept': 'application/json' } 
+      });
+    } catch (apiError) {
+      console.warn('API endpoint failed, trying without prefix', apiError);
+      
+      // Wait a moment before trying the fallback
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Fall back to non-API endpoint
+      response = await axios.get('/camping-spots/amenities', {
+        timeout: 5000,
+        headers: { 'Accept': 'application/json' } 
+      });
+    }
+    
+    // Check if the response data is valid
+    if (response && response.data && Array.isArray(response.data)) {
+      amenitiesData.value = response.data;
+      console.log('Fetched amenities:', amenitiesData.value);
+    } else {
+      // If not array, it might be HTML or other invalid response
+      console.error('Invalid amenities data format:', response.data);
+      throw new Error('Invalid data format received from server');
+    }
   } catch (error) {
     console.error('Failed to fetch amenities:', error);
-    toast.error('Failed to load amenities. Please refresh the page.');
+    loadingError.value = 'Failed to load amenities';
+    
+    // Show error message
+    toast.error('Failed to load amenities. Some filtering options may be unavailable.');
+    
+    // If props provides available amenities, use those instead
+    if (props.availableAmenities && props.availableAmenities.length > 0) {
+      amenitiesData.value = props.availableAmenities;
+    }
+  } finally {
+    isLoading.value = false;
   }
-}
+};
 
+// Get amenity name by ID
+const getAmenityName = (id) => {
+  const amenity = amenitiesData.value.find(a => a.amenity_id === id);
+  return amenity ? amenity.name : `Amenity ${id}`;
+};
+
+// Apply filters
 const applyFilters = () => {
-  emit('filter', {
-    minPrice: filters.minPrice || null,
-    maxPrice: filters.maxPrice || null,
-    guests: Number(filters.guests) || null,
-    amenities: filters.amenities
-  })
-}
+  // Update dates in localFilters from the dates object
+  localFilters.startDate = dates.startDate;
+  localFilters.endDate = dates.endDate;
+  
+  emit('filter', { ...localFilters });
+};
 
-const formatDate = (dateStr) => {
-  return new Date(dateStr).toLocaleDateString()
-}
+// Reset filters to default values
+const resetFilters = () => {
+  localFilters.minPrice = 0;
+  localFilters.maxPrice = 1000;
+  localFilters.guests = 1;
+  localFilters.amenities = [];
+  localFilters.radius = 50;
+  localFilters.lat = null;
+  localFilters.lng = null;
+  
+  // Also reset the UI elements
+  priceRange.min = 0;
+  priceRange.max = 1000;
+  guestCount.value = 1;
+  selectedAmenities.value = [];
+  radius.value = 50;
+  selectedLocation.value = null;
+  dates.startDate = '';
+  dates.endDate = '';
+  
+  emit('filter', { ...localFilters });
+};
 
-const decrementGuests = () => {
-  if (filters.guests > 1) {
-    filters.guests--
-    updateFilters()
-  }
-}
-
-const incrementGuests = () => {
-  filters.guests++
-  updateFilters()
-}
-
-const updateFilters = () => {
-  emit('filter', { ...filters })
-}
+// Expose reset method for parent components
+defineExpose({
+  reset: resetFilters
+});
 
 onMounted(() => {
-  fetchAmenities()
-  const savedFilters = JSON.parse(localStorage.getItem('campingFilters'))
-  if (savedFilters) {
-    Object.assign(filters, savedFilters)
-    emitFilters()
-  }
-})
-
-const priceRanges = [
-  { id: 1, label: '< €50', min: 0, max: 50 },
-  { id: 2, label: '€50-100', min: 50, max: 100 },
-  { id: 3, label: '€100-150', min: 100, max: 150 },
-  { id: 4, label: '> €150', min: 150, max: null }
-]
-
-const selectedPriceRange = ref(null)
-
-const selectPriceRange = (range) => {
-  if (selectedPriceRange.value?.id === range.id) {
-    selectedPriceRange.value = null
-    filters.minPrice = null
-    filters.maxPrice = null
-  } else {
-    selectedPriceRange.value = range
-    filters.minPrice = range.min
-    filters.maxPrice = range.max
-  }
-  emitFilters()
-}
-
-const emitFilters = () => {
-  emit('filter', { ...filters })
-}
-
-watch(filters, (newFilters) => {
-  localStorage.setItem('campingFilters', JSON.stringify(newFilters))
-}, { deep: true })
-
-const resetFilters = () => {
-  filters.minPrice = null
-  filters.maxPrice = null
-  filters.guests = 1
-  filters.amenities = []
-  selectedPriceRange.value = null
-  localStorage.removeItem('campingFilters')
-  emitFilters()
-}
+  fetchAmenities();
+});
 </script>
 
 <style scoped>
-/* Improve range input styling */
-input[type="range"] {
-  height: 1px;
-  -webkit-appearance: none;
-  pointer-events: none;
+.filters-panel {
+  width: 100%;
+  max-width: 100%;
 }
 
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  pointer-events: auto;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: white;
-  border: 2px solid #ef4444;
-  cursor: pointer;
-}
-
-/* Rest of the styles */
-input[type="range"] {
-  height: 2px;
-  background: #ef4444;
-}
-
-input[type="range"]::-webkit-slider-thumb {
-  width: 16px;
-  height: 16px;
-  background: #fff;
-  border: 2px solid #ef4444;
-  border-radius: 50%;
-  cursor: pointer;
-}
-
+/* Add custom scrollbar styling */
 .overflow-y-auto {
   scrollbar-width: thin;
-  scrollbar-color: #9CA3AF transparent;
+  scrollbar-color: #EF4444 #F3F4F6;
 }
 
 .overflow-y-auto::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 
 .overflow-y-auto::-webkit-scrollbar-track {
-  background: transparent;
+  background: #F3F4F6;
+  border-radius: 4px;
 }
 
 .overflow-y-auto::-webkit-scrollbar-thumb {
-  background-color: #9CA3AF;
-  border-radius: 3px;
+  background-color: #EF4444;
+  border-radius: 4px;
+  border: 2px solid #F3F4F6;
 }
 </style>
