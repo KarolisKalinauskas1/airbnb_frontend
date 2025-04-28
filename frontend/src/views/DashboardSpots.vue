@@ -1,15 +1,13 @@
 <template>
-  <DashboardLayout>
-    <div class="mb-6 flex justify-between items-center">
-      <div>
-        <h1 class="text-2xl font-semibold">My Camping Spots</h1>
-        <p class="text-gray-600">Total spots: {{ spots.length }}</p>
-      </div>
+  <div class="dashboard-spots">
+    <!-- My Spots List -->
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-semibold">My Spots</h1>
       <button @click="showAddModal = true" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors">
         Add New Spot
       </button>
     </div>
-
+    
     <!-- Spots List with improved layout -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
       <div v-for="spot in spots" :key="spot.camping_spot_id" class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
@@ -68,7 +66,7 @@
       v-if="showAddModal" 
       :spot="editingSpot"
       @close="closeAddModal"
-      @submit="handleSaveSpot"
+      @spot-created="handleSaveSpot"
     />
 
     <!-- Delete Confirmation Modal -->
@@ -148,18 +146,21 @@
         </div>
       </div>
     </div>
-  </DashboardLayout>
+  </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import DashboardLayout from '@/components/DashboardLayout.vue'
 import SpotFormModal from '@/components/SpotFormModal.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from 'vue-toastification'
 import axios from '@/axios'
 import AvailabilityCalendar from '@/components/AvailabilityCalendar.vue'
+import { useDashboardStore } from '@/stores/dashboard'
+import { useRouter, useRoute } from 'vue-router'
 import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue'
+import dashboardService from '@/services/dashboardService'
+import { apiRequest } from '@/utils/apiRequest'
 
 const spots = ref([])
 const showAddModal = ref(false)
@@ -168,126 +169,128 @@ const showDeleteModal = ref(false)
 const spotToDelete = ref(null)
 const authStore = useAuthStore()
 const toast = useToast()
-
-// Availability management
+const loading = ref(false)
+const error = ref(null)
+const router = useRouter()
+const route = useRoute()
 const showAvailabilityModal = ref(false)
 const selectedSpot = ref(null)
 
-onMounted(async () => {
-  await fetchSpots()
+// Dashboard data
+const dashboardData = ref({
+  totalBookings: 0,
+  completedBookings: 0,
+  cancelledBookings: 0,
+  occupancyRate: 0,
+  totalRevenue: 0,
+  activeBookings: 0
 })
+const dashboardError = ref(null)
 
-async function fetchSpots() {
+// Format currency helper function
+const formatCurrency = (value) => {
+  const num = parseFloat(value || 0)
+  return num.toFixed(2)
+}
+
+// Load dashboard data
+const loadDashboardData = async () => {
   try {
-    // Get the user's session token
-    const token = await authStore.getAuthToken();
-    
-    if (!token) {
-      toast.error('Authentication required. Please log in.');
-      return;
-    }
+    dashboardError.value = null
     
     try {
-      // First try the API version of the endpoint
-      const { data } = await axios.get('/api/camping-spots/owner', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Accept': 'application/json'
-        }
-      });
+      const data = await dashboardService.getAnalytics();
       
-      spots.value = data;
+      // Update dashboard data with the response
+      dashboardData.value = {
+        totalBookings: data?.bookings?.total || 0,
+        completedBookings: data?.bookings?.completed || 0,
+        cancelledBookings: data?.revenue?.cancelled || 0,
+        occupancyRate: data?.bookings?.occupancyRate || 0,
+        totalRevenue: data?.revenue?.total || 0,
+        activeBookings: data?.bookings?.active || 0
+      }
     } catch (apiError) {
-      console.warn('API endpoint failed, trying without /api prefix:', apiError.message);
+      console.warn('Dashboard API endpoint failed, trying fallback:', apiError.message)
       
-      try {
-        // Fallback to the non-API version
-        const { data } = await axios.get('/camping-spots/owner', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Accept': 'application/json'
-          },
-          bypassDedupe: true // Bypass duplicate detection for fallback
-        });
-        
-        spots.value = data;
-      } catch (nonApiError) {
-        console.error('All API attempts failed:');
-        console.error('- API path error:', apiError);
-        console.error('- Non-API path error:', nonApiError);
-        throw new Error('Failed to fetch camping spots from any endpoint');
+      // Try fallback to calculate from spots
+      if (spots.value.length > 0) {
+        // Calculate basic metrics from spots if available
+        let totalBookings = 0
+        let totalRevenue = 0
+
+        spots.value.forEach(spot => {
+          if (spot.stats) {
+            totalBookings += spot.stats.totalBookings || 0
+            totalRevenue += spot.stats.revenue || 0
+          }
+        })
+
+        dashboardData.value = {
+          ...dashboardData.value,
+          totalBookings,
+          totalRevenue
+        }
       }
     }
   } catch (error) {
-    console.error('Failed to fetch spots:', error);
-    
-    if (error.response?.status === 401) {
-      toast.error('Authentication required. Please log in again.');
-    } else {
-      toast.error(error.message || 'Failed to load camping spots');
-    }
+    console.error('Failed to load dashboard data:', error)
+    dashboardError.value = 'Failed to load dashboard data'
   }
 }
 
-const loadSpots = async () => {
+// Load spots data
+const fetchSpots = async () => {
   loading.value = true;
   error.value = null;
   
   try {
-    const token = await authStore.getAuthToken();
-    if (!token) {
-      throw new Error('Authentication required');
+    console.log('Starting fetchSpots function');
+    console.log('Auth store state:', {
+      isAuthenticated: authStore.isAuthenticated,
+      isOwner: authStore.isOwner,
+      user: authStore.user,
+      fullUser: authStore.fullUser
+    });
+    
+    if (!authStore.isAuthenticated || !authStore.isOwner) {
+      console.error('User not authenticated or not an owner');
+      throw new Error('You must be logged in as an owner to view this page');
     }
     
-    let data;
+    // Use the dashboard service to fetch spots
+    const response = await dashboardService.getCampingSpots();
+    console.log('Response received:', {
+      dataLength: response?.length
+    });
     
-    try {
-      // Use our new API service
-      data = await apiService.get('/camping-spots/owner');
-    } catch (apiError) {
-      console.error('Failed to load spots:', apiError);
-      
-      // If it's a redirect error, try to follow the redirect manually
-      if (apiError.response?.data?.message === 'This API endpoint does not support redirects') {
-        if (apiError.response.data.redirectTarget) {
-          console.log(`Manually following redirect to: ${apiError.response.data.redirectTarget}`);
-          
-          const response = await axios.get(apiError.response.data.redirectTarget, {
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': `Bearer ${token}`
-            }
-          });
-          
-          data = response.data;
-        } else {
-          throw apiError;
-        }
-      } else {
-        throw apiError;
-      }
+    if (!response) {
+      throw new Error('No data received from server');
     }
     
-    if (Array.isArray(data)) {
-      spots.value = data;
-    } else {
-      console.error('Unexpected data format:', data);
-      throw new Error('Invalid data format received from server');
-    }
-  } catch (error) {
-    console.error('Error loading spots:', error);
+    spots.value = response;
+  } catch (err) {
+    console.error('Error fetching spots:', err);
+    console.error('Error details:', {
+      message: err.message,
+      response: err.response?.data,
+      status: err.response?.status,
+      headers: err.response?.headers
+    });
     
-    if (error.response?.status === 401) {
-      router.push('/auth?redirect=' + encodeURIComponent(route.fullPath));
-    } else {
-      error.value = error.message || 'Failed to load camping spots';
-      toast.error(error.value);
-    }
+    error.value = err.message || 'Failed to fetch camping spots';
+    toast.error(error.value);
   } finally {
     loading.value = false;
   }
 };
 
+// Initialize and load data
+onMounted(async () => {
+  await fetchSpots();
+});
+
+// Existing functions
 function closeAddModal() {
   showAddModal.value = false
   editingSpot.value = null
@@ -295,48 +298,39 @@ function closeAddModal() {
 
 async function handleSaveSpot(spotData) {
   try {
-    // Check if the auth store has been initialized properly
-    if (!authStore.fullUser?.user_id) {
+    if (!authStore.isAuthenticated || !authStore.isOwner) {
       toast.error('Authentication data not loaded. Please refresh the page and try again.');
       return;
     }
-    
-    // Log the form data to verify what's being sent
-    console.log("Sending camping spot data:");
-    for (let [key, value] of spotData.entries()) {
-      console.log(`${key}: ${typeof value === 'object' ? 'File or Object' : value}`);
-    }
-    
-    let response;
-    try {
-      if (editingSpot.value) {
-        console.log(`Updating existing spot ID: ${editingSpot.value.camping_spot_id}`);
-        response = await axios.put(`/camping-spots/${editingSpot.value.camping_spot_id}`, spotData);
-        toast.success('Spot updated successfully');
-      } else {
-        console.log('Creating new camping spot');
-        response = await axios.post('/camping-spots', spotData);
-        toast.success('Spot created successfully');
-      }
-      
-      console.log('Response data:', response.data);
+
+    // If we received spotData with camping_spot_id, it means the spot was already created
+    // by the modal component, so we just need to handle the success case
+    if (spotData.camping_spot_id) {
+      toast.success('Camping spot created successfully');
       closeAddModal();
       await fetchSpots();
-    } catch (apiError) {
-      console.error('API Error:', apiError);
-      
-      if (apiError.response) {
-        // Server responded with an error
-        console.error('Error response:', apiError.response.data);
-        const errorMessage = apiError.response.data?.error || 'Server error occurred';
-        const errorDetails = apiError.response.data?.details ? `: ${apiError.response.data.details}` : '';
-        toast.error(`${errorMessage}${errorDetails}`);
-      } else if (apiError.request) {
-        // Request was made but no response
-        toast.error('No response from server. Please check your connection.');
-      } else {
-        // Error setting up the request
-        toast.error(`Request setup error: ${apiError.message}`);
+      return;
+    }
+    
+    // Only proceed with API calls if we're editing
+    if (editingSpot.value) {
+      try {
+        const response = await axios.put(`/api/camping-spots/${editingSpot.value.camping_spot_id}`, spotData);
+        toast.success('Spot updated successfully');
+        closeAddModal();
+        await fetchSpots();
+      } catch (apiError) {
+        console.error('API Error:', apiError);
+        
+        if (apiError.response) {
+          const errorMessage = apiError.response.data?.error || 'Server error occurred';
+          const errorDetails = apiError.response.data?.details ? `: ${apiError.response.data.details}` : '';
+          toast.error(`${errorMessage}${errorDetails}`);
+        } else if (apiError.request) {
+          toast.error('No response from server. Please check your connection.');
+        } else {
+          toast.error(`Request setup error: ${apiError.message}`);
+        }
       }
     }
   } catch (error) {
@@ -349,7 +343,7 @@ async function deleteSpot() {
   if (!spotToDelete.value) return
   
   try {
-    await axios.delete(`/camping-spots/${spotToDelete.value.camping_spot_id}`)
+    await axios.delete(`/api/camping-spots/${spotToDelete.value.camping_spot_id}`)
     toast.success('Spot deleted successfully')
     showDeleteModal.value = false
     spotToDelete.value = null
@@ -365,9 +359,7 @@ const manageAvailability = (spot) => {
   showAvailabilityModal.value = true
 }
 
-// This function handles the date selection from our calendar component
 const handleCalendarDateSelected = (dateRange) => {
-  // Check if we have a valid dateRange and selectedSpot before proceeding
   if (!dateRange || !selectedSpot.value || !selectedSpot.value.camping_spot_id) {
     console.error('Invalid date range or no spot selected');
     return;
@@ -375,7 +367,6 @@ const handleCalendarDateSelected = (dateRange) => {
 
   console.log('Dates blocked:', dateRange);
   
-  // Refresh the list of spots when we come back
   setTimeout(() => {
     fetchSpots();
   }, 500);
@@ -387,10 +378,8 @@ const updateSpotPrice = async (newPrice) => {
       price_per_night: newPrice 
     });
     
-    // Update local data
     selectedSpot.value.price_per_night = newPrice;
     
-    // Update in the spots list
     const spotIndex = spots.value.findIndex(s => s.camping_spot_id === selectedSpot.value.camping_spot_id);
     if (spotIndex !== -1) {
       spots.value[spotIndex].price_per_night = newPrice;
@@ -406,17 +395,20 @@ const updateSpotPrice = async (newPrice) => {
 </script>
 
 <style scoped>
-/* Improve the modal positioning */
+.dashboard-spots {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
 .max-h-\[90vh\] {
   max-height: 90vh;
 }
 
-/* Fix modal scrolling issues */
 :deep(.dp__overlay) {
   z-index: 100;
 }
 
-/* Animation for better UX feedback */
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }

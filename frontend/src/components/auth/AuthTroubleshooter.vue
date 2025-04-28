@@ -1,0 +1,115 @@
+<template>
+  <div v-if="showBanner" class="fixed bottom-0 left-0 right-0 bg-yellow-100 border-t border-yellow-200 p-3 shadow-lg z-50">
+    <div class="container mx-auto flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="text-yellow-800">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm font-medium text-yellow-800">
+            {{ message }}
+          </p>
+        </div>
+      </div>
+      
+      <div class="flex items-center space-x-3">
+        <button 
+          @click="troubleshoot" 
+          class="px-3 py-1 bg-yellow-200 hover:bg-yellow-300 text-yellow-800 text-sm font-medium rounded"
+          :disabled="troubleshootRunning"
+        >
+          {{ troubleshootRunning ? 'Running...' : 'Fix it' }}
+        </button>
+        <button @click="dismiss" class="text-yellow-600 hover:text-yellow-800">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted, watch } from 'vue';
+import { useAuthStore } from '@/stores/auth';
+import { supabase } from '@/lib/supabase';
+
+const authStore = useAuthStore();
+const showBanner = ref(false);
+const message = ref('Authentication issues detected');
+const troubleshootRunning = ref(false);
+
+// Watch for auth state issues
+watch(() => authStore.isInitialized, async (isInitialized) => {
+  if (isInitialized && !authStore.isLoggedIn && localStorage.getItem('token')) {
+    // We have a token but not logged in - potential auth issue
+    message.value = 'Authentication session mismatch detected';
+    showBanner.value = true;
+  }
+}, { immediate: false });
+
+// Troubleshooting function
+const troubleshoot = async () => {
+  troubleshootRunning.value = true;
+  
+  try {
+    // Check if we have a token in local storage
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      message.value = 'No authentication token found';
+      return;
+    }
+    
+    // Check session with Supabase
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError) {
+      console.error('Session error:', sessionError);
+      message.value = 'Error retrieving session: ' + sessionError.message;
+      return;
+    }
+    
+    if (!session) {
+      // No valid session with Supabase
+      console.log('No valid session, clearing token');
+      localStorage.removeItem('token');
+      message.value = 'Session expired. Please login again.';
+      return;
+    }
+    
+    // Reinitialize auth state
+    await authStore.initAuth({ forceRefresh: true });
+    
+    if (authStore.isLoggedIn) {
+      message.value = 'Authentication fixed successfully!';
+      setTimeout(() => {
+        showBanner.value = false;
+      }, 3000);
+    } else {
+      message.value = 'Could not restore session. Please login again.';
+    }
+  } catch (error) {
+    console.error('Troubleshooting error:', error);
+    message.value = 'Error fixing authentication: ' + error.message;
+  } finally {
+    troubleshootRunning.value = false;
+  }
+};
+
+// Dismiss the banner
+const dismiss = () => {
+  showBanner.value = false;
+};
+
+// Check on component mount
+onMounted(async () => {
+  // Only show the troubleshooter if we have potential auth issues
+  if (localStorage.getItem('token') && !authStore.isLoggedIn && authStore.isInitialized) {
+    showBanner.value = true;
+  }
+});
+</script>

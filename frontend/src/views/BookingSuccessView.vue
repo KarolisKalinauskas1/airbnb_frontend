@@ -78,6 +78,7 @@ import { useRoute, useRouter } from 'vue-router'
 import axios from '@/axios'
 import { useToast } from 'vue-toastification'
 import { useAuthStore } from '@/stores/auth'
+import { corsResiliantRequest } from '@/utils/corsHelper'
 
 const route = useRoute()
 const router = useRouter()
@@ -101,11 +102,22 @@ const processBookingSession = async () => {
       throw new Error('No session ID provided')
     }
     
-    // Process the booking with the session ID
-    const { data } = await axios.get(`/api/bookings/stripe-success?session_id=${sessionId}`)
+    console.log('Processing booking session with ID:', sessionId)
     
-    if (data && data.booking_id) {
-      bookingId.value = data.booking_id
+    // Use the API proxy with the correct endpoint
+    const response = await axios.get('/api/bookings/success', {
+      params: { session_id: sessionId }
+    });
+    
+    // Check if we got an auth token in the response
+    if (response.headers.authorization) {
+      const token = response.headers.authorization.replace('Bearer ', '');
+      // Update the auth store with the new token
+      await authStore.setAuthToken(token);
+    }
+    
+    if (response.data && response.data.booking_id) {
+      bookingId.value = response.data.booking_id
       
       // Refresh user data to include the new booking
       await authStore.fetchFullUserInfo(true)

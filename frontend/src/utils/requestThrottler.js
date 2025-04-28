@@ -8,13 +8,17 @@ const requestTimestamps = {};
 
 // Configurable options
 const DEFAULT_OPTIONS = {
-  minInterval: 300, // Reduced from 500ms to 300ms
-  maxRequests: 5,    // Increased from 3 to 5
-  windowSize: 5000,  // 5 seconds window
+  minInterval: 200, // Reduced from 300ms to 200ms
+  maxRequests: 10,  // Increased from 5 to 10
+  windowSize: 10000,  // Increased window size to 10 seconds
   whitelistedPaths: [
-    '/api/camping-spots',  // Whitelist camping spots API
-    '/camping-spots',      // Also whitelist non-API version
-    '/api/users/session'   // Whitelist session checks
+    '/api/camping-spots',  
+    '/camping-spots',
+    '/api/users/session',
+    '/api/users/full-info', // Whitelist the problematic endpoint
+    '/users/full-info',     // Also whitelist non-API version
+    '/api/health',
+    '/health'
   ]
 };
 
@@ -27,23 +31,9 @@ export function shouldAllowRequest(requestId, options = {}) {
   const config = { ...DEFAULT_OPTIONS, ...options };
   const now = Date.now();
 
-  // Allow whitelisted paths without throttling
+  // Always allow whitelisted paths without throttling
   if (config.whitelistedPaths.some(path => requestId.includes(path))) {
-    return true;
-  }
-  
-  // Special handling for user info requests - allow with longer interval
-  if (requestId.includes('/api/users/full-info')) {
-    const lastRequest = requestTimestamps[requestId] || 0;
-    const elapsed = now - lastRequest;
-    
-    // Use a longer interval (1000ms) for user info requests
-    if (lastRequest && elapsed < 1000) {
-      console.warn(`Request to ${requestId} throttled (too frequent). Wait 1000ms between requests.`);
-      return false;
-    }
-    
-    requestTimestamps[requestId] = now;
+    console.log(`Request to ${requestId} allowed (whitelisted path)`);
     return true;
   }
 
@@ -80,4 +70,13 @@ export function shouldAllowRequest(requestId, options = {}) {
  */
 export function resetThrottling(requestId) {
   delete requestTimestamps[requestId];
+  console.log(`Throttling reset for: ${requestId}`);
+}
+
+/**
+ * Reset all throttling
+ */
+export function resetAllThrottling() {
+  Object.keys(requestTimestamps).forEach(key => delete requestTimestamps[key]);
+  console.log('All request throttling has been reset');
 }

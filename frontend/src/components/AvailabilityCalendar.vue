@@ -185,18 +185,6 @@
               </div>
             </div>
           </div>
-          
-          <!-- Color legends -->
-          <div class="mt-4 flex flex-wrap gap-4 calendar-legend">
-            <div class="legend-item">
-              <span class="legend-color legend-blocked"></span>
-              <span class="text-sm">{{ isOwner ? 'Blocked by Owner' : 'Unavailable' }}</span>
-            </div>
-            <div class="legend-item">
-              <span class="legend-color legend-booked"></span>
-              <span class="text-sm">{{ isOwner ? 'Booked by Guest' : 'Booked' }}</span>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -466,35 +454,18 @@ const loadBookings = async () => {
     
     console.log(`Fetching availability from ${startDateStr} to ${endDateStr}`);
     
-    try {
-      // Try API endpoint first
-      const response = await axios.get(`/api/camping-spots/${props.campingSpotId}/availability`, {
-        params: { 
-          startDate: startDateStr,
-          endDate: endDateStr
-        },
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-      
-      processBookingResponse(response.data);
-    } catch (apiError) {
-      console.warn('API endpoint failed, trying fallback:', apiError.message);
-      
-      // Try fallback endpoint
-      const fallbackResponse = await axios.get(`/camping-spots/${props.campingSpotId}/availability`, {
-        params: { 
-          startDate: startDateStr,
-          endDate: endDateStr
-        },
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-      
-      processBookingResponse(fallbackResponse.data);
-    }
+    // Try API endpoint
+    const response = await axios.get(`/api/camping-spots/${props.campingSpotId}/availability`, {
+      params: { 
+        startDate: startDateStr,
+        endDate: endDateStr
+      },
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+    
+    processBookingResponse(response.data);
   } catch (error) {
     console.error('Failed to fetch bookings:', error);
     error.value = 'Failed to load availability data.';

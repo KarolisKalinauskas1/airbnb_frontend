@@ -5,7 +5,6 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
-// vite.config.js
 export default defineConfig({
   plugins: [
     vue(),
@@ -19,47 +18,29 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': {
+      // API endpoints
+      '^/api/.*': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path
+      },
+      // Health check endpoints
+      '^/(ping|health)': {
         target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false
       },
-      '/camping-spots': {
+      // Other backend endpoints
+      '^/(camping-spots|amenities|countries|users|bookings|dashboard)/.*': {
         target: 'http://localhost:3000',
         changeOrigin: true,
-        secure: false
-      },
-      '/amenities': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-        secure: false
-      },
-      '/countries': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-        secure: false
-      },
-      '/users': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-        secure: false
-      },
-      '/auth': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-        secure: false
-      },
-      '/bookings': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-        secure: false
-      },
-      '/dashboard': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-        secure: false
+        secure: false,
+        rewrite: (path) => path.replace(/^\/(camping-spots|amenities|countries|users|bookings|dashboard)/, '/api/$1')
       }
-    }
+    },
+    // Handle history mode routing
+    historyApiFallback: true
   }
 })
 

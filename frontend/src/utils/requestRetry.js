@@ -1,0 +1,96 @@
+import axios from '@/axios';
+
+/**
+ * Utility to retry API requests with exponential backoff
+ */
+export async function retryRequest(config, retries = 2, initialDelay = 1000) {
+  let lastError;
+  let delay = initialDelay;
+  
+  // Original timeout for reference
+  const originalTimeout = config.timeout || axios.defaults.timeout;
+  
+  // Make multiple attempts
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      // On retries, adjust timeout slightly
+      if (attempt > 0) {
+        console.log(`Retry attempt ${attempt}/${retries} for ${config.url}`);
+        
+        // Use a shorter timeout for retries to fail faster if still having issues
+        config.timeout = Math.floor(originalTimeout * 0.8);
+      }
+      
+      // Make the request
+      return await axios.request(config);
+    } catch (error) {
+      lastError = error;
+      
+      // Don't retry if it's not a timeout or network error
+      if (!isRetryableError(error)) {
+        throw error;
+      }
+      
+      // If this was the last attempt, throw the error
+      if (attempt === retries) {
+        throw error;
+      }
+      
+      // Wait before retrying, with exponential backoff
+      await new Promise(resolve => setTimeout(resolve, delay));
+      delay *= 1.5; // Increase delay for each retry
+    }
+  }
+  
+  // This should not be reached, but just in case
+  throw lastError;
+}
+
+/**
+ * Check if an error is retryable
+ */
+function isRetryableError(error) {
+  // Retry timeout errors
+  if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+    return true;
+  }
+  
+  // Retry server errors (5xx)
+  if (error.response && error.response.status >= 500) {
+    return true;
+  }
+  
+  // Retry if we're offline and might come back online soon
+  if (!navigator.onLine) {
+    return true;
+  }
+  
+  // Retry on network errors (e.g. connection refused)
+  if (error.message?.includes('Network Error')) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Fetch data with retry capability
+ */
+export async function fetchWithRetry(url, options = {}) {
+  const { retries = 2, initialDelay = 1000, ...axiosOptions } = options;
+  
+  // Create config for axios
+  const config = {
+    url,
+    method: options.method || 'GET',
+    ...axiosOptions
+  };
+  
+  return retryRequest(config, retries, initialDelay);
+}
+
+export default {
+  retryRequest,
+  fetchWithRetry,
+  isRetryableError
+};

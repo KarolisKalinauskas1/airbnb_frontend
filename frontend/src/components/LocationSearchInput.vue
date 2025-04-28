@@ -19,7 +19,11 @@
       </button>
     </div>
     
-    <div v-show="isDropdownOpen && searchResults.length > 0" class="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-lg max-h-60 overflow-y-auto">
+    <div 
+      v-show="isDropdownOpen && searchResults.length > 0" 
+      class="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-lg max-h-60 overflow-y-auto"
+      style="z-index: 10000 !important; position: absolute !important;"
+    >
       <div 
         v-for="result in searchResults" 
         :key="result.place_id || result.id"
@@ -179,3 +183,19 @@ watch(() => props.spots, () => {
   }
 });
 </script>
+
+<style>
+/* Ensure dropdown appears on top of all other elements */
+.location-search {
+  position: relative;
+}
+
+.location-search .absolute {
+  position: absolute !important;
+  z-index: 10000 !important;
+  left: 0;
+  right: 0;
+  top: 100%;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+</style>

@@ -1,4 +1,6 @@
 import './assets/main.css'
+import './assets/z-index-fixes.css'
+import './assets/map-markers.css'
 import { createApp } from 'vue'
 import App from './App.vue'
 import { createPinia } from 'pinia'
@@ -6,78 +8,82 @@ import router from './router'
 import Toast from 'vue-toastification'
 import 'vue-toastification/dist/index.css'
 import axios from '@/axios'
+import { applyUserDataFix } from './utils/userDataFix'
+import { configureAxiosInterceptors } from './axios-interceptors'
+import { useAuthStore } from './stores/auth'
+import { supabase } from '@/lib/supabase'
+
+console.log('Starting app initialization...')
+
+// Apply the user data fix before Vue initialization
+try {
+  applyUserDataFix()
+  console.log('User data fix applied successfully')
+} catch (error) {
+  console.error('Error applying user data fix:', error)
+}
 
 // Create the Pinia store
 const pinia = createPinia()
+console.log('Pinia store created')
 
-// Add this before the app initialization
-const checkBackendStatus = async () => {
-  // Try several endpoints to ensure at least one works
-  const endpointsToTry = ['/', '/health'];
-  
-  for (const endpoint of endpointsToTry) {
-    try {
-      const response = await axios.get(endpoint, { 
-        timeout: 3000,
-        // Accept 2xx and 4xx responses as "success" for the connectivity check
-        // This is just to check if the server is responding at all
-        validateStatus: (status) => status >= 200 && status < 500
-      });
-      
-      console.log(`Backend status check succeeded with ${endpoint}`);
-      return true;
-    } catch (error) {
-      console.error(`Backend status check failed for ${endpoint}:`, error.message);
-    }
-  }
-  
-  console.error('All backend status checks failed');
-  return false;
-}
-
+// Create and configure the app
 const app = createApp(App)
+console.log('Vue app created')
 
-// Add the following lines near where Vue app is created
-import SimpleDateRangeSelector from './components/SimpleDateRangeSelector.vue'
-import SimpleLocationPicker from './components/SimpleLocationPicker.vue'
-
-// Register components globally
-app.component('DateRangePicker', SimpleDateRangeSelector)
-app.component('LocationPicker', SimpleLocationPicker)
-
-// Configure toast notifications
-const toastOptions = {
-  position: "top-right",
-  timeout: 3000,
-  closeOnClick: true,
-  pauseOnFocusLoss: true,
-  pauseOnHover: true,
-  draggable: true,
-  draggablePercent: 0.6,
-  showCloseButtonOnHover: false,
-  hideProgressBar: false,
-  closeButton: "button",
-  icon: true,
-  rtl: false
-}
-
-// Use plugins
-app.use(pinia)
-app.use(Toast, toastOptions)
-app.use(router)
-
-// Mount the app
-app.mount('#app')
-
-// Initialize auth store early but don't block rendering
-import { useAuthStore } from '@/stores/auth';
+// Configure plugins
 try {
-  const authStore = useAuthStore();
-  if (typeof authStore.initAuth === 'function') {
-    authStore.initAuth().catch(error => console.error("Auth initialization error:", error));
-  } else {
-    console.error("Auth initialization method not found - check auth store implementation");
-  }
-} catch (err) {
-  console.error("Failed to initialize auth store:", err);
+  app.use(pinia)
+  app.use(router)
+  app.use(Toast, {
+    position: 'top-right',
+    timeout: 3000,
+    closeOnClick: true,
+    pauseOnFocusLoss: true,
+    pauseOnHover: true,
+    draggable: true,
+    draggablePercent: 0.6,
+    showCloseButtonOnHover: false,
+    hideProgressBar: true,
+    closeButton: 'button',
+    icon: true,
+    rtl: false
+  })
+  console.log('Plugins configured successfully')
+} catch (error) {
+  console.error('Error configuring plugins:', error)
 }
+
+// Configure axios interceptors
+try {
+  configureAxiosInterceptors()
+  console.log('Axios interceptors configured')
+} catch (error) {
+  console.error('Error configuring axios interceptors:', error)
+}
+
+// Initialize auth store before mounting
+const authStore = useAuthStore()
+console.log('Auth store initialized')
+
+// Set up auth state change listener
+supabase.auth.onAuthStateChange((event, session) => {
+  console.log('Auth state changed:', event)
+  if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+    authStore.setSession(session)
+  } else if (event === 'SIGNED_OUT') {
+    authStore.clearSession()
+  }
+})
+
+// Initialize auth and mount app
+authStore.initAuth()
+  .then(() => {
+    console.log('Auth initialization completed')
+    app.mount('#app')
+  })
+  .catch((error) => {
+    console.error('Auth initialization failed:', error)
+    // Still mount the app even if auth init fails
+    app.mount('#app')
+  })

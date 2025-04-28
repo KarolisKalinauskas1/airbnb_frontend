@@ -1,0 +1,271 @@
+/**
+ * Network connection helper utility
+ * Provides functions to check and monitor network connectivity
+ */
+
+import axios from '@/axios';
+
+// Constant timeouts
+const TIMEOUT = {
+  SHORT: 3000,   // 3 seconds
+  MEDIUM: 5000,  // 5 seconds
+  LONG: 10000    // 10 seconds
+};
+
+const RETRY_COUNT = 3;
+
+/**
+ * Test connections to multiple endpoints
+ * @param {Array<string>} endpoints List of endpoints to check
+ * @param {number} timeout Timeout in milliseconds
+ * @returns {Promise<Object>} Test results
+ */
+export async function testConnections(endpoints = ['/health', '/api/health', '/api/ping'], timeout = TIMEOUT.MEDIUM) {
+  const results = {
+    success: false,
+    working: [],
+    failing: [],
+    errors: {}
+  };
+  
+  // Test each endpoint
+  for (const endpoint of endpoints) {
+    try {
+      const start = Date.now();
+      const response = await axios.get(endpoint, { timeout });
+      const duration = Date.now() - start;
+      
+      if (response.status >= 200 && response.status < 300) {
+        results.working.push({
+          endpoint,
+          status: response.status,
+          duration,
+          data: response.data
+        });
+      } else {
+        results.failing.push({
+          endpoint,
+          status: response.status,
+          duration
+        });
+        results.errors[endpoint] = `HTTP ${response.status}`;
+      }
+    } catch (error) {
+      results.failing.push({
+        endpoint,
+        error: error.message
+      });
+      results.errors[endpoint] = error.message;
+    }
+  }
+  
+  // Mark as success if at least one endpoint worked
+  results.success = results.working.length > 0;
+  
+  return results;
+}
+
+/**
+ * Detect the type of network issues
+ * @returns {Promise<Object>} Network diagnosis
+ */
+export async function diagnoseNetworkIssues() {
+  const diagnosis = {
+    browserOnline: navigator.onLine,
+    apiAccessible: false,
+    authServiceAccessible: false,
+    possibleCause: null
+  };
+  
+  // If browser reports offline, don't check further
+  if (!diagnosis.browserOnline) {
+    diagnosis.possibleCause = 'OFFLINE';
+    return diagnosis;
+  }
+  
+  // Try to access basic API endpoint
+  try {
+    await axios.get('/api/ping', { timeout: TIMEOUT.SHORT });
+    diagnosis.apiAccessible = true;
+  } catch (error) {
+    diagnosis.apiAccessible = false;
+    
+    // Determine error type
+    if (error.code === 'ECONNABORTED') {
+      diagnosis.possibleCause = 'TIMEOUT';
+    } else if (error.response) {
+      diagnosis.possibleCause = 'API_ERROR';
+    } else if (error.request) {
+      diagnosis.possibleCause = 'NO_RESPONSE';
+    } else {
+      diagnosis.possibleCause = 'REQUEST_SETUP_ERROR';
+    }
+  }
+  
+  return diagnosis;
+}
+
+/**
+ * Create a network status monitor that updates a reactive state
+ * @param {Object} state Reactive state object to update
+ * @param {Function} onChange Callback when network status changes
+ * @returns {Object} Monitor control functions
+ */
+export function createNetworkMonitor(state, onChange) {
+  let checkInterval = null;
+  
+  // Handle online status change
+  const handleOnlineStatusChange = () => {
+    const wasOnline = state.isOnline;
+    state.isOnline = navigator.onLine;
+    
+    if (state.isOnline !== wasOnline && typeof onChange === 'function') {
+      onChange(state.isOnline);
+    }
+  };
+  
+  // Start monitoring
+  const start = (intervalMs = 30000) => {
+    // Set up event listeners
+    window.addEventListener('online', handleOnlineStatusChange);
+    window.addEventListener('offline', handleOnlineStatusChange);
+    
+    // Initial check
+    handleOnlineStatusChange();
+    
+    // Set up periodic checks
+    if (checkInterval) clearInterval(checkInterval);
+    checkInterval = setInterval(async () => {
+      if (navigator.onLine) {
+        const testResult = await testConnections(['/api/ping'], TIMEOUT.SHORT);
+        state.isOnline = testResult.success;
+        state.lastChecked = new Date();
+        
+        if (typeof onChange === 'function') {
+          onChange(state.isOnline);
+        }
+      }
+    }, intervalMs);
+    
+    return { stop };
+  };
+  
+  // Stop monitoring
+  const stop = () => {
+    window.removeEventListener('online', handleOnlineStatusChange);
+    window.removeEventListener('offline', handleOnlineStatusChange);
+    
+    if (checkInterval) {
+      clearInterval(checkInterval);
+      checkInterval = null;
+    }
+  };
+  
+  return { start, stop };
+}
+
+/**
+ * Check if we have a working connection
+ * @returns {Promise<boolean>} True if connection is working
+ */
+export async function checkConnection() {
+  if (!navigator.onLine) return false;
+  
+  try {
+    const testResult = await testConnections(['/api/ping'], TIMEOUT.SHORT);
+    return testResult.success;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
+ * Makes a request with automatic retries and fallback paths
+ * @param {string} baseEndpoint - The base endpoint without /api prefix
+ * @param {Object} options - Options for the request
+ * @returns {Promise<Object>} - The response data
+ */
+export async function resilientRequest(baseEndpoint, options = {}) {
+  const { 
+    method = 'GET', 
+    params = {}, 
+    data = null, 
+    headers = {}, 
+    timeout = 8000,
+    retries = RETRY_COUNT
+  } = options;
+
+  // Add timestamp to prevent caching
+  const queryParams = new URLSearchParams(params);
+  queryParams.append('_t', Date.now());
+
+  // Calculate all possible URLs to try
+  const endpoints = [
+    `/api${baseEndpoint}${queryParams.toString() ? '?' + queryParams.toString() : ''}`,
+    `${baseEndpoint}${queryParams.toString() ? '?' + queryParams.toString() : ''}`,
+    `http://localhost:3000/api${baseEndpoint}${queryParams.toString() ? '?' + queryParams.toString() : ''}`
+  ];
+  
+  // Try each endpoint with retries
+  let lastError = null;
+  
+  for (let attempt = 0; attempt < retries; attempt++) {
+    // Calculate which endpoint to use
+    const endpointIndex = attempt % endpoints.length;
+    const currentEndpoint = endpoints[endpointIndex];
+    
+    try {
+      console.log(`Making request to ${currentEndpoint} (attempt ${attempt + 1})`);
+      
+      const response = await axios({
+        url: currentEndpoint,
+        method,
+        data,
+        headers,
+        timeout: timeout + (attempt * 1000), // Increase timeout with each attempt
+      });
+      
+      // If successful, return the data
+      return response.data;
+    } catch (error) {
+      console.warn(`Request failed for ${currentEndpoint}: ${error.message}`);
+      lastError = error;
+      
+      // Wait before next attempt
+      if (attempt < retries - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+      }
+    }
+  }
+  
+  // If all attempts fail, throw the last error
+  throw lastError || new Error('Failed to get response after multiple attempts');
+}
+
+/**
+ * Check if the server is available
+ * @returns {Promise<boolean>} - True if the server is available
+ */
+export async function isServerAvailable() {
+  try {
+    const response = await axios.get('/api/ping', { timeout: 3000 });
+    return response.status === 200;
+  } catch (error) {
+    try {
+      const fallbackResponse = await axios.get('/ping', { timeout: 2000 });
+      return fallbackResponse.status === 200;
+    } catch (fallbackError) {
+      return false;
+    }
+  }
+}
+
+export default {
+  testConnections,
+  diagnoseNetworkIssues,
+  createNetworkMonitor,
+  checkConnection,
+  resilientRequest,
+  isServerAvailable,
+  TIMEOUT
+};

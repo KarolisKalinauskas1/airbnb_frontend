@@ -5,6 +5,7 @@
  */
 import { supabase } from '@/lib/supabase';
 import axios from '@/axios';
+import { useAuthStore } from '@/stores/auth';
 
 /**
  * Check if session token is valid and not expired
@@ -65,17 +66,46 @@ export async function refreshToken() {
  */
 export async function fixAuthState() {
   try {
-    console.log('Fixing auth state...');
-    
-    // Get current session from Supabase
+    // Get current Supabase session
     const { data: { session } } = await supabase.auth.getSession();
+    const authStore = useAuthStore();
     
-    // Check if we have a session
-    if (!session) {
-      console.log('No active session, cleaning up localStorage');
-      localStorage.removeItem('token');
-      localStorage.removeItem('userData');
-      return false;
+    // Case 1: No Supabase session, but app thinks we're logged in
+    if (!session && authStore.isLoggedIn) {
+      console.log('No Supabase session but app thinks we are logged in - resetting state');
+      authStore.resetAuth();
+      return true;
+    }
+    
+    // Case 2: Session exists but app doesn't know
+    if (session && !authStore.isLoggedIn) {
+      console.log('Supabase session exists but app thinks we are logged out - fixing...');
+      
+      // Update auth store
+      authStore.token = session.access_token;
+      authStore.user = session.user;
+      
+      // Try to fetch user data
+      try {
+        const response = await axios.get('/api/users/full-info', {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`
+          }
+        });
+        authStore.setFullUserData(response.data);
+        console.log('Successfully restored user data');
+        return true;
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        return false;
+      }
+    }
+    
+    // Case 3: Session exists and app is logged in but token mismatch
+    if (session && authStore.isLoggedIn && authStore.token !== session.access_token) {
+      console.log('Token mismatch detected, updating...');
+      authStore.token = session.access_token;
+      return true;
     }
     
     // Refresh token if needed

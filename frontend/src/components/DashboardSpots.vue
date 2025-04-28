@@ -1,0 +1,92 @@
+<template>
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div v-for="spot in spots" :key="spot.camping_spot_id" class="bg-white rounded-lg shadow-md overflow-hidden">
+      <!-- Image section -->
+      <div class="relative h-48 overflow-hidden">
+        <img 
+          :src="spot.images && spot.images.length > 0 ? spot.images[0].image_url : '/placeholder-image.jpg'"
+          :alt="spot.title"
+          class="w-full h-full object-cover"
+        >
+      </div>
+      
+      <!-- Content section -->
+      <div class="p-4">
+        <h3 class="text-xl font-semibold mb-2">{{ spot.title }}</h3>
+        <p class="text-gray-600 mb-2 line-clamp-2">{{ spot.description }}</p>
+        
+        <!-- Amenities section -->
+        <div v-if="spot.camping_spot_amenities?.length" class="mb-2">
+          <p class="text-sm text-gray-500">Amenities:</p>
+          <div class="flex flex-wrap gap-1">
+            <span 
+              v-for="amenityConnection in spot.camping_spot_amenities" 
+              :key="amenityConnection.amenity_id"
+              class="text-xs bg-gray-100 px-2 py-1 rounded"
+            >
+              {{ amenityConnection.amenity.name }}
+            </span>
+          </div>
+        </div>
+
+        <div class="flex justify-between items-center">
+          <span class="text-lg font-bold">€{{ spot.price_per_night }}/night</span>
+          <div class="space-x-2">
+            <button 
+              @click="editSpot(spot)"
+              class="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+            >
+              Edit
+            </button>
+            <button 
+              @click="deleteSpot(spot.camping_spot_id)"
+              class="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue';
+import axios from '@/axios';
+import { useToast } from 'vue-toastification';
+
+const spots = ref([]);
+const toast = useToast();
+
+const fetchSpots = async () => {
+  try {
+    const response = await axios.get('/api/camping-spots');
+    spots.value = response.data;
+  } catch (error) {
+    console.error('Error fetching spots:', error);
+    toast.error('Failed to load camping spots');
+  }
+};
+
+const editSpot = (spot) => {
+  // Emit edit event or handle edit logic
+  console.log('Edit spot:', spot);
+};
+
+const deleteSpot = async (spotId) => {
+  if (!confirm('Are you sure you want to delete this spot?')) return;
+  
+  try {
+    await axios.delete(`/api/camping-spots/${spotId}`);
+    toast.success('Spot deleted successfully');
+    // Refresh the spots list
+    await fetchSpots();
+  } catch (error) {
+    console.error('Failed to delete spot:', error);
+    toast.error('Failed to delete spot');
+  }
+};
+
+onMounted(fetchSpots);
+</script> 

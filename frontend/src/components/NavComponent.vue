@@ -9,25 +9,28 @@ const isLoading = ref(true)
 
 // Fix the authentication checks to be more reliable
 const isAuthenticated = computed(() => {
-  return !!authStore.token || authStore.isLoggedIn;
+  return authStore.isLoggedIn
 })
 
 const userName = computed(() => authStore.fullUser?.full_name || 'User')
-const isSeller = computed(() => authStore.fullUser?.isowner === 1)
+const isOwner = computed(() => {
+  return authStore.fullUser?.isowner === 1
+})
 
 // Compute menu items based on auth state with correct routes
 const menuItems = computed(() => {
   const items = [
     { name: 'Home', path: '/' },
+    // Add "Browse Campers" for ALL users
     { name: 'Browse Campers', path: '/campers' }
   ]
   
   if (isAuthenticated.value) {
-    // Account link for logged in users
+    // Account link for all logged in users
     items.push({ name: 'Account', path: '/account' })
     
-    // Only add Dashboard link for sellers/owners
-    if (isSeller.value) {
+    // Dashboard link ONLY for owners (isowner === 1)
+    if (isOwner.value) {
       items.push({ name: 'Dashboard', path: '/dashboard' })
     }
   } else {
@@ -53,22 +56,21 @@ const handleLogout = async () => {
 onMounted(async () => {
   try {
     isLoading.value = true
-    console.log('NavComponent: Initializing auth...')
-    await authStore.initAuth()
+    if (!authStore.isInitialized) {
+      await authStore.initAuth()
+    }
+    isLoading.value = false
   } catch (error) {
     console.error('NavComponent: Auth initialization error:', error)
-  } finally {
     isLoading.value = false
   }
 })
 
-// For debugging - log auth state changes
-watch(() => [isAuthenticated.value, authStore.fullUser], ([newIsLoggedIn, newFullUser]) => {
-  console.log('NavComponent: Auth state changed', {
-    loggedIn: newIsLoggedIn ? 'yes' : 'no',
-    fullUser: newFullUser ? 'loaded' : 'not loaded',
-    isSeller: newFullUser?.isowner === 1 ? 'yes' : 'no'
-  })
+// Single watcher for auth state changes
+watch(() => authStore.isLoggedIn, (newIsLoggedIn) => {
+  if (newIsLoggedIn && !authStore.fullUser) {
+    authStore.fetchFullUserInfo()
+  }
 }, { immediate: false })
 </script>
 
@@ -89,6 +91,10 @@ watch(() => [isAuthenticated.value, authStore.fullUser], ([newIsLoggedIn, newFul
         >
           {{ item.name }}
         </RouterLink>
+
+        <router-link to="/network-diagnostics" class="text-gray-700 hover:text-gray-900 px-3 py-2 text-sm">
+          Network Diagnostics
+        </router-link>
 
         <button 
           v-if="isAuthenticated" 

@@ -133,6 +133,7 @@ import { ref, reactive, watch, onMounted, computed } from 'vue';
 import axios from '@/axios';
 import { useToast } from 'vue-toastification';
 import { shouldAllowRequest } from '@/utils/requestThrottler';
+import { useLoadingState } from '@/composables/useLoadingState';
 
 const props = defineProps({
   filters: {
@@ -160,7 +161,12 @@ const props = defineProps({
 const emit = defineEmits(['filter']);
 
 const toast = useToast();
-const isLoading = ref(false);
+
+// Create loading state for amenities fetch
+const { isLoading, runWithLoading } = useLoadingState('fetch-amenities', {
+  cooldownPeriod: 2000 // Prevent refetching for 2 seconds after completion
+});
+
 const loadingError = ref(null);
 
 // Initialize local state from props
@@ -235,46 +241,39 @@ const fetchAmenities = async () => {
   if (isLoading.value) return;
   
   // Use request throttler to avoid rate limiting
-  if (!shouldAllowRequest('/api/camping-spots/amenities')) {
+  if (!shouldAllowRequest('/camping-spots/amenities')) {
     return;
   }
   
   try {
-    isLoading.value = true;
-    loadingError.value = null;
-    
-    // First try the API endpoint
-    let response;
-    try {
-      response = await axios.get('/api/camping-spots/amenities', { 
-        timeout: 5000,
-        headers: { 'Accept': 'application/json' } 
-      });
-    } catch (apiError) {
-      console.warn('API endpoint failed, trying without prefix', apiError);
+    // Use our new loading state utility
+    await runWithLoading(async () => {
+      loadingError.value = null;
       
-      // Wait a moment before trying the fallback
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // First try the API endpoint
+      let response;
+      try {
+        response = await axios.get('/camping-spots/amenities', { 
+          timeout: 5000,
+          headers: { 'Accept': 'application/json' } 
+        });
+      } catch (apiError) {
+        console.warn('API endpoint failed:', apiError);
+        throw apiError; // No need for fallback since we're already using the correct endpoint
+      }
       
-      // Fall back to non-API endpoint
-      response = await axios.get('/camping-spots/amenities', {
-        timeout: 5000,
-        headers: { 'Accept': 'application/json' } 
-      });
-    }
-    
-    // Check if the response data is valid
-    if (response && response.data && Array.isArray(response.data)) {
-      amenitiesData.value = response.data;
-      console.log('Fetched amenities:', amenitiesData.value);
-    } else {
-      // If not array, it might be HTML or other invalid response
-      console.error('Invalid amenities data format:', response.data);
-      throw new Error('Invalid data format received from server');
-    }
+      // Process the response (existing code)
+      if (response && response.data && Array.isArray(response.data)) {
+        amenitiesData.value = response.data;
+        console.log('Fetched amenities:', amenitiesData.value);
+      } else {
+        console.error('Invalid amenities data format:', response.data);
+        throw new Error('Invalid data format received from server');
+      }
+    });
   } catch (error) {
-    console.error('Failed to fetch amenities:', error);
-    loadingError.value = 'Failed to load amenities';
+    loadingError.value = error.message || 'Failed to load amenities';
+    console.error('Error fetching amenities:', error);
     
     // Show error message
     toast.error('Failed to load amenities. Some filtering options may be unavailable.');
@@ -283,8 +282,6 @@ const fetchAmenities = async () => {
     if (props.availableAmenities && props.availableAmenities.length > 0) {
       amenitiesData.value = props.availableAmenities;
     }
-  } finally {
-    isLoading.value = false;
   }
 };
 

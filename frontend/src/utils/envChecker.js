@@ -1,0 +1,85 @@
+/**
+ * Environment Variable Checker
+ * 
+ * This utility helps check if required environment variables are present
+ * and logs warnings if any are missing.
+ */
+
+/**
+ * Check and log missing environment variables
+ */
+export function logEnvVariables() {
+  console.log('=== CHECKING ENVIRONMENT VARIABLES ===');
+  
+  // List of critical environment variables needed for app to function
+  const criticalVars = [
+    'VITE_SUPABASE_URL',
+    // Check for either ANON_KEY or KEY for Supabase auth
+    { name: 'Supabase Auth Key', check: () => !!import.meta.env.VITE_SUPABASE_ANON_KEY || !!import.meta.env.VITE_SUPABASE_KEY }
+  ];
+  
+  // List of optional but useful environment variables
+  const optionalVars = [
+    'VITE_GEOAPIFY_API_KEY',
+    'VITE_STRIPE_PUBLISHABLE_KEY',
+    'VITE_STRIPE_PUBLIC_KEY'  // Check both possible Stripe key names
+  ];
+  
+  // Check critical variables first
+  criticalVars.forEach(item => {
+    if (typeof item === 'string') {
+      // Simple string variable name
+      const value = import.meta.env[item];
+      if (!value) {
+        console.error(`${item} is not defined! App may not function correctly.`);
+      } else {
+        console.log(`${item} is defined`);
+      }
+    } else if (typeof item === 'object' && item.check) {
+      // Custom check function
+      const result = item.check();
+      if (!result) {
+        console.error(`${item.name} is not defined! App may not function correctly.`);
+      } else {
+        console.log(`${item.name} is defined`);
+      }
+    }
+  });
+  
+  // Check optional variables
+  optionalVars.forEach(varName => {
+    const value = import.meta.env[varName];
+    if (!value) {
+      console.warn(`${varName} is not defined. Some features might be limited.`);
+    } else {
+      console.log(`${varName} is defined`);
+    }
+  });
+  
+  console.log('===============================');
+}
+
+/**
+ * Check if a specific environment variable is defined
+ * @param {string} varName - The name of the environment variable to check
+ * @returns {boolean} - Whether the variable is defined
+ */
+export function isEnvVarDefined(varName) {
+  return !!import.meta.env[varName];
+}
+
+/**
+ * Get the value of an environment variable
+ * @param {string} varName - The name of the environment variable
+ * @param {*} defaultValue - Default value to return if variable is not defined
+ * @returns {string|*} - The variable value or default
+ */
+export function getEnvVar(varName, defaultValue = '') {
+  return import.meta.env[varName] || defaultValue;
+}
+
+export default {
+  logEnvVariables,
+  isEnvVarDefined,
+  getEnvVar
+};

@@ -1,0 +1,46 @@
+/**
+ * Styles for map markers and components
+ */
+
+.marker-donut {
+  width: 24px;
+  height: 24px;
+  background-color: rgba(225, 29, 72, 0.2);
+  border: 2px solid #e11d48;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.marker-donut-inner {
+  width: 10px;
+  height: 10px;
+  background-color: white;
+  border-radius: 50%;
+  border: 1px solid #e11d48;
+}
+
+/* Price marker styles */
+.price-marker {
+  background-color: #e11d48;
+  color: white;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  font-size: 11px;
+  border: 2px solid white;
+}
+
+/* Selected marker styles */
+.selected-marker {
+  transform: scale(1.2);
+  z-index: 100;
+  border-color: #3b82f6;
+}

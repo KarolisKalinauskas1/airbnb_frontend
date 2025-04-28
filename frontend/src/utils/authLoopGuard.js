@@ -1,0 +1,91 @@
+/**
+ * Auth Loop Guard
+ * 
+ * Special utility to prevent infinite loops in authentication flow
+ */
+
+// Track auth initialization attempts
+const authInitCounts = {
+  count: 0,
+  lastReset: Date.now(),
+  maxAttempts: 5,
+  timeWindow: 10000 // 10 seconds
+};
+
+/**
+ * Monitor auth initialization to detect loops
+ * @returns {boolean} true if safe to continue, false if should abort
+ */
+export function monitorAuthInit() {
+  const now = Date.now();
+  
+  // Reset counter if outside time window
+  if (now - authInitCounts.lastReset > authInitCounts.timeWindow) {
+    authInitCounts.count = 0;
+    authInitCounts.lastReset = now;
+  }
+  
+  // Increment counter
+  authInitCounts.count++;
+  
+  // Check if too many attempts
+  if (authInitCounts.count > authInitCounts.maxAttempts) {
+    console.error('Auth initialization loop detected! Aborting to prevent browser crash.');
+    return false;
+  }
+  
+  return true;
+}
+
+/**
+ * Reset auth initialization counter
+ */
+export function resetAuthInitMonitor() {
+  authInitCounts.count = 0;
+  authInitCounts.lastReset = Date.now();
+}
+
+/**
+ * Check if we're in a potential auth loop
+ */
+export function isInAuthLoop() {
+  return authInitCounts.count >= 3; // Consider 3+ rapid inits as suspicious
+}
+
+/**
+ * Emergency recovery for auth loops
+ */
+export function emergencyAuthRecovery() {
+  // Clear all auth related data to break loops
+  try {
+    // Save token before clearing
+    const currentToken = localStorage.getItem('token');
+    
+    // Clear localStorage auth items
+    localStorage.removeItem('auth_loop_count');
+    localStorage.removeItem('last_auth_attempt');
+    localStorage.removeItem('last_auth_event_time');
+    localStorage.removeItem('token_refresh_attempts');
+    localStorage.removeItem('last_user_fetch_time');
+    
+    // Don't clear these as they contain the actual auth data
+    // localStorage.removeItem('token');
+    // localStorage.removeItem('userData');
+    // localStorage.removeItem('supabase.auth.token');
+    
+    // Store a recovery flag so we know we're in recovery mode
+    localStorage.setItem('auth_recovery_mode', 'true');
+    localStorage.setItem('auth_recovery_time', Date.now().toString());
+    
+    // If we had a token, save it back to maintain the session
+    if (currentToken) {
+      localStorage.setItem('token', currentToken);
+    }
+    
+    console.log('Emergency auth recovery performed - partial cleanup only');
+    return true;
+  } catch (error) {
+    console.error('Emergency recovery failed:', error);
+    return false;
+  }
+}

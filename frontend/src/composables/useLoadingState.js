@@ -1,0 +1,95 @@
+/**
+ * Loading State Composable
+ * 
+ * A Vue composable that manages loading states for async operations.
+ * Helps prevent duplicate API calls by tracking if a request is in progress.
+ */
+import { ref, computed } from 'vue';
+import { isLoading, setLoading, clearLoadingState } from '@/utils/requestLoadingState';
+
+/**
+ * Composable for managing loading states of async operations
+ * @param {string} operationKey - Optional key to identify the operation type
+ * @param {Object} options - Additional options
+ * @returns {Object} - Loading state helpers
+ */
+export function useLoadingState(operationKey = null, options = {}) {
+  const {
+    cooldownPeriod = 0,
+    initialState = false,
+    debounceTime = 300 // Add debounce time option
+  } = options;
+  
+  // Local loading state as a fallback if no key provided
+  const localLoadingState = ref(initialState);
+  const lastRequestTime = ref(0);
+  
+  // Track this specific operation instance
+  const instanceId = operationKey ? `${operationKey}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` : null;
+  
+  // Loading state that considers both local and global state
+  const isLoadingOperation = computed(() => {
+    // If we have an operation key, check the global loading state
+    if (operationKey) {
+      return isLoading(operationKey, cooldownPeriod) || localLoadingState.value;
+    }
+    // Otherwise just use the local state
+    return localLoadingState.value;
+  });
+  
+  /**
+   * Execute a function with loading state tracking and debouncing
+   * @param {Function} fn - Async function to execute
+   * @param {Object} runOptions - Options for this execution
+   * @returns {Promise} - The result of the async function
+   */
+  const runWithLoading = async (fn, runOptions = {}) => {
+    const now = Date.now();
+    
+    // Check if we're within debounce period
+    if (!runOptions.force && now - lastRequestTime.value < debounceTime) {
+      console.log(`Operation ${operationKey || 'unknown'} debounced, skipping`);
+      return Promise.reject(new Error('Operation debounced'));
+    }
+    
+    // If already loading, prevent duplicate execution
+    if (isLoadingOperation.value && !runOptions.force) {
+      console.log(`Operation ${operationKey || 'unknown'} already in progress, skipping duplicate call`);
+      return Promise.reject(new Error('Operation already in progress'));
+    }
+    
+    try {
+      lastRequestTime.value = now;
+      
+      // Set loading state
+      if (operationKey) {
+        setLoading(operationKey, true);
+      }
+      localLoadingState.value = true;
+      
+      // Run the function
+      return await fn();
+    } finally {
+      // Reset loading state
+      if (operationKey) {
+        setLoading(operationKey, false);
+      }
+      localLoadingState.value = false;
+    }
+  };
+  
+  // Clean up when component unmounts
+  const cleanup = () => {
+    if (instanceId) {
+      clearLoadingState(instanceId);
+    }
+  };
+  
+  return {
+    isLoading: isLoadingOperation,
+    runWithLoading,
+    cleanup
+  };
+}
+
+export default useLoadingState;

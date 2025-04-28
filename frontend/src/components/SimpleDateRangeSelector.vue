@@ -151,8 +151,21 @@ watch(() => props.endDate, (newVal) => {
   width: 100%;
 }
 
+.date-input {
+  box-sizing: border-box;
+  width: 100%;
+  line-height: normal;
+  height: auto;
+}
+
 .date-input:disabled {
   background-color: #f3f4f6;
   cursor: not-allowed;
+}
+
+input[type="date"] {
+  box-sizing: border-box;
+  padding: 0.375rem 0.75rem;
+  width: 100%;
 }
 </style>

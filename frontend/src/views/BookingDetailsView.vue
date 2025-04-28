@@ -189,6 +189,7 @@ import { useRoute, useRouter } from 'vue-router'
 import axios from '@/axios'
 import { useToast } from 'vue-toastification'
 import { useAuthStore } from '@/stores/auth'
+import { normalizeBooking, formatDate, formatDateRange, formatPrice } from '@/utils/bookingUtils'
 
 const route = useRoute()
 const router = useRouter()
@@ -200,7 +201,7 @@ const loading = ref(true)
 const error = ref(null)
 const showCancelModal = ref(false)
 
-// Status label based on status_id
+// Improved status handling
 const getStatusLabel = computed(() => {
   if (!booking.value) return ''
   
@@ -208,7 +209,8 @@ const getStatusLabel = computed(() => {
     1: 'Pending',
     2: 'Confirmed',
     3: 'Cancelled',
-    4: 'Completed'
+    4: 'Completed',
+    5: 'Unavailable'
   }
   
   return statusMap[booking.value.status_id] || 'Unknown'
@@ -222,7 +224,8 @@ const statusClass = computed(() => {
     1: 'bg-yellow-100 text-yellow-800', // Pending
     2: 'bg-green-100 text-green-800',   // Confirmed
     3: 'bg-red-100 text-red-800',       // Cancelled
-    4: 'bg-blue-100 text-blue-800'      // Completed
+    4: 'bg-blue-100 text-blue-800',     // Completed
+    5: 'bg-gray-100 text-gray-800'      // Unavailable
   }
   
   return classMap[booking.value.status_id] || 'bg-gray-100 text-gray-800'
@@ -253,11 +256,6 @@ const calculateNights = () => {
   return Math.ceil((end - start) / (1000 * 60 * 60 * 24))
 }
 
-// Format price to 2 decimal places
-const formatPrice = (value) => {
-  return parseFloat(value).toFixed(2);
-}
-
 // Properly calculate the total paid amount
 const totalPaid = computed(() => {
   if (!booking.value) return 0;
@@ -283,28 +281,6 @@ const basePrice = computed(() => {
 const serviceFee = computed(() => {
   return totalPaid.value - basePrice.value;
 });
-
-const formatDate = (dateStr) => {
-  if (!dateStr) return ''
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  })
-}
-
-const formatDateRange = (startDate, endDate) => {
-  if (!startDate || !endDate) return ''
-  
-  const start = new Date(startDate)
-  const end = new Date(endDate)
-  
-  // Calculate nights
-  const nights = calculateNights()
-  
-  return `${formatDate(startDate)} - ${formatDate(endDate)} · ${nights} night${nights !== 1 ? 's' : ''}`
-}
 
 const confirmCancel = () => {
   showCancelModal.value = true
@@ -341,13 +317,22 @@ onMounted(async () => {
     // Check if we have a session_id from Stripe redirect
     if (route.query.session_id) {
       console.log('Fetching booking from session_id:', route.query.session_id);
-      response = await axios.get(`/api/bookings/success`, {
-        params: { session_id: route.query.session_id }
-      });
+      
+      try {
+        response = await axios.get(`/api/bookings/stripe-success`, {
+          params: { session_id: route.query.session_id }
+        });
+      } catch (e) {
+        console.error('Failed to fetch with API prefix, trying without:', e);
+        response = await axios.get(`/bookings/stripe-success`, {
+          params: { session_id: route.query.session_id }
+        });
+      }
       
       // If we got a successful response with booking data
-      if (response.data) {
-        booking.value = response.data;
+      if (response.data && response.data.booking_id) {
+        // Normalize the booking data
+        booking.value = normalizeBooking(response.data);
         
         // Update URL to normal booking view to avoid refresh issues
         router.replace({
@@ -368,7 +353,7 @@ onMounted(async () => {
       try {
         // Add cache-busting parameter to ensure we get fresh data
         response = await axios.get(`/api/bookings/${route.params.id}?t=${Date.now()}`);
-        booking.value = response.data;
+        booking.value = normalizeBooking(response.data);
       } catch (err) {
         if (err.response?.status === 403) {
           error.value = "You don't have permission to view this booking";
@@ -386,8 +371,7 @@ onMounted(async () => {
     }
   } catch (err) {
     console.error('Failed to load booking details:', err);
-    error.value = err.response?.data?.error || 'Booking not found';
-    toast.error(error.value);
+    error.value = err.message || 'Failed to load booking details';
   } finally {
     loading.value = false;
   }

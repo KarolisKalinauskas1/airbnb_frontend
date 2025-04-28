@@ -1,0 +1,99 @@
+<template>
+  <div class="map-container">
+    <div ref="mapContainer" class="h-full w-full"></div>
+    <div v-if="error" class="absolute inset-0 bg-gray-100 flex items-center justify-center">
+      <div class="text-center p-4">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <p class="text-lg font-medium">Map cannot be displayed</p>
+        <p class="text-sm text-gray-600">{{ errorMessage }}</p>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+import { loadLeaflet } from '@/utils/mapUtils'
+
+const props = defineProps({
+  latitude: {
+    type: Number,
+    required: true
+  },
+  longitude: {
+    type: Number,
+    required: true
+  },
+  spotTitle: {
+    type: String,
+    default: 'Camping Spot'
+  }
+})
+
+const emit = defineEmits(['map-error'])
+
+const mapContainer = ref(null)
+const error = ref(false)
+const errorMessage = ref('Location information is not available.')
+
+// Initialize map
+const initMap = () => {
+  if (!props.latitude || !props.longitude || isNaN(props.latitude) || isNaN(props.longitude)) {
+    error.value = true
+    errorMessage.value = 'Invalid location coordinates provided.'
+    emit('map-error')
+    return
+  }
+  
+  try {
+    // Create map instance with Leaflet
+    const map = L.map(mapContainer.value).setView([props.latitude, props.longitude], 13);
+    
+    // Add OpenStreetMap tiles - no API key needed
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 19
+    }).addTo(map);
+    
+    // Add marker for the camping spot
+    const marker = L.marker([props.latitude, props.longitude]).addTo(map);
+    
+    // Add popup with spot title
+    marker.bindPopup(`<b>${props.spotTitle}</b>`).openPopup();
+    
+    console.log('OpenStreetMap initialized successfully with coordinates:', props.latitude, props.longitude);
+    
+  } catch (err) {
+    console.error('Map initialization error:', err)
+    error.value = true
+    errorMessage.value = 'Failed to load the map. Please try again later.'
+    emit('map-error')
+  }
+}
+
+// Load map on component mount
+onMounted(async () => {
+  try {
+    console.log('Loading Leaflet library...');
+    await loadLeaflet();
+    console.log('Leaflet library loaded, initializing map...');
+    initMap();
+  } catch (err) {
+    console.error('Failed to load map library:', err)
+    error.value = true
+    errorMessage.value = 'Failed to load map. Please check your internet connection.'
+    emit('map-error')
+  }
+})
+</script>
+
+<style scoped>
+.map-container {
+  position: relative;
+  min-height: 300px;
+  width: 100%;
+  height: 100%;
+}
+</style>

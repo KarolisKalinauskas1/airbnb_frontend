@@ -1,0 +1,106 @@
+/**
+ * Utility to fix and monitor API endpoint issues
+ */
+import axios from '@/axios';
+
+/**
+ * Test all backend endpoints to identify the correct working paths
+ * @returns {Promise<Object>} Test results
+ */
+export const testApiEndpoints = async () => {
+  const results = {
+    testedAt: new Date().toISOString(),
+    endpoints: {},
+    recommendedPaths: {}
+  };
+  
+  // Define critical endpoints to test
+  const endpointsToTest = {
+    'health': ['/health', '/api/health'],
+    'users': ['/users/full-info', '/api/users/full-info', '/users/basic-info', '/api/users/basic-info'],
+    'dashboard': ['/dashboard/analytics', '/api/dashboard/analytics'],
+    'camping-spots': ['/camping-spots', '/api/camping-spots']
+  };
+  
+  // Test all endpoints
+  for (const [category, paths] of Object.entries(endpointsToTest)) {
+    results.endpoints[category] = {};
+    
+    for (const path of paths) {
+      try {
+        console.log(`Testing endpoint: ${path}`);
+        
+        const response = await axios.get(path, {
+          timeout: 3000,
+          headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          },
+          validateStatus: () => true // Accept any status code
+        });
+        
+        const contentType = response.headers['content-type'] || '';
+        const isJson = contentType.includes('application/json');
+        const isHtml = contentType.includes('text/html') || 
+                      (typeof response.data === 'string' && response.data.includes('<!DOCTYPE html>'));
+        
+        results.endpoints[category][path] = {
+          status: response.status,
+          isJson,
+          isHtml,
+          isWorking: response.status >= 200 && response.status < 300 && isJson && !isHtml
+        };
+      } catch (error) {
+        results.endpoints[category][path] = {
+          status: error.response?.status || 0,
+          error: error.message,
+          isWorking: false
+        };
+      }
+    }
+    
+    // Find the best working path for this category
+    const workingPaths = Object.entries(results.endpoints[category])
+      .filter(([_, data]) => data.isWorking)
+      .map(([path]) => path);
+      
+    results.recommendedPaths[category] = workingPaths[0] || null;
+  }
+  
+  // Store results for future reference
+  localStorage.setItem('apiEndpointTests', JSON.stringify(results));
+  
+  return results;
+};
+
+/**
+ * Get the recommended path for a specific API category
+ * @param {string} category - API category (health, users, etc)
+ * @param {string} defaultPath - Default path to use if no recommendation
+ * @returns {string} Recommended path
+ */
+export const getRecommendedPath = (category, defaultPath) => {
+  try {
+    const storedResults = localStorage.getItem('apiEndpointTests');
+    if (!storedResults) return defaultPath;
+    
+    const results = JSON.parse(storedResults);
+    return results.recommendedPaths?.[category] || defaultPath;
+  } catch (e) {
+    console.error('Error getting recommended path:', e);
+    return defaultPath;
+  }
+};
+
+/**
+ * Clear API endpoint test results
+ */
+export const clearEndpointTests = () => {
+  localStorage.removeItem('apiEndpointTests');
+};
+
+export default {
+  testApiEndpoints,
+  getRecommendedPath,
+  clearEndpointTests
+};

@@ -1,97 +1,96 @@
 import axios from 'axios';
-import { shouldAllowRequest, resetThrottling } from './utils/requestThrottler';
-import { useToast } from 'vue-toastification';
+import { useAuthStore } from '@/stores/auth';
+import { setupMockInterceptors } from '@/utils/mockApiHandler';
 
-// Create axios instance
-const instance = axios.create({
+// Create axios instance with optimized configuration
+const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
-  timeout: 10000,
+  timeout: 10000, // 10 second timeout
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
-  },
-  withCredentials: true
+  }
 });
 
-// Add request interceptor to handle throttling
-instance.interceptors.request.use(
-  config => {
-    // Skip throttling if explicitly requested
-    if (config.bypassThrottle) {
-      return config;
-    }
-    
-    // Generate a request ID from the URL and method
-    const requestId = `${config.method}:${config.url}`;
-    
-    // Check if this request should be throttled
-    if (!shouldAllowRequest(requestId)) {
-      // Return a rejected promise to cancel the request
-      return Promise.reject({
-        config,
-        response: {
-          status: 429,
-          data: { error: 'Request throttled by client to prevent rate limiting' }
+// Optimized request interceptor
+apiClient.interceptors.request.use(
+  async (config) => {
+    // Check if this is a public route (GET requests only)
+    const isPublicRoute = config.method.toLowerCase() === 'get' && (
+      config.url.includes('/api/camping-spots') || 
+      config.url.includes('/api/locations') || 
+      config.url.includes('/api/countries') || 
+      config.url.includes('/api/amenities') ||
+      config.url.includes('/api/bookings/success') // Add success route to public routes
+    );
+
+    // Only add auth token for non-public routes
+    if (!isPublicRoute) {
+      const authStore = useAuthStore();
+      try {
+        const token = await authStore.getAuthToken();
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
         }
-      });
+      } catch (error) {
+        console.error('Error getting auth token:', error);
+        // Only redirect to login for non-public routes
+        if (!isPublicRoute) {
+          window.location.href = '/login';
+          return Promise.reject(error);
+        }
+      }
     }
-    
-    // Add timestamp to URL params to prevent caching issues
-    if (config.params) {
-      config.params._t = Date.now();
-    } else {
-      config.params = { _t: Date.now() };
-    }
-    
     return config;
   },
-  error => {
+  (error) => {
     return Promise.reject(error);
   }
 );
 
-// Add response interceptor for better error handling
-instance.interceptors.response.use(
-  response => {
-    return response;
-  },
-  error => {
-    // Add toast for common errors
-    const toast = useToast();
+// Optimized response interceptor with token refresh
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
     
-    if (error.response) {
-      // Server responded with an error status
-      if (error.response.status === 429) {
-        // Rate limiting error
-        const retryAfter = error.response.data?.retryAfter || 30;
-        console.log(`Rate limited. Retry after ${retryAfter} seconds.`);
-        if (toast) {
-          toast.warning(`Rate limited. Please try again in ${Math.ceil(retryAfter)} seconds.`);
+    // If the error is 401 and we haven't retried yet
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      
+      try {
+        const authStore = useAuthStore();
+        // Try to refresh the token
+        const newToken = await authStore.getAuthToken(true); // force refresh
+        
+        if (newToken) {
+          // Update the authorization header
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          // Retry the original request
+          return apiClient(originalRequest);
         }
-      } 
-      else if (error.response.status === 503) {
-        // Database connection error
-        if (error.response.data?.code === 'P1001' ||
-            error.response.data?.code === 'DB_CONNECTION_ERROR' ||
-            (error.response.data?.error && error.response.data.error.includes('database'))) {
-          console.error('Database connection error:', error.response.data);
-          if (toast) {
-            toast.error('Database server is currently unavailable. Please try again later.');
-          }
-        }
+      } catch (refreshError) {
+        console.error('Token refresh failed:', refreshError);
+        // If refresh fails, redirect to login
+        window.location.href = '/login';
+        return Promise.reject(refreshError);
       }
-    } else if (error.code === 'ECONNABORTED') {
-      // Timeout error
-      if (toast) {
-        toast.error('Request timed out. Please check your connection and try again.');
-      }
-    } else if (error.message && error.message.includes('throttled')) {
-      // Client throttling - don't show toast for these as they're handled internally
-      console.warn('API Error 429:', error.response?.data);
+    }
+    
+    // Handle 404 errors gracefully
+    if (error.response?.status === 404) {
+      console.warn('API endpoint not found:', error.config.url);
+      // Return empty data instead of throwing error
+      return { data: [] };
     }
     
     return Promise.reject(error);
   }
 );
 
-export default instance;
+// Setup mock interceptors for development
+if (process.env.NODE_ENV === 'development') {
+  setupMockInterceptors(apiClient);
+}
+
+export default apiClient;

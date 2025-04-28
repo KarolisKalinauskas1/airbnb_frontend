@@ -86,6 +86,7 @@ import { useAuthStore } from '@/stores/auth';
 import axios from '@/axios';
 import { testCorsSetup } from '@/utils/corsTest';
 import { getRequestStats, resetAllRequests } from '@/utils/requestTracker';
+import ApiDiagnostics from '@/components/ApiDiagnostics.vue';
 
 const authStore = useAuthStore();
 
@@ -186,7 +187,11 @@ onMounted(() => {
 
 <template>
   <div class="container mx-auto p-4">
-    <h1 class="text-2xl font-bold mb-4">API Diagnostics</h1>
+    <h1 class="text-2xl font-bold mb-4">System Diagnostics</h1>
+    
+    <div class="mb-8">
+      <ApiDiagnostics />
+    </div>
     
     <div class="mb-8">
       <h2 class="text-xl font-semibold mb-2">Test Form Field Limits</h2>

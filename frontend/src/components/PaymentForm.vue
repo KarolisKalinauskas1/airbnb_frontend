@@ -46,7 +46,16 @@ let elements;
 let stripe;
 
 onMounted(async () => {
-  stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+  // Use either VITE_STRIPE_PUBLISHABLE_KEY or VITE_STRIPE_PUBLIC_KEY
+  const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || import.meta.env.VITE_STRIPE_PUBLIC_KEY;
+  
+  if (!stripeKey) {
+    console.error('Stripe key not found. Payment functionality will be unavailable.');
+    errorMessage.value = 'Payment system configuration error. Please contact support.';
+    return;
+  }
+  
+  stripe = await loadStripe(stripeKey);
   elements = stripe.elements({
     clientSecret: props.clientSecret,
     appearance: {

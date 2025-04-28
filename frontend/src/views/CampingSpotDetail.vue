@@ -1,308 +1,363 @@
 <template>
-  <div class="min-h-screen bg-gray-50">
-    <div v-if="loading" class="h-screen flex items-center justify-center">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
-    </div>
-    <div v-else-if="!spot" class="h-screen flex items-center justify-center text-lg">
-      Spot not found.
-    </div>
-    <div v-else class="max-w-7xl mx-auto px-4 py-8">
-      <!-- Back Button -->
-      <button 
-        @click="goBackToCampers" 
-        class="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
-      >
-        <span class="text-xl">←</span> Back to Campers
+  <!-- Show owner warning and redirect message if user is owner of this spot -->
+  <div v-if="isOwnSpot" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 bg-opacity-75">
+    <div class="bg-white p-8 rounded-lg shadow-xl max-w-md text-center">
+      <svg class="w-16 h-16 text-yellow-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+        xmlns="http://www.w3.org/2000/svg">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77-1.333.192 3 1.732 3z">
+        </path>
+      </svg>
+      <h2 class="text-xl font-semibold mb-4">This is Your Camping Spot</h2>
+      <p class="mb-6">You cannot book your own camping spot. Redirecting to your dashboard...</p>
+      <button @click="router.push('/dashboard/spots')" class="px-4 py-2 bg-red-600 text-white rounded-md">
+        Go to Dashboard
       </button>
+    </div>
+  </div>
 
-      <!-- Header Section -->
-      <div class="mb-8 flex flex-col md:flex-row md:justify-between md:items-start gap-4">
-        <div>
-          <h1 class="text-4xl font-semibold mb-2">{{ spot.title }}</h1>
-          <div class="flex flex-wrap items-center gap-4 text-lg text-gray-600">
-            <div class="flex items-center">
-              <span class="text-yellow-400">★</span>
-              <span>{{ averageRating }} ({{ spot.reviews?.length || 0 }} reviews)</span>
+  <!-- Only show the spot details content if not user's own spot -->
+  <div v-if="!isOwnSpot">
+    <div class="min-h-screen bg-gray-50">
+      <div v-if="loading" class="h-screen flex items-center justify-center">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
+      </div>
+      <div v-else-if="!spot" class="h-screen flex items-center justify-center text-lg">
+        Spot not found.
+      </div>
+      <div v-else class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Back Button -->
+        <button 
+          @click="goBackToCampers" 
+          class="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
+        >
+          <span class="text-xl">←</span> Back to Campers
+        </button>
+
+        <!-- Header Section -->
+        <div class="mb-8 flex flex-col md:flex-row md:justify-between md:items-start gap-4">
+          <div>
+            <h1 class="text-4xl font-semibold mb-2">{{ spot.title }}</h1>
+            <div class="flex flex-wrap items-center gap-4 text-lg text-gray-600">
+              <div class="flex items-center">
+                <span class="text-yellow-400">★</span>
+                <span>{{ averageRating }} ({{ spot.reviews?.length || 0 }} reviews)</span>
+              </div>
+              <span>•</span>
+              <span>📍 {{ spot.location?.city }}, {{ spot.location?.country?.name }}</span>
             </div>
-            <span>•</span>
-            <span>📍 {{ spot.location?.city }}, {{ spot.location?.country?.name }}</span>
+          </div>
+          <button 
+            @click="openMap"
+            class="bg-white px-4 py-2 rounded-lg shadow-md hover:shadow-lg transition-shadow flex items-center gap-2 cursor-pointer hover:bg-gray-50"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"/>
+            </svg>
+            View on Map
+          </button>
+        </div>
+
+        <!-- Image Gallery Layout -->
+        <div class="relative mb-10">
+          <!-- Main Large Image -->
+          <div class="w-full h-[500px] rounded-lg overflow-hidden mb-4">
+            <img 
+              v-if="spot.images && spot.images.length > 0 && spot.images[activeImageIndex]"
+              :src="spot.images[activeImageIndex].image_url" 
+              :alt="spot.title" 
+              class="w-full h-full object-cover cursor-pointer"
+              @click="showGallery = true"
+            />
+            <div v-else class="w-full h-full bg-gray-200 flex items-center justify-center">
+              <span class="text-gray-500">No image available</span>
+            </div>
+            <!-- Navigation Arrows - Only show if there are images -->
+            <button 
+              v-if="spot.images && spot.images.length > 1"
+              @click.prevent="prevImage" 
+              class="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white/90 text-gray-800 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer shadow-lg transition-transform duration-200 hover:scale-110"
+            >❮</button>
+            <button 
+              v-if="spot.images && spot.images.length > 1"
+              @click.prevent="nextImage" 
+              class="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white/90 text-gray-800 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer shadow-lg transition-transform duration-200 hover:scale-110"
+            >❯</button>
+          </div>
+          
+          <!-- Thumbnail Strip - Only show if there are images -->
+          <div v-if="spot.images && spot.images.length > 0" class="flex gap-2 overflow-x-auto pb-2">
+            <div v-for="(image, index) in spot.images.slice(0, 4)" 
+                 :key="index"
+                 class="w-32 h-24 flex-shrink-0 rounded-lg overflow-hidden"
+                 :class="{ 'border-2 border-red-500': activeImageIndex === index }"
+                 @click="activeImageIndex = index">
+              <img :src="image.image_url" 
+                   class="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity" />
+            </div>
+            <div v-if="spot.images.length > 4"
+                 class="w-32 h-24 flex-shrink-0 rounded-lg overflow-hidden relative cursor-pointer"
+                 @click="showGallery = true">
+              <img :src="spot.images[4].image_url" 
+                   class="w-full h-full object-cover" />
+              <div class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center text-white">
+                +{{ spot.images.length - 4 }} more
+              </div>
+            </div>
           </div>
         </div>
-        <button 
-          @click="openMap"
-          class="bg-white px-4 py-2 rounded-lg shadow-md hover:shadow-lg transition-shadow flex items-center gap-2 cursor-pointer hover:bg-gray-50"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"/>
+
+        <!-- Main Content with Improved Layout -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <!-- Left Column: Details -->
+          <div class="lg:col-span-2 space-y-10">
+            <!-- Key Features -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 py-6">
+              <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                <div>
+                  <p class="font-medium">Location</p>
+                  <p class="text-gray-600">{{ spot.location?.city }}</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <div>
+                  <p class="font-medium text-lg">Max Guests</p>
+                  <p class="text-gray-600">{{ spot.max_guests }} people</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.950.690h4.915c.969 0 1.371 1.240.588 1.810l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.570-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.570-.380-1.810.588-1.810h4.915a1 1 0 00.950-.690l1.519-4.674z" />
+                </svg>
+                <div>
+                  <p class="font-medium">Rating</p>
+                  <p class="text-gray-600">{{ averageRating }}</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Description -->
+            <div class="prose max-w-none space-y-6 border-t border-b py-10">
+              <h2 class="text-2xl font-semibold">About this spot</h2>
+              <p class="text-gray-700 text-lg leading-relaxed whitespace-pre-line">{{ spot.description }}</p>
+            </div>
+
+            <!-- Amenities with Better Spacing -->
+            <div class="space-y-6 py-6">
+              <h2 class="text-2xl font-semibold">What this place offers</h2>
+              <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div v-for="amenity in spot.camping_spot_amenities" 
+                     :key="amenity.amenity_id" 
+                     class="flex items-center gap-4 p-4 rounded-lg hover:bg-gray-50 transition-colors">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span class="text-lg">{{ amenity.amenity.name }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Availability Calendar Section -->
+            <div class="border-t pt-10 mt-10">
+              <h2 class="text-2xl font-semibold mb-6">Availability Calendar</h2>
+              <div class="grid grid-cols-1 gap-8">
+                <AvailabilityCalendar 
+                  v-if="spot"
+                  :camping-spot-id="spot.camping_spot_id" 
+                  :base-price="spot.price_per_night"
+                  :is-owner="isOwner"
+                  :owner-id="spot.owner_id"
+                  @blocked-dates-loaded="handleBlockedDates"
+                />
+                <div v-if="isOwner" class="mt-4">
+                  <PriceSuggestionWidget
+                    :camping-spot-id="spot.camping_spot_id"
+                    :current-price="spot.price_per_night"
+                    :show-update-button="isOwner"
+                    @update-price="handlePriceUpdate"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Location Section -->
+            <div class="mt-12 space-y-6">
+              <section class="bg-white p-6 rounded-xl shadow-sm">
+                <h3 class="text-xl font-bold mb-4">Location</h3>
+                
+                <div v-if="mapError" class="text-center py-10 bg-gray-50 rounded-lg">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77-1.333.192 3 1.732 3z" />
+                  </svg>
+                  <p class="text-lg font-medium">Location map cannot be displayed</p>
+                  <p class="text-sm text-gray-600 mb-4">The map for this camping spot is not available.</p>
+                  <button @click="mapError = false" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors">Try Again</button>
+                </div>
+                <div v-else class="h-[60vh] rounded-lg overflow-hidden">
+                  <OpenStreetLocationMap 
+                    v-if="spot && spot.location"
+                    :latitude="spot.location?.latitute ? Number(spot.location.latitute) : 0" 
+                    :longitude="spot.location?.longtitute ? Number(spot.location.longtitute) : 0"
+                    :spotTitle="spot?.title || 'Camping Spot'"
+                    @map-error="mapError = true"
+                  />
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <!-- Right Column: Booking Card -->
+          <div class="lg:col-span-1">
+            <div class="sticky top-8">
+              <div class="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
+                <div class="flex items-baseline justify-between mb-6">
+                  <div>
+                    <span class="text-2xl font-bold">€{{ spot.price_per_night }}</span>
+                    <span class="text-gray-600">/night</span>
+                  </div>
+                  <div class="flex items-center">
+                    <span class="text-yellow-400">★</span>
+                    <span>{{ averageRating }} ({{ spot.reviews?.length || 0 }})</span>
+                  </div>
+                </div>
+                
+                <!-- Date Selection with Improved Styling -->
+                <div class="space-y-4">
+                  <DateRangeSelector
+                    v-model:startDate="dates.startDate"
+                    v-model:endDate="dates.endDate"
+                    @dateChange="calculateTotal"
+                    class="date-range-selector w-full"
+                  />
+                  
+                  <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Guests</label>
+                    <select 
+                      v-model="guests" 
+                      class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                      @change="calculateTotal">
+                      <option v-for="n in spot.max_guests" :key="n" :value="n">{{ n }} {{ n === 1 ? 'guest' : 'guests' }}</option>
+                    </select>
+                  </div>
+                  
+                  <!-- Use the new CheckoutSummary component when dates are selected -->
+                  <CheckoutSummary 
+                    v-if="nights > 0 && spot"
+                    :basePrice="spot.price_per_night" 
+                    :nights="nights"
+                    :serviceFeePercent="10"
+                  />
+                  
+                  <!-- Add a warning if dates overlap with blocked dates -->
+                  <div v-if="hasBlockedDates" class="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                    <p class="font-medium">These dates are unavailable for booking.</p>
+                    <p>Please select different dates.</p>
+                  </div>
+
+                  <!-- Only show button when dates are available -->
+                  <button 
+                    v-if="!hasBlockedDates && dates.startDate && dates.endDate"
+                    @click="handleBookNow" 
+                    class="w-full bg-gradient-to-r from-rose-500 to-red-600 text-white py-4 rounded-xl font-semibold hover:from-rose-600 hover:to-red-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                  >
+                    {{ isOwner ? 'Booking Not Available (Owner Account)' : 'Reserve now' }}
+                  </button>
+
+                  <!-- Show a disabled state when there are no dates selected -->
+                  <button 
+                    v-else-if="!hasBlockedDates && (!dates.startDate || !dates.endDate)" 
+                    disabled
+                    class="w-full bg-gray-300 text-gray-500 py-4 rounded-xl font-semibold cursor-not-allowed mt-6"
+                  >
+                    Select dates to continue
+                  </button>
+                  
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Owner Warning -->
+      <div v-if="isOwner && !isOwnSpot" class="bg-yellow-50 border border-yellow-200 p-4 mb-6 rounded-lg">
+        <div class="flex items-center">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-yellow-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77-1.333.192 3 1.732 3z" />
           </svg>
-          View on Map
+          <div>
+            <p class="font-medium text-yellow-800">Owner Account</p>
+            <p class="text-yellow-700 text-sm">As an owner, you can browse other owners' spots but you'll need a renter account to book.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Database connection error message -->
+      <div v-if="dbConnectionError" class="max-w-3xl mx-auto my-20 p-8 bg-red-50 border border-red-200 rounded-lg text-center">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto mb-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <h2 class="text-2xl font-bold text-red-700 mb-2">Database Connection Error</h2>
+        <p class="text-red-600 mb-6">Our database is temporarily unavailable. Please try again later.</p>
+        <button 
+          @click="retryLoading" 
+          class="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+        >
+          Try Again
         </button>
       </div>
 
-      <!-- Image Gallery Layout -->
-      <div class="relative mb-10">
-        <!-- Main Large Image -->
-        <div class="w-full h-[500px] rounded-lg overflow-hidden mb-4">
-          <img 
-            v-if="spot.images && spot.images.length > 0 && spot.images[activeImageIndex]"
-            :src="spot.images[activeImageIndex].image_url" 
-            :alt="spot.title" 
-            class="w-full h-full object-cover cursor-pointer"
-            @click="showGallery = true"
-          />
-          <div v-else class="w-full h-full bg-gray-200 flex items-center justify-center">
-            <span class="text-gray-500">No image available</span>
+      <!-- Map Modal -->
+      <div v-if="showMap" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+        <div class="bg-white rounded-lg w-full max-w-4xl p-4">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-semibold">Location</h3>
+            <button @click="closeMap" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
           </div>
-          <!-- Navigation Arrows - Only show if there are images -->
-          <button 
-            v-if="spot.images && spot.images.length > 1"
-            @click.prevent="prevImage" 
-            class="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white/90 text-gray-800 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer shadow-lg transition-transform duration-200 hover:scale-110"
-          >❮</button>
-          <button 
-            v-if="spot.images && spot.images.length > 1"
-            @click.prevent="nextImage" 
-            class="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white/90 text-gray-800 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer shadow-lg transition-transform duration-200 hover:scale-110"
-          >❯</button>
-        </div>
-        
-        <!-- Thumbnail Strip - Only show if there are images -->
-        <div v-if="spot.images && spot.images.length > 0" class="flex gap-2 overflow-x-auto pb-2">
-          <div v-for="(image, index) in spot.images.slice(0, 4)" 
-               :key="index"
-               class="w-32 h-24 flex-shrink-0 rounded-lg overflow-hidden"
-               :class="{ 'border-2 border-red-500': activeImageIndex === index }"
-               @click="activeImageIndex = index">
-            <img :src="image.image_url" 
-                 class="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity" />
-          </div>
-          <div v-if="spot.images.length > 4"
-               class="w-32 h-24 flex-shrink-0 rounded-lg overflow-hidden relative cursor-pointer"
-               @click="showGallery = true">
-            <img :src="spot.images[4].image_url" 
-                 class="w-full h-full object-cover" />
-            <div class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center text-white">
-              +{{ spot.images.length - 4 }} more
+          <div v-if="mapError" class="h-[60vh] bg-gray-100 rounded-lg flex items-center justify-center">
+            <div class="text-center p-4">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77-1.333.192 3 1.732 3z" />
+              </svg>
+              <p class="text-lg font-medium">Map cannot be displayed</p>
+              <p class="text-sm text-gray-600">Location information is not available for this camping spot.</p>
             </div>
+          </div>
+          <div v-else class="h-[60vh] rounded-lg overflow-hidden">
+            <OpenStreetLocationMap 
+              v-if="spot && spot.location"
+              :latitude="spot.location?.latitute ? Number(spot.location.latitute) : 0" 
+              :longitude="spot.location?.longtitute ? Number(spot.location.longtitute) : 0"
+              :spotTitle="spot?.title || 'Camping Spot'"
+              @map-error="mapError = true"
+            />
           </div>
         </div>
       </div>
 
-      <!-- Main Content with Improved Layout -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <!-- Left Column: Details -->
-        <div class="lg:col-span-2 space-y-10">
-          <!-- Key Features -->
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 py-6">
-            <div class="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
-              <div>
-                <p class="font-medium">Location</p>
-                <p class="text-gray-600">{{ spot.location?.city }}</p>
-              </div>
-            </div>
-            <div class="flex items-center gap-3">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-              <div>
-                <p class="font-medium text-lg">Max Guests</p>
-                <p class="text-gray-600">{{ spot.max_guests }} people</p>
-              </div>
-            </div>
-            <div class="flex items-center gap-3">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.915a1 1 0 00.95-.69l1.519-4.674z" />
-              </svg>
-              <div>
-                <p class="font-medium">Rating</p>
-                <p class="text-gray-600">{{ averageRating }}</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Description -->
-          <div class="prose max-w-none space-y-6 border-t border-b py-10">
-            <h2 class="text-2xl font-semibold">About this spot</h2>
-            <p class="text-gray-700 text-lg leading-relaxed whitespace-pre-line">{{ spot.description }}</p>
-          </div>
-
-          <!-- Amenities with Better Spacing -->
-          <div class="space-y-6 py-6">
-            <h2 class="text-2xl font-semibold">What this place offers</h2>
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div v-for="amenity in spot.camping_spot_amenities" 
-                   :key="amenity.amenity_id" 
-                   class="flex items-center gap-4 p-4 rounded-lg hover:bg-gray-50 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-                <span class="text-lg">{{ amenity.amenity.name }}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Availability Calendar Section -->
-          <div class="border-t pt-10 mt-10">
-            <h2 class="text-2xl font-semibold mb-6">Availability Calendar</h2>
-            <div class="grid grid-cols-1 gap-8">
-              <AvailabilityCalendar 
-                v-if="spot"
-                :camping-spot-id="spot.camping_spot_id" 
-                :base-price="spot.price_per_night"
-                :is-owner="isOwner"
-                :owner-id="spot.owner_id"
-                @blocked-dates-loaded="handleBlockedDates"
-              />
-              <div v-if="isOwner" class="mt-4">
-                <PriceSuggestionWidget
-                  :camping-spot-id="spot.camping_spot_id"
-                  :current-price="spot.price_per_night"
-                  :show-update-button="isOwner"
-                  @update-price="handlePriceUpdate"
-                />
-              </div>
-            </div>
-          </div>
+      <!-- Image Gallery Modal -->
+      <div v-if="showGallery && spot.images && spot.images.length > 0" class="fixed inset-0 bg-black bg-opacity-90 z-[9999] flex items-center justify-center">
+        <button @click="closeGallery" 
+                class="absolute top-4 right-4 text-white text-4xl cursor-pointer hover:opacity-75 transition-opacity"
+        >&times;</button>
+        <div class="h-full w-full flex items-center justify-center">
+          <button @click="prevImage" 
+                  class="absolute left-4 text-white text-4xl cursor-pointer hover:opacity-75 transition-opacity p-4"
+          >&lt;</button>
+          <img v-if="spot.images[activeImageIndex]" 
+               :src="spot.images[activeImageIndex].image_url" 
+               class="max-h-[90vh] max-w-[90vw] object-contain" />
+          <div v-else class="bg-gray-800 p-8 rounded-lg text-white">No image available</div>
+          <button @click="nextImage" 
+                  class="absolute right-4 text-white text-4xl cursor-pointer hover:opacity-75 transition-opacity p-4"
+          >&gt;</button>
         </div>
-
-        <!-- Right Column: Booking Card -->
-        <div class="lg:col-span-1">
-          <div class="sticky top-8">
-            <div class="bg-white rounded-xl shadow-lg p-6 border border-gray-100">
-              <div class="flex items-baseline justify-between mb-6">
-                <div>
-                  <span class="text-2xl font-bold">€{{ spot.price_per_night }}</span>
-                  <span class="text-gray-600">/night</span>
-                </div>
-                <div class="flex items-center">
-                  <span class="text-yellow-400">★</span>
-                  <span>{{ averageRating }} ({{ spot.reviews?.length || 0 }})</span>
-                </div>
-              </div>
-              
-              <!-- Date Selection with Improved Styling -->
-              <div class="space-y-4">
-                <DateRangeSelector
-                  v-model:startDate="dates.startDate"
-                  v-model:endDate="dates.endDate"
-                  @dateChange="calculateTotal"
-                  class="date-range-selector w-full"
-                />
-                
-                <div class="mt-4">
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Guests</label>
-                  <select 
-                    v-model="guests" 
-                    class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                    @change="calculateTotal">
-                    <option v-for="n in spot.max_guests" :key="n" :value="n">{{ n }} {{ n === 1 ? 'guest' : 'guests' }}</option>
-                  </select>
-                </div>
-                
-                <!-- Use the new CheckoutSummary component when dates are selected -->
-                <CheckoutSummary 
-                  v-if="nights > 0 && spot"
-                  :basePrice="spot.price_per_night" 
-                  :nights="nights"
-                  :serviceFeePercent="10"
-                />
-                
-                <!-- Add a warning if dates overlap with blocked dates -->
-                <div v-if="hasBlockedDates" class="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                  <p class="font-medium">These dates are unavailable for booking.</p>
-                  <p>Please select different dates.</p>
-                </div>
-
-                <!-- Only show button when dates are available -->
-                <button 
-                  v-if="!hasBlockedDates && dates.startDate && dates.endDate"
-                  @click="initiateBooking" 
-                  :disabled="!canBook || loading"
-                  class="w-full bg-gradient-to-r from-rose-500 to-red-600 text-white py-4 rounded-xl font-semibold hover:from-rose-600 hover:to-red-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
-                  :class="{ 'opacity-50 cursor-not-allowed transform-none shadow-none': !canBook || loading }"
-                >
-                  <span v-if="loading">Processing...</span>
-                  <span v-else>Reserve now</span>
-                </button>
-
-                <!-- Show a disabled state when there are no dates selected -->
-                <button 
-                  v-else-if="!hasBlockedDates && (!dates.startDate || !dates.endDate)" 
-                  disabled
-                  class="w-full bg-gray-300 text-gray-500 py-4 rounded-xl font-semibold cursor-not-allowed mt-6"
-                >
-                  Select dates to continue
-                </button>
-                
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Database connection error message -->
-    <div v-if="dbConnectionError" class="max-w-3xl mx-auto my-20 p-8 bg-red-50 border border-red-200 rounded-lg text-center">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto mb-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-      <h2 class="text-2xl font-bold text-red-700 mb-2">Database Connection Error</h2>
-      <p class="text-red-600 mb-6">Our database is temporarily unavailable. Please try again later.</p>
-      <button 
-        @click="retryLoading" 
-        class="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-      >
-        Try Again
-      </button>
-    </div>
-
-    <!-- Map Modal -->
-    <div v-if="showMap" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
-      <div class="bg-white rounded-lg w-full max-w-4xl p-4">
-        <div class="flex justify-between items-center mb-4">
-          <h3 class="text-lg font-semibold">Location</h3>
-          <button @click="closeMap" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
-        </div>
-        <div v-if="mapError" class="h-[60vh] bg-gray-100 rounded-lg flex items-center justify-center">
-          <div class="text-center p-4">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            <p class="text-lg font-medium">Map cannot be displayed</p>
-            <p class="text-sm text-gray-600">Location information is not available for this camping spot.</p>
-          </div>
-        </div>
-        <div v-else class="h-[60vh] rounded-lg overflow-hidden">
-          <LocationMap 
-            v-if="spot && spot.location"
-            :latitude="spot.location?.latitute ? Number(spot.location.latitute) : 0" 
-            :longitude="spot.location?.longtitute ? Number(spot.location.longtitute) : 0"
-            :spotTitle="spot?.title || 'Camping Spot'"
-            @map-error="mapError = true"
-          />
-        </div>
-      </div>
-    </div>
-
-    <!-- Image Gallery Modal -->
-    <div v-if="showGallery && spot.images && spot.images.length > 0" class="fixed inset-0 bg-black bg-opacity-90 z-[9999] flex items-center justify-center">
-      <button @click="closeGallery" 
-              class="absolute top-4 right-4 text-white text-4xl cursor-pointer hover:opacity-75 transition-opacity"
-      >&times;</button>
-      <div class="h-full w-full flex items-center justify-center">
-        <button @click="prevImage" 
-                class="absolute left-4 text-white text-4xl cursor-pointer hover:opacity-75 transition-opacity p-4"
-        >&lt;</button>
-        <img v-if="spot.images[activeImageIndex]" 
-             :src="spot.images[activeImageIndex].image_url" 
-             class="max-h-[90vh] max-w-[90vw] object-contain" />
-        <div v-else class="bg-gray-800 p-8 rounded-lg text-white">No image available</div>
-        <button @click="nextImage" 
-                class="absolute right-4 text-white text-4xl cursor-pointer hover:opacity-75 transition-opacity p-4"
-        >&gt;</button>
       </div>
     </div>
   </div>
@@ -315,7 +370,7 @@ import axios from '@/axios'
 import { useToast } from 'vue-toastification'
 import { useAuthStore } from '@/stores/auth'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
-import LocationMap from '@/components/LocationMap.vue'
+import OpenStreetLocationMap from '@/components/OpenStreetLocationMap.vue'
 import AvailabilityCalendar from '@/components/AvailabilityCalendar.vue'
 import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue'
 import CheckoutSummary from '@/components/CheckoutSummary.vue'
@@ -367,21 +422,23 @@ const totalPrice = computed(() => {
   return basePrice.value + serviceFee.value
 })
 
-// Determine if the user is the owner of this spot
-const isOwner = computed(() => {
-  if (!authStore.fullUser || !spot.value) return false
-  return authStore.fullUser.user_id === spot.value.owner_id
-})
+// Check if user is the owner of THIS specific spot
+const isOwnSpot = computed(() => {
+  if (!authStore.publicUser || !spot.value) return false;
+  return authStore.publicUser.user_id === spot.value.owner_id;
+});
 
-// Determine if booking is possible
+// Check if user is an owner generally
+const isOwner = computed(() => authStore.publicUser?.isowner === 1);
+
+// Determine if the user can book the spot
 const canBook = computed(() => {
-  return !loading.value && 
+  return authStore.isAuthenticated && 
+         !isOwnSpot.value &&
          dates.value.startDate && 
          dates.value.endDate && 
-         guests.value >= 1 && 
-         !isOwner.value && 
-         !hasBlockedDates.value
-})
+         !hasBlockedDates.value;
+});
 
 // Calculate review statistics
 const averageRating = computed(() => {
@@ -600,80 +657,128 @@ watch(() => guests.value, (newGuests) => {
 })
 
 // Handle the booking process
-const initiateBooking = async () => {
+const handleBookNow = async () => {
+  console.log('handleBookNow called');
+  
+  // First check if user is trying to book their own spot
+  if (isOwnSpot.value) {
+    console.log('User is trying to book their own spot');
+    toast.error("You cannot book your own camping spot");
+    router.push('/dashboard/spots');
+    return;
+  }
+
+  // Check if user is an owner (but not of this spot)
+  if (isOwner.value) {
+    console.log('User is an owner trying to book a spot');
+    toast.error("Owner accounts cannot book spots. Please use a renter account.");
+    return;
+  }
+
   // Validate date selection
   if (!dates.value.startDate || !dates.value.endDate) {
-    toast.warning('Please select check-in and check-out dates')
-    return
+    console.log('No dates selected');
+    toast.warning('Please select check-in and check-out dates');
+    return;
   }
 
   // Validate guest count
   if (guests.value < 1) {
-    toast.warning('Please specify at least 1 guest')
-    return
+    console.log('Invalid guest count');
+    toast.warning('Please specify at least 1 guest');
+    return;
   }
   
   // Check if dates overlap with blocked dates
   if (hasBlockedDates.value) {
-    toast.error('Selected dates are not available for booking')
-    return
+    console.log('Selected dates are blocked');
+    toast.error('Selected dates are not available for booking');
+    return;
   }
 
-  // Check if user is authenticated
-  if (!authStore.isLoggedIn) {
-    toast.info('Please log in to book a spot')
+  // Check if user is logged in
+  if (!authStore.isAuthenticated) {
+    console.log('User not logged in, redirecting to login');
+    // Save booking details for after login
+    const bookingDetails = {
+      spotId: spot.value.camping_spot_id,
+      startDate: dates.value.startDate,
+      endDate: dates.value.endDate,
+      guests: guests.value,
+      fromCampers: true
+    };
+    
+    // Store in sessionStorage for after login
+    sessionStorage.setItem('pendingBooking', JSON.stringify(bookingDetails));
+    
+    // Redirect to login with return URL
     router.push({
       path: '/auth',
       query: {
         redirect: route.fullPath,
         startDate: dates.value.startDate,
         endDate: dates.value.endDate,
-        guests: guests.value
+        guests: guests.value,
+        fromCampers: true
       }
-    })
-    return
+    });
+    return;
   }
-  
-  // Make sure we have the full user info
-  if (!authStore.fullUser) {
+
+  // Ensure we have the user information
+  if (!authStore.publicUser) {
+    console.log('Fetching user information');
     try {
-      await authStore.fetchFullUserInfo(true)
-      if (!authStore.fullUser) {
-        toast.error('Unable to retrieve your account information. Please try logging out and back in.')
-        return
+      // Try to get the current session first
+      const session = await authStore.getSupabaseSession();
+      if (!session) {
+        throw new Error('No active session');
+      }
+
+      // Make a request to get the public user info
+      const response = await axios.get('/api/users/me');
+      if (response.data) {
+        authStore.publicUser = response.data;
+      } else {
+        throw new Error('No user data received');
       }
     } catch (error) {
-      console.error('Failed to fetch user info:', error)
-      if (error.code === 'ERR_NETWORK') {
-        toast.error('Unable to connect to server. Please check your internet connection or try again later.')
-      } else {
-        toast.error('Authentication issue. Please try logging out and back in.')
-      }
-      return
+      console.error('Error fetching user info:', error);
+      toast.error('Failed to load user information. Please try again.');
+      return;
     }
   }
+
+  // Double check that we have the user information
+  if (!authStore.publicUser?.user_id) {
+    console.error('User information not available');
+    toast.error('Unable to process booking. Please try again.');
+    return;
+  }
   
-  loading.value = true
+  console.log('Starting booking process');
+  loading.value = true;
   
   try {
+    console.log('Checking availability');
     // Double-check availability before proceeding
-    await checkAvailability()
+    await checkAvailability();
     
     if (hasBlockedDates.value) {
-      toast.error('Sorry, these dates are no longer available')
-      loading.value = false
-      return
+      console.log('Dates no longer available');
+      toast.error('Sorry, these dates are no longer available');
+      loading.value = false;
+      return;
     }
     
     // Calculate base price and service fee
-    const baseAmount = basePrice.value
-    const serviceFeeAmount = serviceFee.value
-    const totalAmount = totalPrice.value
+    const baseAmount = basePrice.value;
+    const serviceFeeAmount = serviceFee.value;
+    const totalAmount = totalPrice.value;
     
-    // Prepare checkout session
-    const { data: sessionResponse } = await axios.post('/api/bookings/create-checkout-session', {
+    console.log('Creating checkout session with data:', {
       camper_id: spot.value.camping_spot_id,
-      user_id: authStore.fullUser.user_id,
+      user_id: authStore.publicUser.user_id,
       start_date: dates.value.startDate,
       end_date: dates.value.endDate,
       number_of_guests: guests.value,
@@ -682,32 +787,67 @@ const initiateBooking = async () => {
       total: totalAmount.toFixed(2),
       spot_name: spot.value.title,
       spot_image: spot.value.images?.[0]?.image_url
-    })
+    });
     
-    toast.success('Redirecting to payment...')
+    // Prepare checkout session
+    const { data: sessionResponse } = await axios.post('/api/bookings/create-checkout-session', {
+      camper_id: spot.value.camping_spot_id,
+      user_id: authStore.publicUser.user_id,
+      start_date: dates.value.startDate,
+      end_date: dates.value.endDate,
+      number_of_guests: guests.value,
+      cost: baseAmount.toFixed(2),
+      service_fee: serviceFeeAmount.toFixed(2),
+      total: totalAmount.toFixed(2),
+      spot_name: spot.value.title,
+      spot_image: spot.value.images?.[0]?.image_url
+    });
+    
+    console.log('Stripe session response:', sessionResponse);
+    
+    if (!sessionResponse || !sessionResponse.url) {
+      console.error('Invalid session response:', sessionResponse);
+      throw new Error('Invalid response from server');
+    }
+    
+    toast.success('Redirecting to payment...');
     
     // Redirect to Stripe Checkout
-    window.location.href = sessionResponse.url
+    console.log('Redirecting to:', sessionResponse.url);
+    window.location.href = sessionResponse.url;
   } catch (error) {
-    console.error('Booking Error:', error)
-    loading.value = false
+    console.error('Booking Error:', error);
+    loading.value = false;
     
-    if (error.code === 'ERR_NETWORK') {
-      toast.error('Cannot connect to server. Please check your internet connection or try again later.')
-    } else if (error.response?.status === 401) {
-      toast.error('Authentication required. Please try logging out and back in.')
+    if (error.response?.status === 401) {
+      // Auth token expired or invalid
+      toast.error('Your session has expired. Please log in again to continue.');
+      // Redirect to login with return URL
+      router.push({
+        path: '/auth',
+        query: {
+          redirect: route.fullPath,
+          startDate: dates.value.startDate,
+          endDate: dates.value.endDate,
+          guests: guests.value,
+          authError: 'session_expired',
+          fromCampers: true
+        }
+      });
+    } else if (error.code === 'ERR_NETWORK') {
+      toast.error('Cannot connect to server. Please check your internet connection or try again later.');
     } else if (error.response?.status === 400 && error.response?.data?.error) {
-      toast.error(`Booking failed: ${error.response.data.error}`)
+      toast.error(`Booking failed: ${error.response.data.error}`);
       if (error.response.data.details) {
-        console.error('Error details:', error.response.data.details)
+        console.error('Error details:', error.response.data.details);
       }
     } else {
-      toast.error('An error occurred while processing your booking. Please try again later.')
+      toast.error('An error occurred while processing your booking. Please try again later.');
     }
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
 // Handle price update (for owner)
 const handlePriceUpdate = (newPrice) => {
@@ -733,31 +873,12 @@ const loadSpotDetails = async () => {
   showRetryButton.value = false
   
   try {
-    // Try first with /api prefix
-    let response
-    try {
-      response = await axios.get(`/api/camping-spots/${spotId}`, {
-        params: {
-          startDate: dates.value.startDate || route.query.start,
-          endDate: dates.value.endDate || route.query.end
-        }
-      })
-    } catch (apiError) {
-      console.log('API endpoint failed, trying without prefix:', apiError)
-      
-      // Check if it's a 404 specifically
-      if (apiError.response?.status === 404) {
-        throw new Error('Camping spot not found')
+    const response = await axios.get(`/api/camping-spots/${spotId}`, {
+      params: {
+        startDate: dates.value.startDate || route.query.start,
+        endDate: dates.value.endDate || route.query.end
       }
-      
-      // Try without prefix if API fails with other errors
-      response = await axios.get(`/camping-spots/${spotId}`, {
-        params: {
-          startDate: dates.value.startDate || route.query.start,
-          endDate: dates.value.endDate || route.query.end
-        }
-      })
-    }
+    })
     
     if (!response || !response.data) {
       throw new Error('No data received from server')
@@ -773,6 +894,14 @@ const loadSpotDetails = async () => {
     // Make sure amenities is always an array
     if (!spot.value.camping_spot_amenities) {
       spot.value.camping_spot_amenities = []
+    }
+    
+    // Make sure location exists
+    if (!spot.value.location) {
+      spot.value.location = {
+        city: 'Unknown',
+        country: { name: 'Unknown' }
+      }
     }
     
     // First check URL parameters for date information
@@ -814,21 +943,17 @@ const loadSpotDetails = async () => {
     
   } catch (error) {
     console.error('Failed to load camping spot:', error)
-    console.error('API Error Details:', {
-      response: error.response?.data,
-      status: error.response?.status,
-      message: error.message
-    })
+    error.value = error.message || 'Failed to load camping spot details'
     
-    if (error.message === 'Camping spot not found' || error.response?.status === 404) {
-      toast.error('Camping spot not found')
-      router.push('/campers')
-    } else if (dbConnectionError.value) {
-      toast.error('Database connection error. Please try again later.')
-    } else {
-      toast.error('Failed to load camping spot. Please try again later.')
-      error.value = error.message || 'Failed to load camping spot'
+    // Check for database connection errors
+    if (error.response?.status === 503 || 
+        error.response?.data?.code === 'P1001' || 
+        error.response?.data?.code === 'DB_CONNECTION_ERROR' ||
+        (error.response?.data?.error && error.response.data.error.includes('database'))) {
+      dbConnectionError.value = true
     }
+    
+    showRetryButton.value = true
   } finally {
     loading.value = false
   }
@@ -843,9 +968,26 @@ const calculateTotal = () => {
   }
 }
 
-onMounted(() => {
-  loadSpotDetails()
-})
+onMounted(async () => {
+  // Fetch spot details first
+  await loadSpotDetails();
+  
+  // Check if user is owner of THIS spot - if so, redirect to dashboard
+  if (authStore.isLoggedIn && !authStore.publicUser) {
+    try {
+      await authStore.fetchPublicUser(authStore.user.id, true);
+    } catch (error) {
+      console.error('Error fetching user info:', error);
+    }
+  }
+  
+  if (isOwnSpot.value) {
+    console.log('User is owner of this spot, redirecting to dashboard');
+    toast.info("This is your camping spot. You can't book your own spot.");
+    router.replace('/dashboard/spots');
+    return;
+  }
+});
 </script>
 
 <style scoped>

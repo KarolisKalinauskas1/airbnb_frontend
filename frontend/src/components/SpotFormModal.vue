@@ -1,16 +1,17 @@
 <template>
-  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center overflow-y-auto pt-20 pb-10 z-50">
+  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center overflow-y-auto pt-20 pb-10 z-50" @click.self="handleClose">
     <div class="bg-white p-6 rounded-lg w-full max-w-2xl my-10 mx-4 shadow-xl relative">
       <!-- Close button in the top-right corner -->
       <button 
-        @click="$emit('close')" 
+        @click.stop="handleClose" 
+        type="button"
         class="absolute -top-4 -right-4 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-md hover:shadow-lg transition-all duration-200 transform hover:scale-110 border border-gray-200 cursor-pointer"
       >
         <span class="text-gray-600 hover:text-red-600 transition-colors">&times;</span>
       </button>
       
       <h2 class="text-xl font-semibold mb-4">{{ spot ? 'Edit' : 'Add' }} Camping Spot</h2>
-      <form @submit.prevent="handleSubmit" class="space-y-4 max-h-[70vh] overflow-y-auto pr-4">
+      <form ref="formRef" @submit.prevent="handleSubmit" class="space-y-4 max-h-[70vh] overflow-y-auto pr-4">
         <!-- Basic Information -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="mb-4">
@@ -30,9 +31,9 @@
           <div>
             <label class="block text-sm font-medium text-gray-700">Price per night (€) *</label>
             <input 
-              v-model="form.price" 
+              v-model="form.price_per_night" 
               type="number" 
-              name="price"
+              name="price_per_night"
               required 
               min="0"
               step="0.01"
@@ -77,7 +78,7 @@
                 <input 
                   type="checkbox"
                   :value="amenity.amenity_id"
-                  v-model="form.amenities"
+                  v-model="selectedAmenities"
                   class="rounded border-gray-300"
                 >
                 <span class="ml-2">{{ amenity.name }}</span>
@@ -87,38 +88,40 @@
         </div>
 
         <!-- Address Information -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm font-medium text-gray-700">Address Line 1 *</label>
-            <input v-model="form.address_line1" name="address_line1" type="text" required class="mt-1 w-full px-3 py-2 border rounded-md" >
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700">Address Line 2</label>
-            <input v-model="form.address_line2" type="text" class="mt-1 w-full px-3 py-2 border rounded-md">
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700">City *</label>
-            <input v-model="form.city" name="city" type="text" required class="mt-1 w-full px-3 py-2 border rounded-md">
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700">Postal Code *</label>
-            <input v-model="form.postal_code" name="postal_code" type="text" required class="mt-1 w-full px-3 py-2 border rounded-md">
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-700">Country *</label>
-            <select 
-              v-model="form.country" 
-              name="country"
-              required 
-              class="mt-1 w-full px-3 py-2 border rounded-md"
-            >
-              <option value="">Select a country</option>
-              <option v-for="country in countries" 
-                      :key="country.country_id" 
-                      :value="country.country_id">
-                {{ country.name }}
-              </option>
-            </select>
+        <div class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Address Line 1 *</label>
+              <input v-model="form.address_line1" name="address_line1" type="text" required class="mt-1 w-full px-3 py-2 border rounded-md">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Address Line 2</label>
+              <input v-model="form.address_line2" type="text" class="mt-1 w-full px-3 py-2 border rounded-md">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">City *</label>
+              <input v-model="form.city" name="city" type="text" required class="mt-1 w-full px-3 py-2 border rounded-md">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Postal Code *</label>
+              <input v-model="form.postal_code" name="postal_code" type="text" required class="mt-1 w-full px-3 py-2 border rounded-md">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700">Country *</label>
+              <select 
+                v-model="form.country_id" 
+                name="country_id"
+                required 
+                class="mt-1 w-full px-3 py-2 border rounded-md"
+              >
+                <option value="">Select a country</option>
+                <option v-for="country in countries" 
+                        :key="country.country_id" 
+                        :value="country.country_id">
+                  {{ country.name }}
+                </option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -147,7 +150,7 @@
 
           <!-- New Images -->
           <div class="flex flex-wrap gap-4 mb-4">
-            <div v-for="(image, index) in form.images" 
+            <div v-for="(image, index) in newImages" 
                  :key="index"
                  class="relative">
               <img :src="getImageUrl(image)"
@@ -175,16 +178,24 @@
         <div class="flex justify-end space-x-3 mt-6">
           <button 
             type="button" 
-            @click="$emit('close')" 
-            class="px-4 py-2 text-gray-600 hover:text-gray-800 cursor-pointer transition-colors"
+            @click="handleClose" 
+            :disabled="isSubmitting"
+            class="px-4 py-2 text-gray-600 hover:text-gray-800 cursor-pointer transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button 
             type="submit" 
-            class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 cursor-pointer transition-colors"
+            :disabled="isSubmitting"
+            class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 cursor-pointer transition-colors disabled:opacity-50 flex items-center"
           >
-            {{ spot ? 'Save Changes' : 'Add Spot' }}
+            <span v-if="isSubmitting" class="mr-2">
+              <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+              </svg>
+            </span>
+            {{ isSubmitting ? 'Creating...' : (spot ? 'Save Changes' : 'Add Spot') }}
           </button>
         </div>
       </form>
@@ -193,7 +204,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import axios from '@/axios'
 import { useToast } from 'vue-toastification'
 import { useAuthStore } from '@/stores/auth'
@@ -205,9 +216,12 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'submit'])
+const emit = defineEmits(['close', 'spot-created', 'spot-updated'])
 const toast = useToast()
 const authStore = useAuthStore()
+const isSubmitting = ref(false)
+const newImages = ref([])
+const selectedAmenities = ref([])
 
 const availableAmenities = ref([])
 const countries = ref([])
@@ -216,15 +230,13 @@ const validationErrors = reactive({})
 const form = reactive({
   title: '',
   description: '',
-  price: '',
-  max_guests: 1,
+  price_per_night: '',
+  max_guests: '',
   address_line1: '',
   address_line2: '',
   city: '',
-  postal_code: '',
-  country: '',
-  amenities: [],
-  images: []
+  country_id: '',
+  postal_code: ''
 })
 
 const errors = reactive({
@@ -232,29 +244,43 @@ const errors = reactive({
   description: ''
 })
 
+const submissionLock = ref(false);
+
 const getImageUrl = (image) => {
-  if (!image) return '';
-  if (image instanceof File) {
-    return URL.createObjectURL(image);
+  console.log('Getting URL for image:', image);
+  if (!image) {
+    console.log('No image provided');
+    return '';
   }
-  if (typeof image === 'string') return image;
+  if (image instanceof File) {
+    const url = URL.createObjectURL(image);
+    console.log('Created object URL for File:', url);
+    return url;
+  }
+  if (typeof image === 'string') {
+    console.log('Returning string URL:', image);
+    return image;
+  }
+  console.log('Returning image_url from object:', image.image_url);
   return image.image_url;
 }
 
 const handleImageUpload = (event) => {
   const files = Array.from(event.target.files || []);
+  console.log('Files selected:', files);
   if (files.length > 0) {
-    form.images.push(...files);
+    newImages.value.push(...files);
+    console.log('New images array after upload:', newImages.value);
   }
 }
 
 const removeImage = (index) => {
-  if (index >= 0 && index < form.images.length) {
-    const image = form.images[index];
+  if (index >= 0 && index < newImages.value.length) {
+    const image = newImages.value[index];
     if (image instanceof File) {
       URL.revokeObjectURL(getImageUrl(image));
     }
-    form.images.splice(index, 1);
+    newImages.value.splice(index, 1);
   }
 }
 
@@ -263,7 +289,7 @@ const removeExistingImage = async (imageId) => {
   
   if (confirm('Are you sure you want to delete this image?')) {
     try {
-      await axios.delete(`/camping-spots/images/${imageId}`);
+      await axios.delete(`/api/camping-spots/images/${imageId}`);
       props.spot.images = props.spot.images.filter(img => img.image_id !== imageId);
     } catch (error) {
       console.error('Failed to delete image:', error);
@@ -274,149 +300,127 @@ const removeExistingImage = async (imageId) => {
 
 const fetchAmenities = async () => {
   try {
-    // Try with API prefix first
-    try {
-      const { data } = await axios.get('/api/camping-spots/amenities', {
-        headers: { 'Accept': 'application/json' }
-      });
-      availableAmenities.value = data;
-    } catch (apiError) {
-      console.warn('API endpoint failed, trying without /api prefix');
-      
-      // Fallback to non-API endpoint
-      const { data } = await axios.get('/camping-spots/amenities', {
-        headers: { 'Accept': 'application/json' },
-        bypassDedupe: true // Prevent duplicate request cancellation
-      });
-      availableAmenities.value = data;
-    }
+    const response = await axios.get('/api/camping-spots/amenities');
+    availableAmenities.value = response.data;
   } catch (error) {
-    console.error('Failed to fetch amenities:', error);
-    toast.error('Failed to load amenities. Please try again.');
+    console.error('Error fetching amenities:', error);
+    toast.error('Failed to load amenities');
   }
-}
+};
 
 const fetchCountries = async () => {
   try {
-    // Try with API prefix first
-    try {
-      const { data } = await axios.get('/api/camping-spots/countries', {
-        headers: { 'Accept': 'application/json' }
-      });
-      countries.value = data;
-    } catch (apiError) {
-      console.warn('API endpoint failed, trying without /api prefix');
-      
-      // Fallback to non-API endpoint
-      const { data } = await axios.get('/camping-spots/countries', {
-        headers: { 'Accept': 'application/json' },
-        bypassDedupe: true // Prevent duplicate request cancellation
-      });
-      countries.value = data;
-    }
+    const response = await axios.get('/api/camping-spots/countries');
+    countries.value = response.data;
   } catch (error) {
-    console.error('Failed to fetch countries:', error);
-    toast.error('Failed to load countries. Please try again.');
+    console.error('Error fetching countries:', error);
+    toast.error('Failed to load countries');
+  }
+};
+
+const handleClose = () => {
+  if (isSubmitting.value) return
+  emit('close')
+}
+
+const handleSubmit = async () => {
+  if (isSubmitting.value) return;
+  isSubmitting.value = true;
+
+  try {
+    const formErrors = validateForm();
+    if (formErrors.length > 0) {
+      toast.error(formErrors.join(', '));
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('title', form.title);
+    formData.append('description', form.description);
+    formData.append('price_per_night', form.price_per_night);
+    formData.append('max_guests', form.max_guests);
+
+    const location = {
+      address_line1: form.address_line1,
+      address_line2: form.address_line2,
+      city: form.city,
+      postal_code: form.postal_code,
+      country_id: form.country_id
+    }
+    
+    formData.append('location', JSON.stringify(location))
+    formData.append('amenities', JSON.stringify(selectedAmenities.value))
+
+    // Append new images
+    newImages.value.forEach((image) => {
+      formData.append('images', image)
+    })
+
+    let response;
+    if (props.spot) {
+      // Update existing spot
+      try {
+        // Ensure we have a fresh token before making the PUT request
+        await authStore.getAuthToken(true); // Force refresh token
+        
+        response = await axios.put(`/api/camping-spots/${props.spot.camping_spot_id}`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        emit('spot-updated', response.data);
+      } catch (error) {
+        console.error('Error updating camping spot:', error);
+        if (error.response?.status === 401) {
+          // If we get a 401, try to refresh the token and retry once
+          try {
+            await authStore.refreshToken();
+            response = await axios.put(`/api/camping-spots/${props.spot.camping_spot_id}`, formData, {
+              headers: {
+                'Content-Type': 'multipart/form-data',
+              },
+            });
+            emit('spot-updated', response.data);
+          } catch (retryError) {
+            throw retryError;
+          }
+        } else {
+          throw error;
+        }
+      }
+    } else {
+      // Create new spot
+      response = await axios.post('/api/camping-spots', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      emit('spot-created', response.data);
+    }
+
+    emit('close');
+  } catch (error) {
+    console.error('Error saving camping spot:', error);
+    toast.error(error.response?.data?.message || 'Error saving camping spot');
+  } finally {
+    isSubmitting.value = false;
   }
 }
 
 const validateForm = () => {
-  // Reset errors
-  Object.keys(errors).forEach(key => errors[key] = '');
+  const errors = [];
   
-  let isValid = true;
+  if (!form.title?.trim()) errors.push('Title is required');
+  if (!form.description?.trim()) errors.push('Description is required');
+  if (!form.price_per_night || form.price_per_night <= 0) errors.push('Valid price is required');
+  if (!form.max_guests || form.max_guests <= 0) errors.push('Valid number of guests is required');
+  if (!form.address_line1?.trim()) errors.push('Address is required');
+  if (!form.city?.trim()) errors.push('City is required');
+  if (!form.country_id) errors.push('Country is required');
+  if (!form.postal_code?.trim()) errors.push('Postal code is required');
   
-  // Validate title
-  if (!form.title.trim()) {
-    errors.title = 'Title is required';
-    isValid = false;
-  } else if (form.title.length > 100) {
-    errors.title = 'Title must be less than 100 characters';
-    isValid = false;
-  }
-  
-  // Validate description
-  if (!form.description.trim()) {
-    errors.description = 'Description is required';
-    isValid = false;
-  } else if (form.description.length > 2000) {
-    errors.description = 'Description must be less than 2000 characters';
-    isValid = false;
-  }
-  
-  // ... rest of validation ...
-  
-  return isValid;
+  return errors;
 };
-
-const handleSubmit = async () => {
-  try {
-    // Create FormData instance
-    const formData = new FormData();
-    
-    // Validate required fields
-    if (!form.title || !form.description || !form.price || !form.max_guests ||
-        !form.address_line1 || !form.city || !form.postal_code || !form.country) {
-      toast.error('Please fill in all required fields');
-      return;
-    }
-    
-    // Prepare location data
-    const location = {
-      address_line1: form.address_line1,
-      address_line2: form.address_line2 || '',
-      city: form.city,
-      country_id: parseInt(form.country),
-      postal_code: form.postal_code
-    };
-
-    if (props.spot?.location?.location_id) {
-      location.location_id = props.spot.location.location_id;
-    }
-
-    // Ensure we have user data before proceeding
-    if (!authStore.fullUser?.user_id) {
-      toast.error('You must be logged in to create a camping spot');
-      return;
-    }
-
-    // Add all form data as strings/numbers
-    formData.append('title', form.title);
-    formData.append('description', form.description);
-    formData.append('price_per_night', form.price);
-    formData.append('max_guests', form.max_guests);
-    formData.append('owner_id', authStore.fullUser.user_id.toString());
-    
-    // JSON stringify objects
-    formData.append('location', JSON.stringify(location));
-    formData.append('amenities', JSON.stringify(form.amenities));
-
-    // Include existing images if editing
-    if (props.spot?.images?.length) {
-      formData.append('existing_images', JSON.stringify(props.spot.images.map(img => img.image_id)));
-    }
-
-    // Append new images
-    if (form.images) {
-      form.images.forEach(image => {
-        if (image instanceof File) {
-          formData.append('images', image);
-        }
-      });
-    }
-
-    // Log what we're sending to help with debugging
-    console.log("Form data being sent:");
-    for (let [key, value] of formData.entries()) {
-      console.log(`${key}: ${typeof value === 'object' ? 'File or Object' : value}`);
-    }
-
-    emit('submit', formData);
-  } catch (error) {
-    console.error('Error preparing form data:', error);
-    toast.error('Error preparing form data. Please try again.');
-  }
-}
 
 // Initialize form if editing
 onMounted(async () => {
@@ -426,27 +430,50 @@ onMounted(async () => {
     Object.assign(form, {
       title: props.spot.title,
       description: props.spot.description,
-      price: props.spot.price_per_night,
+      price_per_night: props.spot.price_per_night,
       max_guests: props.spot.max_guests,
-      amenities: props.spot.camping_spot_amenities?.map(a => a.amenity_id) || [],
       address_line1: props.spot.location?.address_line1 || '',
       address_line2: props.spot.location?.address_line2 || '',
       city: props.spot.location?.city || '',
       postal_code: props.spot.location?.postal_code || '',
-      country: props.spot.location?.country_id || ''
-    })
+      country_id: props.spot.location?.country_id || '',
+    });
+    
+    // Initialize selected amenities
+    selectedAmenities.value = props.spot.camping_spot_amenities?.map(a => a.amenity_id) || [];
   }
-})
+
+  console.log('SpotFormModal mounted');
+});
+
+onUnmounted(() => {
+  console.log('SpotFormModal unmounted');
+  isSubmitting.value = false;
+  submissionLock.value = false;
+  
+  // Clean up object URLs
+  newImages.value.forEach(image => {
+    if (image instanceof File) {
+      URL.revokeObjectURL(getImageUrl(image));
+    }
+  });
+});
 </script>
 
 <style scoped>
 /* Add styles to ensure modal is properly positioned */
 .fixed {
   position: fixed;
+  z-index: 9999; /* Higher than sidebar */
 }
 
 .pt-20 {
   padding-top: 5rem; /* Ensure it's below the navbar */
+}
+
+/* Make sure the overlay covers everything */
+.bg-black.bg-opacity-50 {
+  z-index: 9998; /* Just below modal content */
 }
 
 .overflow-y-auto {

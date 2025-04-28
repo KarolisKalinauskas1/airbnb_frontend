@@ -1,0 +1,124 @@
+import axios from '@/axios';
+
+// API health state
+let apiHealthState = {
+  healthy: false,
+  lastChecked: 0,
+  consecutiveFailures: 0,
+  consecutiveSuccesses: 0,
+  api: {
+    consecutiveFailures: 0,
+    consecutiveSuccesses: 0
+  }
+};
+
+// Health check endpoints in order of priority
+const HEALTH_ENDPOINTS = [
+  '/api/health',
+  '/health',
+  '/api/ping',
+  '/ping',
+  'http://localhost:3000/api/health',
+  'http://localhost:3000/health'
+];
+
+/**
+ * Check API availability by trying several endpoints
+ * @param {boolean} force Force check regardless of cache
+ * @returns {Promise<boolean>} True if API is available
+ */
+export async function checkApiAvailability(force = false) {
+  const now = Date.now();
+  
+  // Use cached result if recent
+  if (!force && now - apiHealthState.lastChecked < 60000) {
+    return apiHealthState.healthy;
+  }
+  
+  // Try each endpoint until one succeeds
+  for (const endpoint of HEALTH_ENDPOINTS) {
+    try {
+      console.log(`Checking API health with ${endpoint}...`);
+      
+      const response = await axios.get(endpoint, {
+        timeout: 3000, // Short timeout for health checks
+        validateStatus: status => status >= 200 && status < 500 // Accept any 2xx/3xx/4xx response
+      });
+      
+      // Check if this is a mock response
+      if (response.isMock) {
+        console.log(`Using mock response for ${endpoint}`);
+        // Continue to the next endpoint if this was a mock
+        continue;
+      }
+      
+      // If we got a real successful response
+      if (response.status >= 200 && response.status < 300) {
+        apiHealthState = {
+          healthy: true,
+          lastChecked: now,
+          consecutiveFailures: 0,
+          consecutiveSuccesses: apiHealthState.consecutiveSuccesses + 1,
+          api: {
+            consecutiveFailures: 0,
+            consecutiveSuccesses: apiHealthState.api.consecutiveSuccesses + 1
+          }
+        };
+        
+        return true;
+      }
+      
+      console.log(`API check failed for ${endpoint}, trying next...`);
+    } catch (error) {
+      console.log(`API check failed for ${endpoint}, trying next...`);
+    }
+  }
+  
+  // All endpoints failed
+  console.error('API health check failed: Request failed with status code 500');
+  
+  apiHealthState = {
+    healthy: false,
+    lastChecked: now,
+    consecutiveFailures: apiHealthState.consecutiveFailures + 1,
+    consecutiveSuccesses: 0,
+    api: {
+      consecutiveFailures: apiHealthState.api.consecutiveFailures + 1,
+      consecutiveSuccesses: 0
+    }
+  };
+  
+  return false;
+}
+
+/**
+ * Get the current API health state
+ * @returns {Object} Current health state
+ */
+export function getApiHealthState() {
+  return { ...apiHealthState };
+}
+
+/**
+ * Alias for getApiHealthState to maintain backward compatibility
+ * @returns {Object} Current health state
+ */
+export function getHealthState() {
+  return { ...apiHealthState };
+}
+
+/**
+ * Check backend health - Alias for checkApiAvailability
+ * @param {boolean} force Force check regardless of cache
+ * @returns {Promise<boolean>} True if API is available
+ */
+export async function checkBackendHealth(force = false) {
+  return checkApiAvailability(force);
+}
+
+export default {
+  checkApiAvailability,
+  checkBackendHealth,
+  getApiHealthState,
+  getHealthState
+};

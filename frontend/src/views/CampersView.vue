@@ -1,306 +1,357 @@
 <template>
-  <div>
-    <!-- Search bar positioned below the navigation bar (which is fixed by default) -->
-    <div class="sticky top-0 left-0 right-0 bg-white shadow-md z-40 border-b border-gray-200">
-      <div class="container mx-auto px-4 py-4">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <!-- Date Range Selection -->
-          <div class="relative">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Dates</label>
-            <input 
-              type="text" 
-              v-model="dateRangeText"
-              @click="showDatePicker = !showDatePicker" 
-              class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 cursor-pointer"
-              placeholder="Add dates"
-              readonly
-            />
-            <!-- Simple date picker panel -->
-            <div v-if="showDatePicker" class="absolute z-50 top-full left-0 mt-1 bg-white rounded-lg shadow-lg border p-4 w-full md:w-auto">
-              <div class="grid grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-                  <input 
-                    type="date" 
-                    v-model="dates.startDate"
-                    :min="tomorrow"
-                    @change="updateDateRange"
-                    class="w-full px-2 py-1 border rounded"
-                  />
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-                  <input 
-                    type="date" 
-                    v-model="dates.endDate"
-                    :min="minEndDate"
-                    @change="updateDateRange"
-                    class="w-full px-2 py-1 border rounded"
-                  />
-                </div>
+  <div class="min-h-screen bg-gray-50">
+    <!-- Only show the camping spots content -->
+    <div>
+      <div>
+        <!-- Search bar positioned below the navigation bar (which is fixed by default) -->
+        <div class="sticky top-0 left-0 right-0 bg-white shadow-md z-40 border-b border-gray-200">
+          <div class="container mx-auto px-4 py-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <!-- Date Range Selection with absolute positioning inside the container -->
+              <div class="relative date-range-container">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Dates</label>
+                <input 
+                  type="text" 
+                  v-model="dateRangeText"
+                  @click="toggleDatePicker" 
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-red-500 focus:border-red-500 cursor-pointer"
+                  placeholder="Add dates"
+                  readonly
+                />
+                <!-- Date picker dropdown positioned absolutely within its parent -->
+                <transition name="slide-fade">
+                  <div v-if="showDatePicker" class="date-picker-dropdown absolute left-0 right-0 mt-1 z-[10000]">
+                    <div class="bg-white p-4 rounded-lg shadow-xl border border-gray-200" @click.stop>
+                      <div class="grid grid-cols-2 gap-4">
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                          <input 
+                            type="date" 
+                            v-model="dates.startDate"
+                            :min="tomorrow"
+                            @change="updateDateRange"
+                            class="w-full px-2 py-1.5 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                          />
+                        </div>
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                          <input 
+                            type="date" 
+                            v-model="dates.endDate"
+                            :min="minEndDate"
+                            @change="updateDateRange"
+                            class="w-full px-2 py-1.5 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                          />
+                        </div>
+                      </div>
+                      <div class="mt-3 flex justify-end space-x-2">
+                        <button 
+                          @click="closeDatePicker" 
+                          class="px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        >
+                          Cancel
+                        </button>
+                        <button 
+                          @click="applyDateSelection" 
+                          class="px-3 py-1.5 bg-red-600 border border-transparent rounded-md text-sm font-medium text-white hover:bg-red-700"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </transition>
               </div>
-              <div class="mt-2 text-right">
-                <button @click="showDatePicker = false" class="text-red-500 hover:text-red-700 text-sm">Done</button>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Location Search -->
-          <div class="relative">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Where</label>
-            <input 
-              type="text" 
-              v-model="locationSearchText" 
-              @input="handleLocationSearch" 
-              class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
-              placeholder="Search location"
-            />
-            <!-- Search results dropdown -->
-            <div v-if="locationResults.length > 0" class="absolute z-50 top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border max-h-60 overflow-y-auto">
-              <div 
-                v-for="(result, index) in locationResults" 
-                :key="index"
-                @click="selectLocation(result)"
-                class="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center"
-              >
-                <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                {{ result.display_name }}
+              
+              <!-- Location Search -->
+              <div class="relative">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Where</label>
+                <input 
+                  type="text" 
+                  v-model="locationSearchText" 
+                  @input="handleLocationSearch" 
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  placeholder="Search location"
+                />
+                <!-- Search results dropdown -->
+                <div v-if="locationResults.length > 0" class="absolute z-50 top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border max-h-60 overflow-y-auto">
+                  <div 
+                    v-for="(result, index) in locationResults" 
+                    :key="index"
+                    @click="selectLocation(result)"
+                    class="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center"
+                  >
+                    <svg class="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    {{ result.display_name }}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
-    
-    <!-- Location selected banner -->
-    <div v-if="selectedLocation" class="sticky top-[72px] left-0 right-0 bg-blue-50 border-b border-blue-200 z-30 py-2">
-      <div class="container mx-auto px-4 flex justify-between items-center">
-        <div class="flex items-center">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-          <span>Showing results near: <strong>{{ selectedLocation.display_name }}</strong></span>
-        </div>
-        <button 
-          @click="clearLocationFilter" 
-          class="text-blue-500 hover:text-blue-700 text-sm"
-        >
-          Clear location
-        </button>
-      </div>
-    </div>
-  
-    <!-- Main content with proper spacing to account for the sticky elements -->
-    <div class="container mx-auto px-4 pt-4">
-      <div class="flex justify-between items-center mb-6">
-        <h1 class="text-2xl font-bold">Available Camping Spots</h1>
         
-        <!-- View Selector (Map/List) -->
-        <div class="bg-white rounded-lg shadow-sm inline-flex">
-          <button 
-            @click="viewMode = 'list'"
-            class="px-4 py-2 rounded-l-lg transition-colors"
-            :class="viewMode === 'list' ? 'bg-red-600 text-white' : 'hover:bg-gray-100'"
-          >
-            <span class="flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+        <!-- Location selected banner -->
+        <div v-if="selectedLocation" class="sticky top-[72px] left-0 right-0 bg-blue-50 border-b border-blue-200 z-30 py-2">
+          <div class="container mx-auto px-4 flex justify-between items-center">
+            <div class="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
-              List
-            </span>
-          </button>
-          <button 
-            @click="viewMode = 'map'"
-            class="px-4 py-2 rounded-r-lg transition-colors"
-            :class="viewMode === 'map' ? 'bg-red-600 text-white' : 'hover:bg-gray-100'"
-          >
-            <span class="flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-              </svg>
-              Map
-            </span>
-          </button>
+              <span>Showing results near: <strong>{{ selectedLocation.display_name }}</strong></span>
+            </div>
+            <button 
+              @click="clearLocationFilter" 
+              class="text-blue-500 hover:text-blue-700 text-sm"
+            >
+              Clear location
+            </button>
+          </div>
         </div>
-      </div>
+        
+        <!-- Move the owner warning banner ABOVE the filters, not as a sticky element -->
+        <div v-if="isOwner" class="bg-yellow-50 border border-yellow-200 rounded-lg mb-4 py-2 px-4 shadow-sm">
+          <div class="container mx-auto text-center">
+            <p class="text-yellow-800">
+              <span class="font-medium">Owner account:</span> You're viewing other owners' camping spots. Your own spots won't appear here.
+              <button @click="router.push('/dashboard/spots')" class="ml-2 underline">Manage Your Spots</button>
+            </p>
+          </div>
+        </div>
       
-      <!-- Main content layout with sidebar -->
-      <div class="flex flex-col lg:flex-row gap-6">
-        <!-- Filters Sidebar -->
-        <div class="lg:w-80 flex-shrink-0">
-          <div class="bg-white p-4 rounded-lg shadow-sm sticky top-[88px]">
-            <h2 class="text-lg font-semibold mb-4">Filters</h2>
+        <!-- Main content with proper spacing to account for the warning -->
+        <div class="container mx-auto px-4 pt-4">
+          <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-bold">Available Camping Spots</h1>
             
-            <!-- Price Range -->
-            <div class="mb-6">
-              <h3 class="text-sm font-medium mb-2">Price Range</h3>
-              <div class="flex items-center">
-                <input
-                  type="number"
-                  v-model="filters.minPrice"
-                  class="w-24 px-2 py-1 border rounded-md"
-                  placeholder="Min €"
-                />
-                <span class="mx-2">-</span>
-                <input
-                  type="number"
-                  v-model="filters.maxPrice"
-                  class="w-24 px-2 py-1 border rounded-md"
-                  placeholder="Max €"
-                />
-              </div>
+            <!-- View Selector (Map/List) -->
+            <div class="bg-white rounded-lg shadow-sm inline-flex">
+              <button 
+                @click="viewMode = 'list'"
+                class="px-4 py-2 rounded-l-lg transition-colors"
+                :class="viewMode === 'list' ? 'bg-red-600 text-white' : 'hover:bg-gray-100'"
+              >
+                <span class="flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                  </svg>
+                  List
+                </span>
+              </button>
+              <button 
+                @click="viewMode = 'map'"
+                class="px-4 py-2 rounded-r-lg transition-colors"
+                :class="viewMode === 'map' ? 'bg-red-600 text-white' : 'hover:bg-gray-100'"
+              >
+                <span class="flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
+                  Map
+                </span>
+              </button>
             </div>
-            
-            <!-- Number of guests -->
-            <div class="mb-6">
-              <h3 class="text-sm font-medium mb-2">Guests</h3>
-              <input
-                type="number"
-                v-model="filters.guests"
-                min="1"
-                class="w-full px-2 py-1 border rounded-md"
-                placeholder="Number of guests"
-              />
-            </div>
-            
-            <!-- Amenities -->
-            <div class="mb-6">
-              <h3 class="text-sm font-medium mb-2">Amenities</h3>
-              <div class="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                <div v-for="amenityId in availableAmenities" :key="amenityId" class="flex items-center">
+          </div>
+          
+          <!-- Main content layout with sidebar -->
+          <div class="flex flex-col lg:flex-row gap-6">
+            <!-- Filters Sidebar -->
+            <div class="lg:w-80 flex-shrink-0">
+              <div class="bg-white p-4 rounded-lg shadow-sm sticky top-[88px]">
+                <h2 class="text-lg font-semibold mb-4">Filters</h2>
+                
+                <!-- Price Range -->
+                <div class="mb-6">
+                  <h3 class="text-sm font-medium mb-2">Price Range</h3>
+                  <div class="flex items-center">
+                    <input
+                      type="number"
+                      v-model="filters.minPrice"
+                      class="w-24 px-2 py-1 border rounded-md"
+                      placeholder="Min €"
+                    />
+                    <span class="mx-2">-</span>
+                    <input
+                      type="number"
+                      v-model="filters.maxPrice"
+                      class="w-24 px-2 py-1 border rounded-md"
+                      placeholder="Max €"
+                    />
+                  </div>
+                </div>
+                
+                <!-- Number of guests -->
+                <div class="mb-6">
+                  <h3 class="text-sm font-medium mb-2">Guests</h3>
                   <input
-                    type="checkbox"
-                    :id="`amenity-${amenityId}`"
-                    :value="amenityId"
-                    v-model="filters.amenities"
-                    class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                    type="number"
+                    v-model="filters.guests"
+                    min="1"
+                    class="w-full px-2 py-1 border rounded-md"
+                    placeholder="Number of guests"
                   />
-                  <label :for="`amenity-${amenityId}`" class="ml-2 text-sm text-gray-700">
-                    {{ getAmenityName(amenityId) }}
-                  </label>
+                </div>
+                
+                <!-- Amenities -->
+                <div class="mb-6">
+                  <h3 class="text-sm font-medium mb-2">Amenities</h3>
+                  <div class="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                    <div v-for="amenity in availableAmenities" :key="amenity.amenity_id" class="flex items-center">
+                      <input
+                        type="checkbox"
+                        :id="`amenity-${amenity.amenity_id}`"
+                        :value="amenity.amenity_id"
+                        v-model="filters.amenities"
+                        class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                      />
+                      <label :for="`amenity-${amenity.amenity_id}`" class="ml-2 text-sm text-gray-700">
+                        {{ amenity.name }}
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Distance filter (only shown when location is selected) -->
+                <div v-if="selectedLocation" class="mb-6">
+                  <h3 class="text-sm font-medium mb-2">Distance (km)</h3>
+                  <input
+                    type="range"
+                    v-model="filters.radius"
+                    min="5"
+                    max="100"
+                    step="5"
+                    class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div class="flex justify-between text-xs text-gray-500">
+                    <span>5 km</span>
+                    <span>{{ filters.radius }} km</span>
+                    <span>100 km</span>
+                  </div>
+                </div>
+                
+                <div class="flex space-x-2">
+                  <button 
+                    @click="applyFilters" 
+                    class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 flex-grow"
+                  >
+                    Apply Filters
+                  </button>
+                  <button 
+                    @click="resetFilters" 
+                    class="border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100"
+                  >
+                    Reset
+                  </button>
                 </div>
               </div>
             </div>
             
-            <!-- Distance filter (only shown when location is selected) -->
-            <div v-if="selectedLocation" class="mb-6">
-              <h3 class="text-sm font-medium mb-2">Distance (km)</h3>
-              <input
-                type="range"
-                v-model="filters.radius"
-                min="5"
-                max="100"
-                step="5"
-                class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-              />
-              <div class="flex justify-between text-xs text-gray-500">
-                <span>5 km</span>
-                <span>{{ filters.radius }} km</span>
-                <span>100 km</span>
+            <!-- Spots Content -->
+            <div class="flex-grow min-w-0">
+              <!-- Map View -->
+              <div v-if="viewMode === 'map'" class="bg-white rounded-lg shadow-sm p-4">
+                <div class="h-[600px] w-full rounded-lg">
+                  <OpenStreetMapView
+                    :spots="filteredSpots" 
+                    :selected-location="selectedLocation"
+                    :search-radius="parseInt(filters.radius)"
+                    @spot-clicked="viewSpot"
+                  />
+                </div>
+                <div class="mt-3 text-center text-sm text-gray-500">
+                  <p>Map powered by OpenStreetMap contributors</p>
+                </div>
               </div>
-            </div>
-            
-            <div class="flex space-x-2">
-              <button 
-                @click="applyFilters" 
-                class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 flex-grow"
-              >
-                Apply Filters
-              </button>
-              <button 
-                @click="resetFilters" 
-                class="border border-gray-300 px-4 py-2 rounded-lg hover:bg-gray-100"
-              >
-                Reset
-              </button>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Spots Content -->
-        <div class="flex-grow min-w-0">
-          <!-- Map View -->
-          <div v-if="viewMode === 'map'" class="bg-white rounded-lg shadow-sm p-4">
-            <div class="h-[600px] w-full bg-gray-100 rounded-lg flex items-center justify-center">
-              <p class="text-gray-500">Map view will be implemented here</p>
-            </div>
-          </div>
-          
-          <!-- List View -->
-          <div v-else>
-            <!-- Loading state -->
-            <div v-if="loading" class="flex justify-center py-20">
-              <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-red-500"></div>
-            </div>
-            
-            <div v-else-if="error" class="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-              <div class="text-red-500 mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+              
+              <!-- List View -->
+              <div v-else>
+                <!-- Loading state -->
+                <div v-if="loading" class="flex justify-center py-20">
+                  <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-red-500"></div>
+                </div>
+                
+                <div v-else-if="error" class="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+                  <div class="text-red-500 mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h3 class="text-lg font-medium text-gray-900 mb-2">{{ error }}</h3>
+                  <p v-if="isDbConnectionError" class="text-gray-600 mb-4">
+                    The database server is currently unavailable. Please try again later.
+                  </p>
+                  <button 
+                    @click="retryConnection" 
+                    class="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                  >
+                    Try Again
+                  </button>
+                </div>
+                
+                <!-- No results -->
+                <div v-if="!loading && filteredSpots.length === 0" class="no-spots-message">
+                  <div class="alert alert-info p-5 text-center">
+                    <h3 class="text-lg font-semibold mb-2">No camping spots found</h3>
+                    <p v-if="fetchError">
+                      {{ fetchError }}
+                    </p>
+                    <p v-else>
+                      Sorry, there are no camping spots matching your current filters.
+                      Try changing your search criteria to see more results.
+                    </p>
+                    <button @click="resetFilters" class="btn btn-primary mt-4">
+                      Reset Filters
+                    </button>
+                  </div>
+                </div>
+                
+                <!-- Results grid -->
+                <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div 
+                    v-for="spot in filteredSpots" 
+                    :key="spot.camping_spot_id" 
+                    class="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer" 
+                    :class="{'opacity-70': isOwner && spot.owner_id === authStore.fullUser?.user_id}"
+                    @click="viewSpot(spot)"
+                  >
+                    <CampingSpotCard 
+                      :spot="spot"
+                      :startDate="dates.startDate"
+                      :endDate="dates.endDate"
+                    />
+                    
+                    <!-- Add an indicator if this is the owner's own spot -->
+                    <div v-if="isOwner && spot.owner_id === authStore.fullUser?.user_id" 
+                         class="bg-yellow-50 border-t border-yellow-100 p-2 text-center text-yellow-800 text-sm">
+                      This is your spot. Manage it from your dashboard.
+                    </div>
+                  </div>
+                </div>
               </div>
-              <h3 class="text-lg font-medium text-gray-900 mb-2">{{ error }}</h3>
-              <p v-if="isDbConnectionError" class="text-gray-600 mb-4">
-                The database server is currently unavailable. Please try again later.
-              </p>
-              <button 
-                @click="retryConnection" 
-                class="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-              >
-                Try Again
-              </button>
-            </div>
-            
-            <!-- No results -->
-            <div v-else-if="filteredSpots.length === 0" class="bg-white p-6 rounded-lg shadow-sm text-center">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <h3 class="text-lg font-semibold mb-2">No camping spots found</h3>
-              <p class="text-gray-600 mb-4">Try adjusting your filters or search for a different location.</p>
-              <button 
-                @click="resetFilters" 
-                class="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-              >
-                Reset Filters
-              </button>
-            </div>
-            
-            <!-- Results grid -->
-            <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <CampingSpotCard 
-                v-for="spot in filteredSpots" 
-                :key="spot.camping_spot_id" 
-                :spot="spot"
-                :startDate="dates.startDate"
-                :endDate="dates.endDate"
-                @click="viewSpot(spot.camping_spot_id)"
-              />
             </div>
           </div>
         </div>
       </div>
     </div>
-    
-    <!-- Overlay for date picker -->
-    <div v-if="showDatePicker" class="fixed inset-0 bg-black bg-opacity-50 z-40" @click="showDatePicker = false"></div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, watch } from 'vue';
+import { ref, reactive, onMounted, computed, watch, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import axios from '@/axios';
+import { apiClient } from '../services/connectionConfig';
 import { useToast } from 'vue-toastification';
 import CampingSpotCard from '@/components/CampingSpotCard.vue';
+import OpenStreetMapView from '@/components/OpenStreetMapView.vue';
 import { debounce } from 'lodash';
+import { useAuthStore } from '@/stores/auth';
 
 const router = useRouter();
 const toast = useToast();
+const authStore = useAuthStore();
 
 // State
 const campingSpots = ref([]);
@@ -330,6 +381,9 @@ const showDatePicker = ref(false);
 const dateRangeText = ref('');
 const locationSearchText = ref('');
 const locationResults = ref([]);
+const fetchError = ref(null);
+const networkErrorCount = ref(0);
+const MAX_RETRY_ATTEMPTS = 3;
 
 // Date validation properties
 const tomorrow = computed(() => {
@@ -344,178 +398,119 @@ const minEndDate = computed(() => {
 });
 
 // Computed properties
+const isOwner = computed(() => {
+  return authStore.fullUser?.isowner === 1;
+});
+
 const filteredSpots = computed(() => {
-  return campingSpots.value;
+  if (!campingSpots.value.length) return [];
+  
+  return campingSpots.value.filter(spot => {
+    // Price filter
+    if (filters.value.minPrice && spot.price_per_night < filters.value.minPrice) return false;
+    if (filters.value.maxPrice && spot.price_per_night > filters.value.maxPrice) return false;
+    
+    // Guests filter
+    if (filters.value.guests && spot.max_guests < filters.value.guests) return false;
+    
+    // Amenities filter
+    if (filters.value.amenities && filters.value.amenities.length > 0) {
+      const spotAmenityIds = spot.camping_spot_amenities?.map(a => a.amenity_id) || [];
+      const hasAllAmenities = filters.value.amenities.every(amenityId => 
+        spotAmenityIds.includes(parseInt(amenityId))
+      );
+      if (!hasAllAmenities) return false;
+    }
+    
+    // Location filter
+    if (selectedLocation.value) {
+      const distance = calculateDistance(
+        selectedLocation.value.lat,
+        selectedLocation.value.lon,
+        spot.location.latitute,
+        spot.location.longtitute
+      );
+      if (distance > filters.value.radius) return false;
+    }
+    
+    return true;
+  });
 });
 
 // Methods
 const fetchCampingSpots = async () => {
-  try {
-    loading.value = true;
-    error.value = null;
-    isDbConnectionError.value = false;
-    
-    console.log("Fetching spots with filters:", filters.value);
-    console.log("Selected location:", selectedLocation.value);
-    
-    // Set default dates if not set
-    if (!dates.startDate || !dates.endDate) {
-      const today = new Date();
-      const tomorrow = new Date();
-      tomorrow.setDate(today.getDate() + 1);
-      
-      const afterTomorrow = new Date();
-      afterTomorrow.setDate(today.getDate() + 2);
-      
-      dates.startDate = tomorrow.toISOString().split('T')[0];
-      dates.endDate = afterTomorrow.toISOString().split('T')[0];
-      
-      updateDateRangeText();
-    }
-    
-    const defaultParams = {
-      startDate: dates.startDate,
-      endDate: dates.endDate,
-      minPrice: filters.value.minPrice,
-      maxPrice: filters.value.maxPrice,
-      guests: filters.value.guests
-    };
-    
-    // Add location and radius if available
-    if (filters.value.lat && filters.value.lng) {
-      defaultParams.lat = filters.value.lat;
-      defaultParams.lng = filters.value.lng;
-      defaultParams.radius = filters.value.radius || 50;
-    }
-    
-    // Add amenities if selected
-    if (filters.value.amenities?.length) {
-      defaultParams.amenities = filters.value.amenities.join(',');
-    }
-    
-    let response;
-    let useApiEndpoint = true;
-    let maxRetries = 2;
-    let retryDelay = 1000; // 1 second initial delay
-    
-    // Retry logic with increasing delay
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const endpoint = useApiEndpoint ? '/api/camping-spots' : '/camping-spots';
-        
-        response = await axios.get(endpoint, {
-          timeout: 8000, // Longer timeout to accommodate slower responses
-          headers: { 'Accept': 'application/json' },
-          params: {
-            ...defaultParams,
-            // Add cache buster to prevent caching issues
-            _t: Date.now()
-          }
-        });
-        
-        break; // If successful, exit the retry loop
-      } catch (requestError) {
-        console.warn(`Attempt ${attempt + 1} failed:`, requestError.message);
-        
-        // Check for specific database error
-        if (requestError.response?.status === 503 || 
-            requestError.response?.data?.code === 'P1001' ||
-            (requestError.response?.data?.error && 
-             requestError.response?.data?.error.toLowerCase().includes('database'))) {
-          isDbConnectionError.value = true;
-          error.value = 'Database server is currently unavailable. Please try again later.';
-          
-          // Instead of throwing, continue with empty results
-          campingSpots.value = [];
-          loading.value = false;
-          return;
-        }
-        
-        // Check for rate limiting
-        if (requestError.response?.status === 429) {
-          const retryAfter = requestError.response.data?.retryAfter || 30;
-          toast.warning(`Rate limited. Try again in ${Math.ceil(retryAfter)} seconds.`);
-          
-          // If this is the last retry and we're using API endpoint, try non-API endpoint
-          if (attempt === maxRetries && useApiEndpoint) {
-            useApiEndpoint = false;
-            attempt = -1; // Reset attempt counter for the new endpoint
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds before trying new endpoint
-            continue;
-          }
-        }
-        
-        // If this is the last attempt and still failing, handle the error
-        if (attempt === maxRetries) {
-          campingSpots.value = [];
-          error.value = 'Failed to load camping spots. Please try again later.';
-          loading.value = false;
-          return;
-        }
-        
-        // Wait before next retry with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
-        retryDelay *= 2; // Double the delay for next retry
-      }
-    }
-    
-    // Process the response
-    if (response && response.data) {
-      // Verify the response format - it should be an array
-      if (Array.isArray(response.data)) {
-        campingSpots.value = response.data;
-        console.log(`Fetched ${campingSpots.value.length} camping spots`);
-        
-        // Extract available amenities from the spots for filtering
-        const allAmenities = new Set();
-        const amenityNameMap = {};
-        
-        campingSpots.value.forEach(spot => {
-          if (Array.isArray(spot.camping_spot_amenities)) {
-            spot.camping_spot_amenities.forEach(item => {
-              if (item.amenity_id) {
-                allAmenities.add(item.amenity_id);
-                if (item.amenity && item.amenity.name) {
-                  amenityNameMap[item.amenity_id] = item.amenity.name;
-                }
-              }
-            });
-          }
-        });
-        
-        availableAmenities.value = Array.from(allAmenities);
-        amenityNames.value = amenityNameMap;
-      } else {
-        // If we got a response but not an array, it might be HTML or other invalid response
-        console.error('Unexpected response format:', typeof response.data);
-        error.value = 'Received unexpected data format from server';
-        campingSpots.value = [];
-      }
-    }
-  } catch (err) {
-    console.error('Error fetching camping spots:', err);
-    
-    // Handle network errors 
-    if (err.code === 'ERR_NETWORK' || err.code === 'ECONNABORTED') {
-      error.value = 'Cannot connect to the server. Please check your internet connection or try again later.';
-    } 
-    // Handle database connection errors
-    else if (err.response?.status === 503 || 
-             err.response?.data?.code === 'P1001' || 
-             isDbConnectionError.value) {
-      error.value = 'Database server is currently unavailable. Please try again later.';
-    } 
-    // Default error message
-    else {
-      error.value = 'Failed to load camping spots';
-    }
-    
-    // Display error notification
-    toast.error(error.value);
-    campingSpots.value = [];
-  } finally {
-    loading.value = false;
+  loading.value = true;
+  fetchError.value = null;
+  
+  // Set a reasonable default for filteredSpots in case of errors
+  campingSpots.value = [];
+  
+  // Prepare query parameters for the API call
+  const searchParams = new URLSearchParams();
+  
+  if (dates.startDate) searchParams.append('startDate', dates.startDate);
+  if (dates.endDate) searchParams.append('endDate', dates.endDate);
+  if (filters.value.minPrice !== undefined) searchParams.append('minPrice', filters.value.minPrice);
+  if (filters.value.maxPrice !== undefined) searchParams.append('maxPrice', filters.value.maxPrice);
+  if (filters.value.guests) searchParams.append('guests', filters.value.guests);
+  if (filters.value.amenities.length > 0) searchParams.append('amenities', filters.value.amenities.join(','));
+  if (filters.value.radius) searchParams.append('radius', filters.value.radius);
+  if (selectedLocation.value) {
+    searchParams.append('latitude', selectedLocation.value.lat);
+    searchParams.append('longitude', selectedLocation.value.lon);
   }
+  
+  // Add timestamp to prevent caching
+  searchParams.append('_t', Date.now());
+  
+  // Prepare multiple endpoint options for resilience
+  const endpoints = [
+    `${import.meta.env.VITE_API_URL}/api/camping-spots?${searchParams.toString()}`
+  ];
+  
+  let successfulFetch = false;
+  
+  for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS && !successfulFetch; attempt++) {
+    try {
+      console.log(`Attempt ${attempt + 1} with endpoint: ${endpoints[0]}`);
+      const response = await apiClient.get(endpoints[0], {
+        timeout: 10000 + (attempt * 2000) // Increase timeout with each retry
+      });
+      
+      console.log(`Got ${response.data.length} camping spots`);
+      campingSpots.value = response.data;
+      
+      // Reset error counters on success
+      networkErrorCount.value = 0;
+      fetchError.value = null;
+      successfulFetch = true;
+      
+    } catch (error) {
+      console.log(`Attempt ${attempt + 1} failed: ${error.message}`);
+      
+      // On the last attempt, set the error message
+      if (attempt === MAX_RETRY_ATTEMPTS - 1) {
+        networkErrorCount.value++;
+        
+        if (networkErrorCount.value >= 3) {
+          fetchError.value = "We're having trouble connecting to our servers. Please check your internet connection or try again later.";
+        } else if (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
+          fetchError.value = "Network error: Please check your internet connection.";
+        } else if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+          fetchError.value = "The request took too long to complete. Please try again.";
+        } else if (error.response?.status === 500) {
+          fetchError.value = "Server error: We're working to fix this issue.";
+        } else {
+          fetchError.value = "Something went wrong when loading camping spots.";
+        }
+      }
+      
+      // Wait a bit before the next attempt
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  
+  loading.value = false;
 };
 
 const retryConnection = () => {
@@ -527,7 +522,7 @@ const applyFilters = () => {
 };
 
 const updateDateRange = () => {
-  // Validate date selections
+  // Validate date selection
   if (dates.endDate && dates.startDate && new Date(dates.endDate) < new Date(dates.startDate)) {
     const startDate = new Date(dates.startDate);
     const nextDay = new Date(startDate);
@@ -537,8 +532,6 @@ const updateDateRange = () => {
   
   if (dates.startDate && dates.endDate) {
     updateDateRangeText();
-    showDatePicker = false; // Hide date picker after selection
-    fetchCampingSpots();
     
     // Save to session storage
     sessionStorage.setItem('campersDates', JSON.stringify({
@@ -546,6 +539,50 @@ const updateDateRange = () => {
       endDate: dates.endDate,
       timestamp: new Date().getTime()
     }));
+  }
+};
+
+const toggleDatePicker = () => {
+  showDatePicker.value = !showDatePicker.value;
+  
+  // No need for complicated positioning since we're now using absolute positioning
+  // relative to the parent container
+  if (showDatePicker.value) {
+    document.addEventListener('click', handleClickOutside);
+  }
+};
+
+const closeDatePicker = () => {
+  showDatePicker.value = false;
+  document.removeEventListener('click', handleClickOutside);
+};
+
+const handleClickOutside = (event) => {
+  // If clicking outside the date picker area, close it
+  const datepickerElements = document.querySelectorAll('.date-range-container, .date-range-container *');
+  const dateInput = document.querySelector('input[v-model="dateRangeText"]');
+  
+  let clickedOnRelated = false;
+  if (dateInput && dateInput.contains(event.target)) {
+    clickedOnRelated = true;
+  }
+  
+  datepickerElements.forEach(el => {
+    if (el.contains(event.target)) {
+      clickedOnRelated = true;
+    }
+  });
+  
+  if (!clickedOnRelated) {
+    closeDatePicker();
+  }
+};
+
+const applyDateSelection = () => {
+  if (dates.startDate && dates.endDate) {
+    updateDateRange();
+    closeDatePicker();
+    fetchCampingSpots();
   }
 };
 
@@ -559,41 +596,26 @@ const updateDateRangeText = () => {
   }
 };
 
-const handleLocationSearch = debounce(async (event) => {
-  const query = locationSearchText.value.trim();
-  if (query.length < 2) {
+const handleLocationSearch = debounce(async () => {
+  if (!locationSearchText.value || locationSearchText.value.length < 3) {
     locationResults.value = [];
     return;
   }
-  
-  // Simple location search from the campingSpots data
-  const results = [];
-  const addedLocations = new Set();
-  
-  for (const spot of campingSpots.value) {
-    if (spot.location) {
-      const city = spot.location.city?.toLowerCase();
-      const country = spot.location.country?.name?.toLowerCase();
-      const searchQuery = query.toLowerCase();
-      
-      if ((city && city.includes(searchQuery)) || 
-          (country && country.includes(searchQuery))) {
-        
-        const key = `${spot.location.city}-${spot.location.country?.name}`;
-        
-        if (!addedLocations.has(key)) {
-          addedLocations.add(key);
-          results.push({
-            display_name: `${spot.location.city}, ${spot.location.country?.name || ''}`,
-            lat: spot.location.latitute,
-            lon: spot.location.longtitute
-          });
-        }
+
+  try {
+    loading.value = true;
+    const response = await apiClient.get('/api/geocoding/search', {
+      params: {
+        q: locationSearchText.value
       }
-    }
+    });
+    locationResults.value = response.data;
+  } catch (error) {
+    console.error('Location search failed:', error);
+    toast.error('Failed to search locations');
+  } finally {
+    loading.value = false;
   }
-  
-  locationResults.value = results;
 }, 300);
 
 const selectLocation = (location) => {
@@ -640,7 +662,22 @@ const resetFilters = () => {
   fetchCampingSpots();
 };
 
-const viewSpot = (spotId) => {
+const checkOwnerAccess = () => {
+  if (isOwner.value) {
+    toast.error('As an owner, you cannot book camping spots. Please log in with a renter account to book spots.');
+    return false;
+  }
+  return true;
+};
+
+const viewSpot = (spot) => {
+  // Check if user is trying to view their own spot
+  if (authStore.isLoggedIn && authStore.fullUser && spot.owner_id === authStore.fullUser.user_id) {
+    toast.info("This is your own camping spot. You can manage it from your dashboard.");
+    router.push('/dashboard/spots');
+    return;
+  }
+  
   // Save current filters and dates to session storage before navigating
   sessionStorage.setItem('campersFilters', JSON.stringify(filters.value));
   sessionStorage.setItem('campersDates', JSON.stringify({
@@ -651,7 +688,7 @@ const viewSpot = (spotId) => {
   
   // Navigate with proper route parameters
   router.push({
-    path: `/camper/${spotId}`,
+    path: `/camper/${spot.camping_spot_id}`,
     query: {
       start: dates.startDate,
       end: dates.endDate,
@@ -662,7 +699,7 @@ const viewSpot = (spotId) => {
     console.error('Navigation error:', err);
     
     // Try alternate navigation method if needed
-    window.location.href = `/camper/${spotId}?start=${dates.startDate}&end=${dates.endDate}&g=${filters.value.guests}`;
+    window.location.href = `/camper/${spot.camping_spot_id}?start=${dates.startDate}&end=${dates.endDate}&g=${filters.value.guests}`;
   });
 };
 
@@ -671,8 +708,36 @@ const getAmenityName = (id) => {
   return amenityNames.value[id] || `Amenity ${id}`;
 };
 
+// Helper function for distance calculation
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371 // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+  return R * c
+}
+
+const fetchAmenities = async () => {
+  try {
+    const response = await apiClient.get('/api/camping-spots/amenities');
+    availableAmenities.value = response.data;
+    // Create a map of amenity IDs to names for quick lookup
+    amenityNames.value = response.data.reduce((acc, amenity) => {
+      acc[amenity.amenity_id] = amenity.name;
+      return acc;
+    }, {});
+  } catch (error) {
+    console.error('Error fetching amenities:', error);
+    toast.error('Failed to load amenities');
+  }
+};
+
 // Load saved filters and dates from session storage
-onMounted(() => {
+onMounted(async () => {
   // Try to load filters from session storage
   const savedFilters = sessionStorage.getItem('campersFilters');
   if (savedFilters) {
@@ -718,8 +783,25 @@ onMounted(() => {
     }
   }
   
+  // Check if user is logged in and fetch full information
+  if (authStore.isLoggedIn && !authStore.fullUser) {
+    try {
+      await authStore.fetchFullUserInfo(true);
+    } catch (error) {
+      console.error('Error fetching user info:', error);
+    }
+  }
+  
+  // Fetch amenities
+  await fetchAmenities();
+  
   // Initial fetch
   fetchCampingSpots();
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside);
+  handleLocationSearch.cancel();
 });
 </script>
 
@@ -773,5 +855,55 @@ input[type="range"]:focus {
 
 input[type="range"]:focus::-webkit-slider-thumb {
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+
+/* Add animations for the date picker dropdown */
+.slide-fade-enter-active {
+  transition: all 0.15s ease-out;
+}
+
+.slide-fade-leave-active {
+  transition: all 0.15s cubic-bezier(1, 0.5, 0.8, 1);
+}
+
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  transform: translateY(2px);
+  opacity: 0;
+}
+
+/* Add this class to make the date picker container identifiable for event handling */
+.date-range-container {
+  position: relative;
+}
+
+/* Enhanced Date Picker Styling with fixed positioning */
+.date-picker-dropdown {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 320px;
+  top: 100%; /* Position right below the parent */
+}
+
+/* Fix input styling */
+input[type="date"] {
+  box-sizing: border-box;
+  line-height: normal;
+  height: auto;
+  width: 100%;
+  padding: 0.375rem 0.75rem;
+}
+
+/* Improved date picker inputs layout */
+.date-picker-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* Styling for no spots message */
+.no-spots-message {
+  margin: 2rem auto;
+  max-width: 600px;
 }
 </style>

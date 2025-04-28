@@ -72,10 +72,13 @@ export async function refreshTokenIfNeeded() {
         return null;
       }
       
+      // Store the refreshed token in localStorage
+      localStorage.setItem('token', data.session.access_token);
       console.log('Token refreshed successfully');
       return data.session.access_token;
     }
     
+    // Token is still valid, return it
     return session.access_token;
   } catch (error) {
     console.error('Error in refreshTokenIfNeeded:', error);

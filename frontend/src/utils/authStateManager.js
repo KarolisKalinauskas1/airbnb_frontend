@@ -1,0 +1,168 @@
+import { ref, watch } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { supabase } from '@/lib/supabase'
+
+// Create a reactive state manager
+const authStateManager = {
+  // State
+  state: ref({
+    isInitialized: false,
+    isSyncing: false,
+    lastSyncTime: null,
+    syncInterval: 5 * 60 * 1000, // 5 minutes
+    error: null
+  }),
+
+  // Initialize the manager
+  async init() {
+    if (this.state.value.isInitialized) return
+    
+    try {
+      // Set up Supabase auth state listener
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log('Auth state changed:', event)
+        await this.handleAuthStateChange(event, session)
+      })
+
+      // Set up periodic sync
+      this.setupPeriodicSync()
+
+      this.state.value.isInitialized = true
+      return subscription
+    } catch (error) {
+      console.error('Failed to initialize auth state manager:', error)
+      this.state.value.error = error
+      throw error
+    }
+  },
+
+  // Handle auth state changes
+  async handleAuthStateChange(event, session) {
+    const authStore = useAuthStore()
+    
+    try {
+      switch (event) {
+        case 'SIGNED_IN':
+        case 'TOKEN_REFRESHED':
+          if (session) {
+            await this.syncUserData(session)
+          }
+          break
+        case 'SIGNED_OUT':
+          await this.clearAuthState()
+          break
+      }
+    } catch (error) {
+      console.error('Error handling auth state change:', error)
+      this.state.value.error = error
+    }
+  },
+
+  // Sync user data with Supabase and backend
+  async syncUserData(session) {
+    if (this.state.value.isSyncing) return
+    
+    try {
+      this.state.value.isSyncing = true
+      const authStore = useAuthStore()
+
+      // Get user data from Supabase
+      const { data: { user }, error } = await supabase.auth.getUser()
+      if (error) throw error
+
+      if (user) {
+        // Normalize user data
+        const userData = {
+          id: user.id,
+          email: user.email,
+          full_name: user.user_metadata?.full_name,
+          isowner: user.user_metadata?.isowner,
+          license: user.user_metadata?.license,
+          phone_verified: user.user_metadata?.phone_verified,
+          email_verified: user.email_verified,
+          ...user.user_metadata
+        }
+
+        // Update auth store
+        await authStore.setUserData(userData, session.access_token)
+
+        // Save to localStorage
+        localStorage.setItem('userData', JSON.stringify(userData))
+        localStorage.setItem('token', session.access_token)
+
+        this.state.value.lastSyncTime = Date.now()
+      }
+    } catch (error) {
+      console.error('Error syncing user data:', error)
+      this.state.value.error = error
+      throw error
+    } finally {
+      this.state.value.isSyncing = false
+    }
+  },
+
+  // Clear auth state
+  async clearAuthState() {
+    const authStore = useAuthStore()
+    
+    try {
+      // Clear localStorage
+      localStorage.removeItem('userData')
+      localStorage.removeItem('token')
+      
+      // Reset auth store
+      await authStore.resetAuth()
+      
+      this.state.value.lastSyncTime = null
+    } catch (error) {
+      console.error('Error clearing auth state:', error)
+      this.state.value.error = error
+      throw error
+    }
+  },
+
+  // Set up periodic sync
+  setupPeriodicSync() {
+    setInterval(async () => {
+      if (!this.state.value.isSyncing) {
+        try {
+          const session = await supabase.auth.getSession()
+          if (session.data.session) {
+            await this.syncUserData(session.data.session)
+          }
+        } catch (error) {
+          console.error('Error in periodic sync:', error)
+          this.state.value.error = error
+        }
+      }
+    }, this.state.value.syncInterval)
+  },
+
+  // Restore auth state from localStorage
+  async restoreAuthState() {
+    try {
+      const storedUserData = localStorage.getItem('userData')
+      const storedToken = localStorage.getItem('token')
+      
+      if (storedUserData && storedToken) {
+        const userData = JSON.parse(storedUserData)
+        const authStore = useAuthStore()
+        
+        // Update auth store
+        await authStore.setUserData(userData, storedToken)
+        
+        // Verify session is still valid
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          await this.clearAuthState()
+        }
+      }
+    } catch (error) {
+      console.error('Error restoring auth state:', error)
+      this.state.value.error = error
+      await this.clearAuthState()
+    }
+  }
+}
+
+export default authStateManager 

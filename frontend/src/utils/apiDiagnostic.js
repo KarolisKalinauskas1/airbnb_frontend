@@ -1,0 +1,88 @@
+import axios from '@/axios';
+
+/**
+ * Utility to diagnose API issues
+ */
+export const apiDiagnostic = {
+  /**
+   * Test the full-info endpoint directly
+   * @returns {Promise<object>} - The test result
+   */
+  async testFullInfoEndpoint() {
+    console.log('Testing full-info endpoint...');
+    
+    try {
+      // Make a special direct request to test the endpoint
+      const response = await axios.get('/users/full-info', {
+        headers: {
+          'Accept': 'application/json',
+          'X-Debug-Mode': 'true'
+        },
+        params: {
+          _debug: 'true',
+          _time: Date.now()
+        }
+      });
+      
+      return {
+        success: true,
+        status: response.status,
+        contentType: response.headers['content-type'] || 'unknown',
+        dataType: typeof response.data,
+        isJson: typeof response.data === 'object',
+        data: response.data
+      };
+    } catch (error) {
+      return {
+        success: false,
+        status: error.response?.status,
+        message: error.message,
+        isHtmlResponse: error.isHtmlResponse || false,
+        dataType: typeof error.response?.data,
+        data: error.response?.data || error.message
+      };
+    }
+  },
+  
+  /**
+   * Test the API with different Accept headers
+   */
+  async testWithDifferentAcceptHeaders() {
+    const results = {};
+    
+    const headers = [
+      { name: 'application/json', value: 'application/json' },
+      { name: 'application/json,*/*', value: 'application/json,*/*' },
+      { name: 'text/html', value: 'text/html' },
+      { name: 'no-header', value: null }
+    ];
+    
+    for (const header of headers) {
+      try {
+        const config = {
+          headers: {}
+        };
+        
+        if (header.value) {
+          config.headers['Accept'] = header.value;
+        }
+        
+        const response = await axios.get('/users/full-info', config);
+        results[header.name] = {
+          success: true,
+          contentType: response.headers['content-type'],
+          status: response.status,
+          dataType: typeof response.data
+        };
+      } catch (error) {
+        results[header.name] = {
+          success: false,
+          status: error.response?.status,
+          message: error.message
+        };
+      }
+    }
+    
+    return results;
+  }
+};

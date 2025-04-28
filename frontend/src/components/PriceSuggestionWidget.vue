@@ -120,7 +120,7 @@
       
       <!-- Update Button - Large, for suggested price update -->
       <button 
-        v-if="showUpdateButton && suggestion.should_update"
+        v-if="showUpdateButton && suggestion.should_update && suggestion.suggestedPrice !== Number(props.currentPrice)"
         @click="useSuggestedPrice"
         class="w-full py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors">
         Update to Suggested Price
@@ -268,15 +268,7 @@ const fetchSuggestion = async () => {
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json'
-        },
-        transformResponse: [function(data) {
-          try {
-            return JSON.parse(data);
-          } catch (e) {
-            console.warn('Failed to parse API price suggestion response as JSON:', e);
-            return { error: 'Invalid JSON response', raw: data };
-          }
-        }]
+        }
       });
     } catch (apiError) {
       console.warn('API endpoint for price suggestion failed:', apiError.message);
@@ -287,15 +279,7 @@ const fetchSuggestion = async () => {
           'Accept': 'application/json',
           'Content-Type': 'application/json'
         },
-        bypassDedupe: true,
-        transformResponse: [function(data) {
-          try {
-            return JSON.parse(data);
-          } catch (e) {
-            console.warn('Failed to parse non-API price suggestion response as JSON:', e);
-            return { error: 'Invalid JSON response', raw: data };
-          }
-        }]
+        bypassDedupe: true
       });
     }
     
@@ -304,54 +288,26 @@ const fetchSuggestion = async () => {
     }
     
     const data = response.data;
+    console.log('Price suggestion received:', data);
     
     if (!data || typeof data !== 'object') {
       throw new Error('Invalid response format');
     }
     
-    // Check if we have the minimal required data
-    if (data.suggested_price === undefined) {
-      console.error('Missing suggested_price in response:', data);
-      throw new Error('Incomplete data returned from server');
-    }
-    
-    // Set the suggestion data with fallbacks for missing properties
+    // Update the suggestion data
     suggestion.value = {
       suggestedPrice: data.suggested_price,
-      minSuggestion: data.min_suggestion || Math.round(data.suggested_price * 0.95),
-      maxSuggestion: data.max_suggestion || Math.round(data.suggested_price * 1.05),
-      reason: data.reason || 'Based on market analysis.',
-      should_update: data.should_update || false,
-      factors: {
-        season: (data.market_details && data.market_details.season) || 'standard',
-        demand: (data.market_details && data.market_details.demand) || 'normal',
-        similarSpots: (data.market_details && data.market_details.similar_spots) || 0,
-        marketAverage: (data.market_details && data.market_details.market_average) || null
-      }
+      minSuggestion: data.min_suggestion,
+      maxSuggestion: data.max_suggestion,
+      reason: data.reason,
+      should_update: data.should_update,
+      factors: data.factors || {}
     };
     
-    // For debugging - ensure market_details exists in the response
-    console.log('Received price suggestion data:', data);
-    console.log('Processed factors:', suggestion.value.factors);
-    
-  } catch (error) {
-    console.error('Failed to fetch price suggestion:', error);
-    error.value = error.message || 'Failed to load price suggestion data';
-    
-    // Provide default values when fetch fails
-    suggestion.value = {
-      suggestedPrice: props.currentPrice,
-      minSuggestion: Math.round(props.currentPrice * 0.95),
-      maxSuggestion: Math.round(props.currentPrice * 1.05),
-      reason: 'Unable to fetch price suggestion data.',
-      should_update: false,
-      factors: {
-        season: 'unknown',
-        demand: 'unknown',
-        similarSpots: 0,
-        marketAverage: null
-      }
-    };
+    console.log('Updated suggestion data:', suggestion.value);
+  } catch (err) {
+    console.error('Failed to fetch price suggestion:', err);
+    error.value = err.message || 'Failed to fetch price suggestion';
   } finally {
     loading.value = false;
   }
@@ -380,22 +336,43 @@ const confirmUpdate = async () => {
     // Close modal first for better UX
     showConfirmModal.value = false;
     
-    // Emit the event with the numeric price value
-    emit('update-price', priceToUpdate.value);
+    console.log('Updating price to:', priceToUpdate.value);
     
-    // Show success feedback
-    toast.success('Price updated successfully');
-    
-    // Reset to standard view after update
-    showDetailedFactors.value = true;
-    
-    // Refresh the suggestion after a short delay (to allow the backend to update)
-    setTimeout(() => {
-      fetchSuggestion();
-    }, 2000);
+    // Make the API call to update the price
+    const response = await axios({
+      method: 'PATCH',
+      url: `/api/camping-spots/${props.campingSpotId}/price`,
+      data: {
+        price: priceToUpdate.value
+      },
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log('Price update response:', response);
+
+    if (response.status === 200) {
+      // Emit the event with the numeric price value
+      emit('update-price', priceToUpdate.value);
+      
+      // Show success feedback
+      toast.success('Price updated successfully');
+      
+      // Reset to standard view after update
+      showDetailedFactors.value = true;
+      
+      // Refresh the suggestion after a short delay
+      setTimeout(() => {
+        fetchSuggestion();
+      }, 2000);
+    } else {
+      throw new Error('Failed to update price');
+    }
   } catch (err) {
-    console.error('Error in price update component:', err);
-    toast.error('Failed to process price update request');
+    console.error('Error in price update:', err);
+    console.error('Error details:', err.response?.data);
+    toast.error('Failed to update price. Please try again.');
   }
 };
 

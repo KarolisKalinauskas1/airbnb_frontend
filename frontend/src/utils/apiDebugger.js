@@ -1,5 +1,6 @@
 import axios from '@/axios';
 import { useAuthStore } from '@/stores/auth';
+import { supabase } from '@/lib/supabase';
 
 /**
  * Utility to debug API and authentication issues
@@ -93,5 +94,51 @@ export const apiDebugger = {
     }
     
     return { success: false, message: "Could not get auth token" };
+  },
+
+  async testUserEndpoints() {
+    try {
+      console.log('Testing /api/users/full-info...')
+      const apiResponse = await axios.get('/api/users/full-info', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      })
+      console.log('✅ /api/users/full-info works:', apiResponse.status)
+      return true
+    } catch (error) {
+      console.error('❌ /api/users/full-info failed:', error.response?.status || error.message)
+      return false
+    }
+  },
+
+  async fixAuthState() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        console.log('No active session found')
+        return false
+      }
+
+      const response = await axios.get('/api/users/full-info', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      })
+
+      if (response.data) {
+        localStorage.setItem('userData', JSON.stringify(response.data))
+        localStorage.setItem('last_user_fetch_time', Date.now().toString())
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Error in fixAuthState:', error)
+      if (error.response?.status === 401) {
+        localStorage.removeItem('token')
+        localStorage.removeItem('userData')
+      }
+      return false
+    }
   }
 };

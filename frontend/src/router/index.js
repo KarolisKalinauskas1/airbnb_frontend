@@ -5,8 +5,11 @@ import AnalyticsView from '../views/AnalyticsView.vue'
 import PaymentView from '../views/PaymentView.vue'
 import BookingSuccessView from '../views/BookingSuccessView.vue'
 import BookingFailedView from '../views/BookingFailedView.vue'
+import DashboardBookings from '@/views/DashboardBookings.vue'
 import { useAuthStore } from '@/stores/auth'
 import axios from '@/axios'
+import { isBackendAvailable, getCachedData } from '@/utils/connectionHelper'
+import OfflinePage from '@/views/OfflinePage.vue';
 
 // Prevent route guards from running multiple times
 let isNavigationRunning = false;
@@ -78,116 +81,212 @@ async function bookingAuthGuard(to, from, next) {
   }
 }
 
-// Add a dashboard route guard to prevent infinite redirects
-function dashboardGuard(to, from, next) {
-  if (preventDuplicateNavigation(to, from, next)) return;
-  
+// More robust renter guard - update to allow all users to access campers page
+function renterGuard(to, from, next) {
   const authStore = useAuthStore();
   
-  // If coming directly to dashboard (like from a refresh), ensure auth is initialized
-  if (from.name === null && !authStore.isInitialized) {
-    // Initialize auth first
-    authStore.initAuth().finally(() => {
-      if (authStore.isLoggedIn && authStore.isSeller) {
-        next();
-      } else if (authStore.isLoggedIn) {
-        next('/account'); // User is logged in but not a seller
-      } else {
-        // Only redirect if not currently on the auth page
-        if (to.path !== '/auth') {
-          next({ path: '/auth', query: { redirect: to.fullPath } });
-        } else {
-          next();
-        }
-      }
-      isNavigationRunning = false;
-    });
-  } else {
-    // Normal navigation
-    if (authStore.isLoggedIn && authStore.isSeller) {
-      next();
-    } else if (authStore.isLoggedIn) {
-      next('/account'); // User is logged in but not a seller
-    } else {
-      // Only redirect if not currently on the auth page
-      if (to.path !== '/auth') {
-        next({ path: '/auth', query: { redirect: to.fullPath } });
-      } else {
-        next();
-      }
-    }
-    isNavigationRunning = false;
+  // Allow campers page for everyone, no auth check needed
+  if (to.path === '/campers') {
+    next();
+    return;
   }
+
+  // For camping spot detail pages, we'll handle owner's own spot filtering in the component
+  if (to.path.startsWith('/camper/')) {
+    next();
+    return;
+  }
+
+  // If user isn't logged in, redirect to login for other pages
+  if (!authStore.isLoggedIn) {
+    next({
+      path: '/auth',
+      query: { redirect: to.fullPath }
+    });
+    return;
+  }
+
+  next();
 }
 
-// Add this function to handle lazy loading with better error handling
-function lazyLoadView(viewPath) {
-  return () => {
-    const AsyncComponent = import(`../views/${viewPath}.vue`);
-    AsyncComponent.catch(error => {
-      console.error(`Error loading view ${viewPath}:`, error);
+// More robust owner guard
+function ownerGuard(to, from, next) {
+  const authStore = useAuthStore();
+  
+  // If user isn't logged in, redirect to login
+  if (!authStore.isLoggedIn) {
+    next({
+      path: '/auth',
+      query: { redirect: to.fullPath }
     });
-    return AsyncComponent;
-  };
+    return;
+  }
+  
+  // Ensure we have user details
+  if (!authStore.fullUser) {
+    // Try to fetch user details first
+    authStore.fetchFullUserInfo(true).then(() => {
+      // After fetching user details, check if they're an owner
+      if (authStore.fullUser?.isowner !== 1) {
+        next('/');
+      } else {
+        next();
+      }
+    }).catch(() => {
+      // On error, redirect to login
+      next('/auth');
+    });
+    return;
+  }
+  
+  // Check if they're an owner
+  if (authStore.fullUser?.isowner !== 1) {
+    next('/');
+    return;
+  }
+  
+  next();
+}
+
+// Dashboard guard for routes that require dashboard access
+function dashboardGuard(to, from, next) {
+  const authStore = useAuthStore();
+  
+  console.log('Dashboard guard:', {
+    path: to.path,
+    isLoggedIn: authStore.isLoggedIn,
+    isOwner: authStore.isOwner,
+    user: authStore.user
+  });
+  
+  // If user isn't logged in at all, redirect to login
+  if (!authStore.isLoggedIn || !authStore.token) {
+    next({
+      path: '/auth',
+      query: { redirect: to.fullPath }
+    });
+    return;
+  }
+  
+  // Allow access to the dashboard base route for all logged-in users
+  if (to.path === '/dashboard') {
+    next();
+    return;
+  }
+  
+  // For now, allow access to all dashboard routes for logged-in users
+  next();
+  
+  // We'll re-enable these checks once we confirm the owner status is working
+  /*
+  // For owner-specific routes, ensure the user is an owner
+  const ownerRoutes = ['/dashboard/spots', '/dashboard/analytics'];
+  if (ownerRoutes.includes(to.path) && !authStore.isOwner) {
+    next('/dashboard');
+    return;
+  }
+  
+  // For renter-specific routes, ensure the user is not an owner
+  const renterRoutes = ['/dashboard/bookings'];
+  if (renterRoutes.includes(to.path) && authStore.isOwner) {
+    next('/dashboard');
+    return;
+  }
+  
+  next();
+  */
+}
+
+// Simplified lazy loading with prefetch
+function lazyLoad(view) {
+  return () => import(`../views/${view}.vue`)
+}
+
+// Auth page guard to prevent authenticated users from accessing login
+function authPageGuard(to, from, next) {
+  const authStore = useAuthStore();
+  
+  // If user is already logged in, redirect to home
+  if (authStore.isLoggedIn) {
+    next('/');
+    return;
+  }
+  
+  next();
 }
 
 const routes = [
   {
     path: '/', 
     name: 'Home',
-    component: () => import('@/views/HomeView.vue'), // Point home to the new HomeView
+    component: lazyLoad('HomeView')
   },
   {
     path: '/campers',
-    name: 'Campers',
-    component: () => import('@/views/CampersView.vue'), // Make campers its own route
+    name: 'campers',
+    component: lazyLoad('CampersView'),
+    beforeEnter: renterGuard,
   },
   {
     path: '/camping-spot/:id',
     name: 'CampingSpotDetail',
-    component: () => import('@/views/CampingSpotDetail.vue')
+    component: lazyLoad('CampingSpotDetail'),
+    beforeEnter: renterGuard,
   },
   {
     path: '/camper/:id',
     name: 'camping-spot-detail',
     component: () => import('../views/CampingSpotDetail.vue'),
-    // No auth required for viewing camping spots
+    beforeEnter: renterGuard,
   },
   {
     path: '/auth',
     name: 'auth',
-    component: LoginView
+    component: lazyLoad('LoginView'),
+    beforeEnter: authPageGuard
   },
   {
     path: '/account',
     name: 'Account',
-    component: () => import('@/views/AccountView.vue'),
+    component: lazyLoad('AccountView'),
     meta: { requiresAuth: true }
   },
   {
     path: '/dashboard',
-    name: 'dashboard',
-    component: DashboardView,
-    beforeEnter: dashboardGuard,
-    meta: { requiresAuth: true, requiresSeller: true }
-  },
-  {
-    path: '/dashboard/spots',
-    name: 'DashboardSpots',
-    component: lazyLoadView('DashboardSpots'),
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/dashboard/analytics',
-    name: 'dashboard-analytics',
-    component: AnalyticsView,
-    beforeEnter: dashboardGuard,
-    meta: { requiresAuth: true, requiresSeller: true }
+    name: 'Dashboard',
+    component: lazyLoad('DashboardView'),
+    meta: { requiresAuth: true },
+    children: [
+      {
+        path: '',
+        name: 'DashboardOverview',
+        component: lazyLoad('DashboardView')
+      },
+      {
+        path: 'spots',
+        name: 'DashboardSpots',
+        component: () => import('../views/DashboardSpots.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'analytics',
+        name: 'DashboardAnalytics',
+        component: lazyLoad('AnalyticsView'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'bookings',
+        name: 'DashboardBookings',
+        component: lazyLoad('DashboardBookings'),
+        meta: { requiresAuth: true }
+      }
+    ]
   },
   {
     path: '/payment',
     name: 'payment',
-    component: PaymentView,
+    component: lazyLoad('PaymentView'),
+    beforeEnter: renterGuard,
     meta: { 
       requiresAuth: true,
       requiresBookingDetails: true
@@ -196,26 +295,80 @@ const routes = [
   {
     path: '/booking-success',
     name: 'booking-success',
-    component: BookingSuccessView,
+    component: lazyLoad('BookingSuccessView'),
     meta: { requiresAuth: true }
   },
   {
     path: '/booking-failed',
     name: 'booking-failed',
-    component: BookingFailedView,
+    component: lazyLoad('BookingFailedView'),
     meta: { requiresAuth: true }
   },
   {
     path: '/booking/:id',
     name: 'booking-details',
-    component: lazyLoadView('BookingDetailsView'),
+    component: lazyLoad('BookingDetailsView'),
     beforeEnter: bookingAuthGuard,
     meta: { requiresAuth: true }
   },
   {
+    path: '/renter-dashboard',
+    name: 'renter-dashboard',
+    component: lazyLoad('RenterDashboardView'),
+    meta: { 
+      requiresAuth: true,
+      requiresRenter: true // This user should NOT be a seller
+    }
+  },
+  {
+    path: '/offline',
+    name: 'Offline',
+    component: lazyLoad('OfflinePage')
+  },
+  {
+    path: '/network-diagnostics',
+    name: 'NetworkDiagnostics',
+    component: () => import('@/views/NetworkDiagnosticView.vue'),
+    meta: {
+      requiresAuth: false // Allow access even when not authenticated
+    }
+  },
+  {
+    path: '/api-debug',
+    name: 'ApiDebug',
+    component: () => import('../views/ApiDebugView.vue'),
+    meta: {
+      requiresAuth: false // Allow access even when not authenticated
+    }
+  },
+  {
+    path: '/api-test',
+    name: 'ApiTest',
+    component: () => import('@/views/ApiTestView.vue'),
+    meta: {
+      requiresAuth: false // Allow access even when not authenticated
+    }
+  },
+  {
+    path: '/reset-password',
+    name: 'ResetPassword',
+    component: () => import('../views/ResetPasswordView.vue'),
+    meta: {
+      title: 'Reset Password'
+    }
+  },
+  {
+    path: '/auth-debug',
+    name: 'auth-debug',
+    component: () => import('@/views/AuthDebugView.vue'),
+    meta: {
+      title: 'Auth Debugging'
+    }
+  },
+  {
     path: '/404',
     name: 'NotFound',
-    component: lazyLoadView('NotFound')
+    component: lazyLoad('NotFound')
   },
   {
     path: '/:pathMatch(.*)*',
@@ -225,107 +378,60 @@ const routes = [
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes
+  routes,
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) {
+      return savedPosition
+    } else {
+      return { top: 0 }
+    }
+  }
 })
 
-// Fix the authentication guard logic
+// Simplified navigation guard
 router.beforeEach(async (to, from, next) => {
-  // Prevent multiple simultaneous navigation guards from running
-  if (isNavigationRunning) {
-    next(false);
-    return;
-  }
-  
-  isNavigationRunning = true;
-  const now = Date.now();
-  
-  // Special handling for auth page to prevent loops
-  if (to.path === '/auth') {
-    const authStore = useAuthStore();
-    
-    // If user is already logged in, redirect away from auth page
-    if (authStore.isLoggedIn) {
-      isNavigationRunning = false;
-      const redirectTarget = to.query.redirect || 
-                          (authStore.isSeller ? '/dashboard' : '/');
-      return next(redirectTarget);
+  const authStore = useAuthStore()
+  const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
+  const requiresSeller = to.matched.some(record => record.meta.requiresSeller)
+  const requiresRenter = to.matched.some(record => record.meta.requiresRenter)
+
+  // Ensure auth is initialized
+  if (!authStore.initialized) {
+    try {
+      await authStore.initAuth()
+    } catch (error) {
+      console.error('Auth initialization failed:', error)
     }
-    
-    // Otherwise proceed to auth page
-    isNavigationRunning = false;
-    return next();
   }
 
-  // Special handling for account and camper pages
-  if (to.path === '/account' || to.path.startsWith('/camping-spot/') || 
-      to.path.startsWith('/campers')) {
-    const authStore = useAuthStore();
-    
-    // For campers path, allow access without login
-    if (to.path === '/campers' || to.path.startsWith('/camping-spot/')) {
-      isNavigationRunning = false;
-      return next();
-    }
-    
-    // For account page, ensure auth is initialized
-    if (!authStore.isInitialized) {
-      try {
-        console.log('Router guard: Initializing auth for protected route');
-        await authStore.initAuth();
-      } catch (error) {
-        console.error('Router guard: Auth initialization failed:', error);
-      }
-    }
-    
-    // After initialization attempt, check if we're authenticated
-    if (authStore.isLoggedIn) {
-      isNavigationRunning = false;
-      return next();
-    } else {
-      isNavigationRunning = false;
-      return next({ 
-        path: '/auth',
-        query: { redirect: to.fullPath }
-      });
-    }
-  }
-  
-  // Check if any raw JSON error is shown in the document body
-  if (document.body && document.body.textContent && 
-      document.body.textContent.includes('{"error":"Not Found","status":404}')) {
-    window.location.href = window.location.origin + to.fullPath;
-    return;
+  // Handle auth page access
+  if (to.path === '/auth' && authStore.isAuthenticated) {
+    return next('/')
   }
 
-  // For routes requiring auth, check authentication
-  const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
-  const requiresSeller = to.matched.some(record => record.meta.requiresSeller);
-  
-  // Don't check if the route doesn't require auth
-  if (!requiresAuth && !requiresSeller) {
-    isNavigationRunning = false;
-    return next();
+  // Quick check for routes not requiring auth
+  if (!requiresAuth) {
+    return next()
   }
-  
-  // Get auth status
-  const authStore = useAuthStore();
-  const isAuthenticated = authStore.isLoggedIn;
-  const isOwner = authStore.isSeller;
-  
-  // Handle navigation based on auth requirements
-  if (requiresAuth && !isAuthenticated) {
-    isNavigationRunning = false;
-    next({ 
+
+  // Check authentication
+  if (!authStore.isAuthenticated) {
+    return next({
       path: '/auth',
       query: { redirect: to.fullPath }
-    });
-  } else if (requiresSeller && (!isAuthenticated || !isOwner)) {
-    isNavigationRunning = false;
-    next({ path: '/' });
-  } else {
-    isNavigationRunning = false;
-    next();
+    })
   }
-});
+
+  // Check seller/renter requirements
+  if (requiresSeller && !authStore.isOwner) {
+    return next('/dashboard')
+  }
+
+  if (requiresRenter && authStore.isOwner) {
+    return next('/dashboard')
+  }
+
+  next()
+})
 
 export default router

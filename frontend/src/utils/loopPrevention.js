@@ -1,0 +1,102 @@
+/**
+ * Loop Prevention Utility
+ * 
+ * This utility helps detect and prevent infinite loops or excessive function calls
+ * by monitoring call frequency and patterns.
+ */
+
+// Track loop detection data
+const loopDetection = {
+  callCounts: {},
+  timestamps: {},
+  windowSize: 5000, // 5 seconds
+  maxCallsBeforeWarning: 8,
+  maxCallsBeforeBlocking: 12
+};
+
+/**
+ * Detect if a function or process might be in an infinite loop
+ * @param {string} id - Identifier for the process to monitor
+ * @param {object} options - Options for detection configuration
+ * @returns {boolean} - True if a loop is detected
+ */
+export function detectPossibleLoop(id, options = {}) {
+  const settings = {
+    windowSize: options.windowSize || loopDetection.windowSize,
+    maxCalls: options.maxCalls || loopDetection.maxCallsBeforeBlocking
+  };
+
+  const now = Date.now();
+  
+  // Initialize tracking for this ID
+  if (!loopDetection.timestamps[id]) {
+    loopDetection.timestamps[id] = [];
+    loopDetection.callCounts[id] = 0;
+  }
+  
+  // Clean up old timestamps
+  loopDetection.timestamps[id] = loopDetection.timestamps[id].filter(
+    time => (now - time) < settings.windowSize
+  );
+  
+  // Add current timestamp and increment call count
+  loopDetection.timestamps[id].push(now);
+  loopDetection.callCounts[id]++;
+  
+  // Check if we're in a potential loop
+  if (loopDetection.timestamps[id].length >= settings.maxCalls) {
+    console.warn(`Potential loop detected for "${id}": ${loopDetection.timestamps[id].length} calls in ${settings.windowSize}ms`);
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Start a session monitor to detect auth loops and other issues
+ * @param {number} interval - Check interval in milliseconds
+ * @returns {object} - Controller with refresh and stop methods
+ */
+export function startSessionMonitor(interval = 60000) {
+  let monitorInterval = null;
+  
+  const refresh = () => {
+    if (monitorInterval) {
+      clearInterval(monitorInterval);
+    }
+    
+    monitorInterval = setInterval(() => {
+      // This is mostly a placeholder - actual implementation would check auth state
+      console.log('Session monitor check');
+    }, interval);
+  };
+  
+  // Start immediately
+  refresh();
+  
+  // Return controller
+  return {
+    refresh,
+    stop: () => {
+      if (monitorInterval) {
+        clearInterval(monitorInterval);
+        monitorInterval = null;
+      }
+    }
+  };
+}
+
+/**
+ * Configure session monitoring parameters
+ * @param {object} options - Configuration options
+ */
+export function configureSessionMonitor(options = {}) {
+  // Default configuration is already handled by the startSessionMonitor function
+  console.log('Session monitor configured:', options);
+}
+
+export default {
+  detectPossibleLoop,
+  startSessionMonitor,
+  configureSessionMonitor
+};

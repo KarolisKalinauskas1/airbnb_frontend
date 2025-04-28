@@ -1,10 +1,12 @@
 import axios from '@/axios';
+import { isLoading, setLoading } from '@/utils/requestLoadingState';
 
 /**
  * Centralized API service that handles:
  * - Error handling
  * - Retry logic
  * - API/non-API endpoint fallbacks
+ * - Loading state management to prevent duplicate requests
  */
 class ApiService {
   /**
@@ -30,6 +32,18 @@ class ApiService {
     skipFallback = false,
     retries = 1
   }) {
+    // Create a unique request ID based on endpoint, method and params
+    const requestId = `${method}-${endpoint}-${JSON.stringify(params)}`;
+    
+    // Check if this request is already in progress
+    if (isLoading(requestId)) {
+      console.warn(`Request ${requestId} already in progress, preventing duplicate`);
+      return Promise.reject({
+        canceled: true,
+        message: 'Request already in progress'
+      });
+    }
+
     // Ensure headers include Accept: application/json
     const requestHeaders = {
       'Accept': 'application/json',
@@ -43,8 +57,11 @@ class ApiService {
       withCredentials
     };
     
-    // Try API endpoint first
     try {
+      // Mark request as loading
+      setLoading(requestId, true);
+
+      // Try API endpoint first
       console.log(`Trying API endpoint: /api${endpoint}`);
       const response = await axios({
         method,
@@ -99,6 +116,9 @@ class ApiService {
         // If all attempts fail, throw the original error
         throw apiError;
       }
+    } finally {
+      // Mark request as completed
+      setLoading(requestId, false);
     }
   }
   

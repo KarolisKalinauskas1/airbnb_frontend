@@ -1,0 +1,72 @@
+/**
+ * Global z-index fixes to ensure proper element stacking
+ */
+
+/* Create stacking contexts */
+body, #app, main {
+  isolation: isolate;
+}
+
+/* Ensure dropdown menus and date pickers always appear on top */
+.date-picker-dropdown,
+.location-search .absolute,
+.datepicker-container,
+.dropdown-menu {
+  position: absolute !important;
+  z-index: 10000 !important;
+}
+
+/* Fix for date pickers in map view */
+.bg-white.p-4.rounded-lg.shadow-xl.border.border-gray-200,
+.dropdown-content {
+  position: relative !important;
+  z-index: 10000 !important;
+}
+
+/* Keep map elements at the bottom of the stacking order */
+.leaflet-container,
+.leaflet-pane,
+.leaflet-map-pane,
+.leaflet-overlay-pane,
+.leaflet-marker-pane,
+.leaflet-shadow-pane,
+.leaflet-popup-pane,
+.leaflet-tooltip-pane,
+.leaflet-tile-pane {
+  z-index: 1 !important;
+}
+
+/* Keep controls usable but below dropdowns */
+.leaflet-top,
+.leaflet-bottom,
+.leaflet-control,
+.leaflet-control-container {
+  z-index: 800 !important;
+}
+
+/* Animation containers need to maintain stacking */
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  z-index: 10000 !important;
+}
+
+/* Compact date picker styling */
+.date-picker-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.date-picker-inputs input[type="date"] {
+  max-width: 100%;
+  padding: 0.5rem;
+}
+
+/* Fix input date alignment */
+input[type="date"] {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  height: auto;
+  padding: 0.375rem 0.75rem;
+}

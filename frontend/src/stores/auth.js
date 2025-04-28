@@ -1,398 +1,352 @@
-import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
-import axios from '@/axios';
-import { useRouter } from 'vue-router';
-import { supabase } from '@/lib/supabase';
-
-// Check if we have valid Supabase configuration
-const hasSupabaseConfig = 
-  import.meta.env.VITE_SUPABASE_URL && 
-  import.meta.env.VITE_SUPABASE_ANON_KEY &&
-  !import.meta.env.VITE_SUPABASE_URL.includes('your-project');
-
-if (!hasSupabaseConfig) {
-  console.error('Missing or invalid Supabase configuration!');
-}
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import { supabase } from '@/lib/supabase'
+import axios from '@/axios'
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref(localStorage.getItem('token') || null);
-  const user = ref(null);
-  const fullUser = ref(null);
-  const loading = ref(false);
-  const error = ref(null);
-  const isInitialized = ref(false);
-  const initializationAttempts = ref(0);
-  const router = useRouter();
-  const backendAvailable = ref(true); // Track if backend is available
+  // State
+  const user = ref(null)
+  const session = ref(null)
+  const loading = ref(false)
+  const error = ref(null)
+  const initialized = ref(false)
+  const publicUser = ref(null)
+  const lastFetch = ref(0)
+  const fetchPromise = ref(null)
+  const initPromise = ref(null)
+  const AUTH_TIMEOUT = 10000 // 10 seconds timeout for auth operations
+  const CACHE_TIME = 5 * 60 * 1000 // 5 minutes cache
 
-  // Computed properties
-  const isLoggedIn = computed(() => {
-    return !!token.value;
-  });
+  // Getters
+  const isAuthenticated = computed(() => !!user.value)
+  const currentUser = computed(() => user.value)
+  const isOwner = computed(() => {
+    return (
+      user.value?.user_metadata?.isowner === true || 
+      user.value?.user_metadata?.isowner === 1 ||
+      publicUser.value?.isowner === 1 ||
+      publicUser.value?.isowner === '1' ||
+      publicUser.value?.isowner === true
+    )
+  })
 
-  const isAuthenticated = computed(() => {
-    return isLoggedIn.value;
-  });
+  // Helper function to handle timeouts
+  const withTimeout = (promise, ms, errorMessage) => {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error(errorMessage)), ms)
+      )
+    ])
+  }
 
-  const isSeller = computed(() => fullUser.value?.isowner === 1);
-  const userName = computed(() => fullUser.value?.full_name || user.value?.user_metadata?.full_name || 'User');
-
-  // Clear error message
-  const clearError = () => {
-    error.value = null;
-  };
-
-  // Initialize auth state from persistence
-  const initAuth = async () => {
-    // Check if already initialized or too many attempts
-    if (initializationAttempts.value > 3) {
-      console.warn('Too many initialization attempts, aborting');
-      return false;
-    }
+  // Actions
+  async function initAuth() {
+    // Return existing promise if initialization is in progress
+    if (initPromise.value) return initPromise.value
+    // Return early if already initialized
+    if (initialized.value) return Promise.resolve()
     
+    initPromise.value = (async () => {
+      try {
+        loading.value = true
+        error.value = null
+
+        // Try to restore session from localStorage first
+        const storedUser = localStorage.getItem('supabase.auth.user')
+        if (storedUser) {
+          try {
+            user.value = JSON.parse(storedUser)
+          } catch (e) {
+            localStorage.removeItem('supabase.auth.user')
+          }
+        }
+
+        // Get current session from Supabase with timeout
+        const { data: { session: currentSession }, error: sessionError } = 
+          await withTimeout(supabase.auth.getSession(), AUTH_TIMEOUT, 'Session timeout')
+        
+        if (sessionError) throw sessionError
+        
+        if (currentSession) {
+          await setSession(currentSession)
+        }
+
+        // Set up auth state change listener
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+          async (event, newSession) => {
+            console.log('Auth state changed:', event)
+            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+              await setSession(newSession)
+            } else if (event === 'SIGNED_OUT') {
+              clearSession()
+            }
+          }
+        )
+
+        initialized.value = true
+        return true
+      } catch (err) {
+        console.error('Auth initialization error:', err)
+        error.value = err.message
+        // Don't clear session on timeout, only on actual auth errors
+        if (!err.message.includes('timed out')) {
+          clearSession()
+        }
+        return false
+      } finally {
+        loading.value = false
+        initPromise.value = null
+      }
+    })()
+
+    return initPromise.value
+  }
+
+  async function fetchPublicUser(authUserId, force = false) {
+    const now = Date.now()
+
+    // Return cached data if available and not forced
+    if (!force && publicUser.value && (now - lastFetch.value) < CACHE_TIME) {
+      return publicUser.value
+    }
+
+    // If there's already a fetch in progress, return its promise
+    if (fetchPromise.value) {
+      return fetchPromise.value
+    }
+
     try {
-      initializationAttempts.value++;
-      console.log(`Initializing auth store (attempt ${initializationAttempts.value})`);
+      const promise = withTimeout(axios.get('/api/users/me'), AUTH_TIMEOUT, 'Public user fetch timed out')
+      fetchPromise.value = promise
+      const response = await promise
+      publicUser.value = response.data
+      lastFetch.value = now
+      return response.data
+    } catch (error) {
+      console.error('Error fetching public user:', error)
+      // Only clear public user data on actual errors, not timeouts
+      if (!error.message.includes('timed out')) {
+        publicUser.value = null
+      }
+      return null
+    } finally {
+      fetchPromise.value = null
+    }
+  }
+
+  async function setSession(newSession) {
+    if (!newSession) {
+      clearSession()
+      return
+    }
+
+    try {
+      session.value = newSession
       
-      // Check if already initialized
-      if (isInitialized.value) {
-        console.log('Auth store already initialized, skipping.');
+      if (newSession.user) {
+        user.value = newSession.user
+        localStorage.setItem('supabase.auth.user', JSON.stringify(newSession.user))
+        localStorage.setItem('supabase.auth.token', JSON.stringify({
+          access_token: newSession.access_token,
+          refresh_token: newSession.refresh_token,
+          expires_at: newSession.expires_at
+        }))
+        
+        const now = Date.now()
+        if (!publicUser.value || (now - lastFetch.value) >= CACHE_TIME) {
+          await withTimeout(fetchPublicUser(newSession.user.id), AUTH_TIMEOUT, 'Public user fetch timed out')
+        }
+      }
+    } catch (error) {
+      console.error('Error setting session:', error)
+      // Only clear on actual errors, not timeouts
+      if (!error.message.includes('timed out')) {
+        clearSession()
+      }
+    }
+  }
+
+  function clearSession() {
+    session.value = null
+    user.value = null
+    publicUser.value = null
+    lastFetch.value = 0
+    localStorage.removeItem('supabase.auth.user')
+    localStorage.removeItem('supabase.auth.token')
+  }
+
+  async function getSupabaseSession() {
+    try {
+      const { data: { session }, error } = 
+        await withTimeout(supabase.auth.getSession(), AUTH_TIMEOUT, 'Session timeout')
+      if (error) throw error
+      return session
+    } catch (error) {
+      console.error('Error getting Supabase session:', error)
+      return null
+    }
+  }
+
+  async function fetchFullUserInfo(forceRefresh = false) {
+    try {
+      if (!forceRefresh) {
+        const storedUser = localStorage.getItem('supabase.auth.user')
+        if (storedUser) {
+          const userData = JSON.parse(storedUser)
+          user.value = userData
+          return userData
+        }
+      }
+
+      const { data: { session: currentSession }, error: sessionError } = 
+        await withTimeout(supabase.auth.getSession(), AUTH_TIMEOUT, 'Session timeout')
+      if (sessionError) throw sessionError
+
+      if (!currentSession) {
+        throw new Error('No active session')
+      }
+
+      const { data: { user: supabaseUser }, error: userError } = 
+        await withTimeout(supabase.auth.getUser(), AUTH_TIMEOUT, 'User info fetch timed out')
+      if (userError) throw userError
+
+      if (supabaseUser) {
+        user.value = supabaseUser
+        localStorage.setItem('supabase.auth.user', JSON.stringify(supabaseUser))
+        return supabaseUser
+      }
+
+      throw new Error('No user data available')
+    } catch (error) {
+      console.error('Error fetching user info:', error)
+      error.value = error.message
+      // Only clear on actual errors, not timeouts
+      if (!error.message.includes('timed out')) {
+        clearSession()
+      }
+      throw error
+    }
+  }
+
+  async function getAuthToken(forceRefresh = false) {
+    try {
+      // First check localStorage for token
+      const storedToken = localStorage.getItem('supabase.auth.token');
+      if (storedToken) {
+        try {
+          const { access_token, expires_at } = JSON.parse(storedToken);
+          // Check if token is expired
+          if (expires_at && Date.now() < expires_at * 1000) {
+            return access_token;
+          }
+        } catch (e) {
+          console.warn('Failed to parse stored token:', e);
+        }
+      }
+
+      // If no valid stored token, try to get current session
+      const { data: { session: currentSession }, error: sessionError } = 
+        await withTimeout(supabase.auth.getSession(), AUTH_TIMEOUT, 'Session timeout');
+      
+      if (sessionError) throw sessionError;
+      
+      if (currentSession?.access_token) {
+        // Store the new token
+        localStorage.setItem('supabase.auth.token', JSON.stringify({
+          access_token: currentSession.access_token,
+          refresh_token: currentSession.refresh_token,
+          expires_at: currentSession.expires_at
+        }));
+        return currentSession.access_token;
+      }
+
+      // If no valid session, try to refresh
+      if (forceRefresh) {
+        const success = await refreshToken();
+        if (success) {
+          return await getAuthToken(false); // Try again without force refresh
+        }
+      }
+
+      throw new Error('No valid authentication token available');
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+      throw error;
+    }
+  }
+
+  async function refreshToken() {
+    try {
+      // First try to refresh Supabase session
+      const { data: { session: newSession }, error: refreshError } = 
+        await withTimeout(supabase.auth.refreshSession(), AUTH_TIMEOUT, 'Supabase session refresh timed out');
+      
+      if (refreshError) {
+        console.error('Supabase session refresh failed:', refreshError);
+        throw refreshError;
+      }
+
+      if (newSession) {
+        // Store the new session
+        localStorage.setItem('supabase.auth.token', JSON.stringify({
+          access_token: newSession.access_token,
+          refresh_token: newSession.refresh_token,
+          expires_at: newSession.expires_at
+        }));
+        await setSession(newSession);
+        return true;
+      }
+
+      // If Supabase refresh fails, try our custom token refresh
+      const response = await withTimeout(
+        axios.post('/auth/refresh-token'),
+        AUTH_TIMEOUT,
+        'Custom token refresh timed out'
+      );
+      
+      if (response.data.token) {
+        localStorage.setItem('token', response.data.token);
         return true;
       }
       
-      loading.value = true;
-      
-      // Get session from Supabase
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session) {
-        // Store the session token
-        token.value = session.access_token;
-        localStorage.setItem('token', session.access_token);
-        
-        // Set the user
-        user.value = session.user;
-        
-        // Try to get full user data
-        try {
-          await fetchFullUserInfo(false);
-        } catch (err) {
-          console.warn('Failed to fetch full user info during init:', err.message);
-          
-          // If we failed to fetch, try loading from localStorage
-          const storedUserData = localStorage.getItem('userData');
-          if (storedUserData) {
-            try {
-              fullUser.value = JSON.parse(storedUserData);
-              console.log('Loaded user data from localStorage');
-            } catch (parseErr) {
-              console.error('Failed to parse stored user data:', parseErr);
-            }
-          }
-        }
-      } else {
-        // Check if we have localStorage data without session
-        const storedUserData = localStorage.getItem('userData');
-        if (storedUserData) {
-          console.warn('Found user data in localStorage but no active session. Clearing stale data.');
-          localStorage.removeItem('userData');
-        }
-      }
-      
-      isInitialized.value = true;
-      console.log('Auth store initialization complete');
-      return true;
-    } catch (err) {
-      console.error('Auth store initialization error:', err);
       return false;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // Login function
-  const login = async (email, password) => {
-    clearError();
-    loading.value = true;
-    
-    try {
-      // Use Supabase directly for authentication
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      if (authError) {
-        throw authError;
-      }
-
-      if (!authData || !authData.session) {
-        throw new Error('Authentication failed - no session returned');
-      }
-
-      // Store the token
-      token.value = authData.session.access_token;
-      localStorage.setItem('token', authData.session.access_token);
-      
-      // Set the user
-      user.value = authData.user;
-
-      // Fetch full user details from our backend
-      try {
-        await fetchFullUserInfo(true);
-      } catch (fetchError) {
-        console.warn('Unable to fetch full user data from backend. Using basic user data.');
-        // Create minimal user data
-        fullUser.value = {
-          full_name: authData.user.user_metadata?.full_name || email.split('@')[0],
-          email: email,
-          isowner: authData.user.user_metadata?.isowner || 0
-        };
-        localStorage.setItem('userData', JSON.stringify(fullUser.value));
-      }
-
-      return { success: true, user: fullUser.value };
-    } catch (err) {
-      console.error('Login error:', err);
-      error.value = err.message || 'Login failed. Please check your credentials.';
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // Handle successful login
-  const handleLoginSuccess = (data) => {
-    // Create a token
-    token.value = data.access_token || data.token;
-    localStorage.setItem('token', token.value);
-    
-    // Fetch full user info
-    fetchFullUserInfo();
-  };
-
-  // Registration function
-  const register = async (userData) => {
-    clearError();
-    loading.value = true;
-    
-    try {
-      // Register directly with Supabase
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: userData.email,
-        password: userData.password,
-        options: {
-          data: {
-            full_name: userData.full_name,
-            isowner: userData.is_seller ? 1 : 0
-          }
-        }
-      });
-
-      if (authError) {
-        throw authError;
-      }
-
-      // Try to sync the user with our database
-      try {
-        await axios.post('/api/users', {
-          email: userData.email,
-          full_name: userData.full_name,
-          isowner: userData.is_seller ? 1 : 0,
-          license: userData.license,
-          auth_user_id: authData.user.id
-        });
-      } catch (syncError) {
-        console.warn('Could not sync user with backend database. Will try later.', syncError);
-      }
-
-      // Store the token
-      if (authData.session) {
-        token.value = authData.session.access_token;
-        localStorage.setItem('token', authData.session.access_token);
-        
-        // Set the user
-        user.value = authData.user;
-
-        // Create minimal user data if backend is unavailable
-        fullUser.value = {
-          full_name: userData.full_name,
-          email: userData.email,
-          isowner: userData.is_seller ? 1 : 0
-        };
-        localStorage.setItem('userData', JSON.stringify(fullUser.value));
-
-        // Try to fetch full user details (don't throw if fails)
-        try {
-          await fetchFullUserInfo(false);
-        } catch (fetchError) {
-          console.warn('Could not fetch user details from backend', fetchError);
-        }
-      }
-
-      return { success: true, user: authData.user };
-    } catch (err) {
-      console.error('Registration error:', err);
-      error.value = err.response?.data?.error || err.message || 'Registration failed. Please try again.';
-      throw err;
-    } finally {
-      loading.value = false;
-    }
-  };
-
-  // Logout function
-  const logout = async () => {
-    try {
-      // Sign out from Supabase
-      const { error: signOutError } = await supabase.auth.signOut();
-      
-      if (signOutError) {
-        console.error('Error during sign out:', signOutError);
-      }
-      
-      // Clear local state
-      token.value = null;
-      user.value = null;
-      fullUser.value = null;
-      
-      // Clear storage
-      localStorage.removeItem('token');
-      localStorage.removeItem('userData');
-      localStorage.removeItem('last_user_fetch_time');
-      
-      console.log('Logout completed, all state and storage cleared');
-      
-      // Redirect to home page (root path)
-      if (router) router.push('/');
-      
-      return true;
-    } catch (err) {
-      console.error('Logout error:', err);
-      error.value = err.message;
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+      // Clear auth state on any error
+      clearSession();
       return false;
     }
-  };
+  }
 
-  // Fetch detailed user information
-  const fetchFullUserInfo = async (throwError = true) => {
-    if (!token.value) {
-      if (throwError) {
-        throw new Error('No authentication token available');
-      }
-      return null;
-    }
-    
-    try {
-      // First try the API endpoint with the standard prefix
-      try {
-        const response = await axios.get('/api/users/full-info', {
-          headers: {
-            Authorization: `Bearer ${token.value}`
-          }
-        });
-        
-        fullUser.value = response.data;
-        localStorage.setItem('userData', JSON.stringify(response.data));
-        localStorage.setItem('last_user_fetch_time', Date.now().toString());
-        backendAvailable.value = true; // Backend is working
-        
-        return response.data;
-      } catch (apiPrefixError) {
-        // If that fails, try without the prefix
-        console.log('API prefix route failed, trying without prefix', apiPrefixError);
-        
-        try {
-          const response = await axios.get('/users/full-info', {
-            headers: {
-              Authorization: `Bearer ${token.value}`
-            }
-          });
-          
-          fullUser.value = response.data;
-          localStorage.setItem('userData', JSON.stringify(response.data));
-          localStorage.setItem('last_user_fetch_time', Date.now().toString());
-          backendAvailable.value = true; // Backend is working
-          
-          return response.data;
-        } catch (error) {
-          // If both fail, backend might be down
-          backendAvailable.value = false;
-          throw error;
-        }
-      }
-    } catch (err) {
-      console.error('Failed to fetch user info:', err);
-      
-      // Try to load from localStorage as a last resort
-      const storedUserData = localStorage.getItem('userData');
-      if (storedUserData) {
-        try {
-          const userData = JSON.parse(storedUserData);
-          fullUser.value = userData;
-          console.log('Loaded user data from localStorage as fallback');
-          return userData;
-        } catch (e) {
-          console.error('Failed to parse stored user data:', e);
-        }
-      }
-      
-      if (throwError) {
-        throw err;
-      }
-      return null;
-    }
-  };
+  function cleanup() {
+    clearSession()
+    initialized.value = false
+    initPromise.value = null
+    fetchPromise.value = null
+  }
 
-  // Add the getAuthToken function
-  const getAuthToken = async () => {
-    // Check if token exists in store
-    if (token.value) {
-      return token.value;
-    }
-
-    // Try to get from localStorage as fallback
-    const storedToken = localStorage.getItem('token');
-    if (storedToken) {
-      token.value = storedToken;
-      return storedToken;
-    }
-
-    // Try to get fresh token from Supabase
-    try {
-      const { data } = await supabase.auth.getSession();
-      if (data?.session?.access_token) {
-        token.value = data.session.access_token;
-        localStorage.setItem('token', data.session.access_token);
-        return data.session.access_token;
-      }
-    } catch (err) {
-      console.error('Error getting auth token:', err);
-    }
-
-    return null;
-  };
-
-  // Return the store with all the methods and properties
   return {
-    token,
+    // State
     user,
-    fullUser,
+    session,
     loading,
     error,
-    backendAvailable,
-    initializationAttempts,
-    isInitialized,
+    initialized,
+    publicUser,
+    // Getters
     isAuthenticated,
-    isLoggedIn,
-    isSeller,
-    userName,
-    login,
-    logout,
-    register,
+    currentUser,
+    isOwner,
+    // Actions
     initAuth,
+    setSession,
+    clearSession,
+    getSupabaseSession,
     fetchFullUserInfo,
-    handleLoginSuccess,
-    clearError,
-    getAuthToken
-  };
-});
+    getAuthToken,
+    cleanup,
+    refreshToken,
+    fetchPublicUser
+  }
+})

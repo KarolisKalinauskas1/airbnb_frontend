@@ -1,7 +1,7 @@
 // stores/user.js
 import { defineStore } from 'pinia'
 import { supabase } from '@/lib/supabase'
-import axios from 'axios'
+import axios from '@/axios'
 
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -10,12 +10,23 @@ export const useUserStore = defineStore('user', {
   }),
   actions: {
     async fetchAndStoreUser() {
-      const { data } = await supabase.auth.getUser()
-      this.authUser = data.user
+      try {
+        const { data } = await supabase.auth.getUser()
+        this.authUser = data.user
 
-      if (this.authUser) {
-        const res = await axios.get(`/api/users/full-info/${this.authUser.id}`)
-        this.fullUser = res.data
+        if (this.authUser) {
+          const res = await axios.get('/api/users/full-info', {
+            headers: {
+              Authorization: `Bearer ${data.session?.access_token}`
+            }
+          })
+          this.fullUser = res.data
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error)
+        if (error.response?.status === 401) {
+          this.logout()
+        }
       }
     },
     setFullUser(data) {

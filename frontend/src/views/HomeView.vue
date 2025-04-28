@@ -1,3 +1,73 @@
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+
+const router = useRouter()
+const authStore = useAuthStore()
+
+const isOwner = computed(() => authStore.isOwner)
+
+const features = [
+  {
+    icon: '🏕️',
+    title: 'Unique Locations',
+    description: 'Discover handpicked camping spots you won\'t find anywhere else'
+  },
+  {
+    icon: '💰',
+    title: 'Best Prices',
+    description: 'Find the perfect spot for your budget with transparent pricing'
+  },
+  {
+    icon: '🔒',
+    title: 'Secure Booking',
+    description: 'Book with peace of mind using our secure payment system'
+  },
+  {
+    icon: '⭐',
+    title: 'Verified Reviews',
+    description: 'Read authentic reviews from fellow campers'
+  }
+]
+
+const steps = [
+  {
+    number: 1,
+    title: 'Search',
+    description: 'Find camping spots by location, dates, and amenities'
+  },
+  {
+    number: 2,
+    title: 'Book',
+    description: 'Reserve your spot with our secure booking system'
+  },
+  {
+    number: 3,
+    title: 'Camp',
+    description: 'Enjoy your outdoor adventure!'
+  }
+]
+
+const handleExplore = () => {
+  if (isOwner.value) {
+    router.push('/dashboard')
+  } else {
+    router.push('/spots')
+  }
+}
+
+onMounted(async () => {
+  if (authStore.isLoggedIn && !authStore.fullUser) {
+    try {
+      await authStore.fetchFullUserInfo(true)
+    } catch (error) {
+      console.error('Error fetching user info:', error)
+    }
+  }
+})
+</script>
+
 <template>
   <div class="home-container">
     <!-- Hero section -->
@@ -5,9 +75,11 @@
       <div class="hero-content">
         <h1 class="hero-title">Discover Unique Camping Experiences</h1>
         <p class="hero-subtitle">Find perfect camping spots for your next outdoor adventure</p>
-        <RouterLink to="/campers" class="hero-button">
-          Browse Camping Spots
-        </RouterLink>
+        <button 
+          @click="handleExplore" 
+          class="bg-red-600 hover:bg-red-700 text-white py-3 px-8 rounded-full text-lg shadow-lg transform transition hover:-translate-y-1">
+          {{ isOwner ? 'Go to Dashboard' : 'Explore Camping Spots' }}
+        </button>
       </div>
     </div>
 
@@ -15,25 +87,10 @@
     <div class="features-section">
       <h2 class="section-title">Why Choose Our Platform?</h2>
       <div class="features-grid">
-        <div class="feature-card">
-          <div class="feature-icon">🏕️</div>
-          <h3>Unique Locations</h3>
-          <p>Discover handpicked camping spots you won't find anywhere else</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">💰</div>
-          <h3>Best Prices</h3>
-          <p>Find the perfect spot for your budget with transparent pricing</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">🔒</div>
-          <h3>Secure Booking</h3>
-          <p>Book with peace of mind using our secure payment system</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon">⭐</div>
-          <h3>Verified Reviews</h3>
-          <p>Read authentic reviews from fellow campers</p>
+        <div v-for="feature in features" :key="feature.title" class="feature-card">
+          <div class="feature-icon">{{ feature.icon }}</div>
+          <h3>{{ feature.title }}</h3>
+          <p>{{ feature.description }}</p>
         </div>
       </div>
     </div>
@@ -42,20 +99,10 @@
     <div class="how-it-works-section">
       <h2 class="section-title">How It Works</h2>
       <div class="steps-container">
-        <div class="step">
-          <div class="step-number">1</div>
-          <h3>Search</h3>
-          <p>Find camping spots by location, dates, and amenities</p>
-        </div>
-        <div class="step">
-          <div class="step-number">2</div>
-          <h3>Book</h3>
-          <p>Reserve your spot with our secure booking system</p>
-        </div>
-        <div class="step">
-          <div class="step-number">3</div>
-          <h3>Camp</h3>
-          <p>Enjoy your outdoor adventure!</p>
+        <div v-for="step in steps" :key="step.number" class="step">
+          <div class="step-number">{{ step.number }}</div>
+          <h3>{{ step.title }}</h3>
+          <p>{{ step.description }}</p>
         </div>
       </div>
     </div>
@@ -63,165 +110,150 @@
     <!-- CTA section -->
     <div class="cta-section">
       <h2>Ready to find your perfect camping spot?</h2>
-      <RouterLink to="/campers" class="cta-button">
-        Start Browsing Now
-      </RouterLink>
+      <button 
+        @click="handleExplore" 
+        class="bg-red-600 hover:bg-red-700 text-white py-3 px-8 rounded-full text-lg shadow-lg transform transition hover:-translate-y-1">
+        {{ isOwner ? 'Go to Dashboard' : 'Explore Camping Spots' }}
+      </button>
     </div>
   </div>
 </template>
 
 <style scoped>
-.home-container {
+:root {
+  --primary-color: #2c3e50;
+  --secondary-color: #42b983;
+  --text-color: #333;
+  --background-light: #f8f9fa;
+  --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --spacing-unit: 1rem;
+  --border-radius: 8px;
+}
+
+.home {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 20px;
+  padding: var(--spacing-unit);
 }
 
 .hero-section {
-  background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('/src/assets/hero-camping.jpg');
+  text-align: center;
+  padding: calc(var(--spacing-unit) * 4) var(--spacing-unit);
+  background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url('@/assets/hero-bg.jpg');
   background-size: cover;
   background-position: center;
-  height: 500px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
   color: white;
-  border-radius: 10px;
-  margin: 20px 0;
-}
-
-.hero-content {
-  max-width: 800px;
-  padding: 20px;
+  border-radius: var(--border-radius);
+  margin-bottom: calc(var(--spacing-unit) * 3);
 }
 
 .hero-title {
-  font-size: 2.5rem;
-  margin-bottom: 1rem;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  margin-bottom: calc(var(--spacing-unit) * 2);
 }
 
 .hero-subtitle {
-  font-size: 1.25rem;
-  margin-bottom: 2rem;
-}
-
-.hero-button {
-  background-color: #e31c5f;
-  color: white;
-  padding: 12px 24px;
-  border-radius: 30px;
-  font-weight: 600;
-  text-decoration: none;
-  transition: background-color 0.3s;
-  display: inline-block;
-}
-
-.hero-button:hover {
-  background-color: #d1174d;
+  font-size: clamp(1rem, 3vw, 1.5rem);
+  margin-bottom: calc(var(--spacing-unit) * 2);
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .section-title {
   text-align: center;
-  font-size: 2rem;
-  margin: 3rem 0 2rem;
-}
-
-.features-section {
-  margin: 4rem 0;
+  color: var(--primary-color);
+  margin-bottom: calc(var(--spacing-unit) * 3);
+  font-size: clamp(1.5rem, 4vw, 2.5rem);
 }
 
 .features-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 2rem;
+  gap: calc(var(--spacing-unit) * 2);
+  margin-bottom: calc(var(--spacing-unit) * 4);
 }
 
 .feature-card {
-  background-color: #f8f8f8;
-  padding: 2rem;
-  border-radius: 8px;
-  text-align: center;
-  transition: transform 0.3s, box-shadow 0.3s;
+  background: var(--background-light);
+  padding: calc(var(--spacing-unit) * 2);
+  border-radius: var(--border-radius);
+  box-shadow: var(--card-shadow);
+  transition: transform 0.3s ease;
 }
 
 .feature-card:hover {
   transform: translateY(-5px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
 }
 
 .feature-icon {
   font-size: 2.5rem;
-  margin-bottom: 1rem;
-}
-
-.how-it-works-section {
-  margin: 4rem 0;
+  margin-bottom: var(--spacing-unit);
 }
 
 .steps-container {
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 2rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: calc(var(--spacing-unit) * 2);
+  margin-bottom: calc(var(--spacing-unit) * 4);
 }
 
 .step {
-  flex: 1;
-  min-width: 200px;
   text-align: center;
-  padding: 1.5rem;
+  padding: calc(var(--spacing-unit) * 2);
 }
 
 .step-number {
-  background-color: #e31c5f;
-  color: white;
   width: 40px;
   height: 40px;
+  background: var(--secondary-color);
+  color: white;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
+  margin: 0 auto var(--spacing-unit);
   font-weight: bold;
-  margin: 0 auto 1rem;
 }
 
 .cta-section {
-  background-color: #f8f8f8;
-  padding: 4rem 2rem;
   text-align: center;
-  border-radius: 10px;
-  margin: 4rem 0;
+  padding: calc(var(--spacing-unit) * 4) var(--spacing-unit);
+  background: var(--background-light);
+  border-radius: var(--border-radius);
 }
 
-.cta-button {
-  background-color: #e31c5f;
-  color: white;
-  padding: 12px 24px;
-  border-radius: 30px;
-  font-weight: 600;
-  text-decoration: none;
-  transition: background-color 0.3s;
+.btn {
   display: inline-block;
-  margin-top: 1.5rem;
+  padding: calc(var(--spacing-unit) * 0.75) calc(var(--spacing-unit) * 1.5);
+  border-radius: var(--border-radius);
+  text-decoration: none;
+  font-weight: bold;
+  transition: all 0.3s ease;
 }
 
-.cta-button:hover {
-  background-color: #d1174d;
+.btn-primary {
+  background: var(--secondary-color);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: color-mix(in srgb, var(--secondary-color) 80%, black);
+  transform: translateY(-2px);
 }
 
 @media (max-width: 768px) {
-  .hero-title {
-    font-size: 2rem;
+  .home {
+    padding: calc(var(--spacing-unit) * 0.5);
   }
   
-  .hero-subtitle {
-    font-size: 1rem;
+  .hero-section {
+    padding: calc(var(--spacing-unit) * 2) var(--spacing-unit);
   }
   
+  .features-grid,
   .steps-container {
-    flex-direction: column;
+    gap: var(--spacing-unit);
   }
 }
 </style>

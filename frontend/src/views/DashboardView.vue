@@ -1,280 +1,457 @@
 <template>
   <DashboardLayout>
-    <div v-if="loading" class="flex justify-center items-center h-64">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500"></div>
-    </div>
-    <div v-else-if="loadError || storeError" class="text-center py-8 text-red-600 bg-red-50 rounded-lg">
-      {{ errorMessage || storeError }}
-    </div>
-    <template v-else>
-      <!-- Stats Cards with improved spacing -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
-        <!-- Quick Stats -->
-        <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
-          <h3 class="text-lg font-semibold mb-3 text-gray-800">Total Spots</h3>
-          <p class="text-3xl font-bold text-red-600">{{ safeData.totalSpots }}</p>
-        </div>
-        
-        <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
-          <h3 class="text-lg font-semibold mb-3 text-gray-800">Total Bookings</h3>
-          <p class="text-3xl font-bold text-red-600">{{ safeData.bookings.total }}</p>
-        </div>
-
-        <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
-          <h3 class="text-lg font-semibold mb-3 text-gray-800">Total Revenue</h3>
-          <p class="text-3xl font-bold text-red-600">€{{ formatCurrency(safeData.revenue.total) }}</p>
-        </div>
-        
-        <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
-          <h3 class="text-lg font-semibold mb-3 text-gray-800">Cancelled Revenue</h3>
-          <p class="text-3xl font-bold text-amber-600">€{{ formatCurrency(safeData.revenue.cancelled) }}</p>
-        </div>
+    <router-view v-if="$route.path !== '/dashboard'"></router-view>
+    <div v-else class="dashboard-view">
+      <div v-if="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Loading dashboard...</p>
       </div>
+      <div v-else-if="error" class="error">
+        <p>{{ error }}</p>
+        <button @click="loadDashboardData">Retry</button>
+      </div>
+      <div v-else class="dashboard-content">
+        <!-- Welcome Section -->
+        <div class="welcome-section">
+          <h1>Welcome back, {{ user?.full_name }}</h1>
+          <p class="subtitle">Here's what's happening with your camping spots</p>
+        </div>
 
-      <!-- Recent Activity with improved spacing -->
-      <div class="bg-white p-6 rounded-xl shadow-sm hover:shadow-md transition-all duration-200">
-        <h3 class="text-xl font-semibold mb-6 text-gray-800 border-b pb-3">Recent Activity</h3>
-        
-        <div v-if="safeData.recentBookings?.length" class="space-y-4">
-          <div v-for="booking in safeData.recentBookings" 
-               :key="booking.id" 
-               class="flex items-center justify-between p-4 rounded-lg hover:bg-gray-50 transition-colors border-b last:border-b-0"
-               :class="{ 'bg-amber-50': booking.cancelled }">
-            <div>
-              <p class="font-medium text-gray-800">{{ booking.spotName }}</p>
-              <p class="text-sm text-gray-600">{{ formatDate(booking.startDate) }} - {{ formatDate(booking.endDate) }}</p>
-              <p class="text-sm text-gray-600">Guest: {{ booking.guestName }}</p>
+        <!-- Quick Stats -->
+        <div class="quick-stats">
+          <div class="stat-card">
+            <div class="stat-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+              </svg>
             </div>
-            <div class="text-right space-y-2">
-              <p class="font-semibold" :class="booking.cancelled ? 'text-amber-600' : 'text-red-600'">€{{ formatCurrency(booking.revenue) }}</p>
-              <span :class="[
-                'px-3 py-1 rounded-full text-sm inline-block min-w-[90px] text-center',
-                getStatusClass(booking.status)
-              ]">
-                {{ booking.status }}
-              </span>
+            <span class="stat-value">{{ totalSpots }}</span>
+            <span class="stat-label">Total Spots</span>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+              </svg>
+            </div>
+            <span class="stat-value">{{ activeBookings }}</span>
+            <span class="stat-label">Active Bookings</span>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+            </div>
+            <span class="stat-value">{{ upcomingBookings }}</span>
+            <span class="stat-label">Upcoming</span>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+              </svg>
+            </div>
+            <span class="stat-value">{{ totalEarnings }}</span>
+            <span class="stat-label">Total Earnings</span>
+          </div>
+        </div>
+
+        <!-- Recent Bookings Section -->
+        <div class="recent-bookings">
+            <div class="section-header">
+              <h2>Recent Bookings</h2>
+              <button class="view-all" @click="viewAllBookings">View All</button>
+            </div>
+
+            <div v-if="loadingBookings" class="loading">
+              <div class="spinner"></div>
+              <p>Loading bookings...</p>
+            </div>
+            <div v-else-if="recentBookings.length === 0" class="no-bookings">
+              <p>No recent bookings found</p>
+            </div>
+            <div v-else class="bookings-list">
+              <div v-for="booking in recentBookings" :key="booking.id" class="booking-item">
+                <div class="booking-info">
+                  <h3>{{ booking.spot.name }}</h3>
+                  <div class="booking-dates">
+                    <span class="date-label">Check-in:</span>
+                    <span class="date-value">{{ formatDate(booking.start_date) }}</span>
+                    <span class="date-label">Check-out:</span>
+                    <span class="date-value">{{ formatDate(booking.end_date) }}</span>
+                  </div>
+                  <div class="booking-meta">
+                    <span class="guest-name">{{ booking.guest_name }}</span>
+                    <span class="booking-cost">${{ booking.cost }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-        
-        <div v-else class="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
-          No recent bookings
-        </div>
       </div>
-    </template>
+  
   </DashboardLayout>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import DashboardLayout from '@/components/DashboardLayout.vue'
-import { useDashboardStore } from '@/stores/dashboard'
-import { storeToRefs } from 'pinia'
-import { useToast } from 'vue-toastification'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { isOffline } from '@/utils/offlineDataHandler'
-import axios from '@/axios'
+import DashboardLayout from '@/components/DashboardLayout.vue'
+import axios from 'axios'
+import { format } from 'date-fns'
 
 const router = useRouter()
-const route = useRoute()
-const dashboardStore = useDashboardStore()
 const authStore = useAuthStore()
-const { dashboardData, loading, error: storeError } = storeToRefs(dashboardStore)
-const toast = useToast()
 
-// Loading state tracking
-const retryCount = ref(0);
-const maxRetries = 2;
-const dataLoadedInSession = ref(false);
-const loadError = ref(false);
-const errorMessage = ref('');
-const authPromptShown = ref(false);
-const loadingInitiated = ref(false);
+const loading = ref(true)
+const loadingBookings = ref(false)
+const error = ref(null)
+const user = ref(null)
+const spots = ref([])
+const bookings = ref([])
 
-// Timestamp to track when we last tried to load data
-const lastLoadAttempt = ref(Date.now() - 10000);
-const MIN_LOAD_INTERVAL = 3000; // 3 seconds
-
-const formatDate = (dateString) => {
-  if (!dateString) return 'N/A'
-  return new Date(dateString).toLocaleDateString()
-}
-
-const formatCurrency = (value) => {
-  if (value === undefined || value === null) return '0.00'
-  return Number(value).toFixed(2)
-}
-
-const getStatusClass = (status) => {
-  if (!status) return 'bg-gray-100 text-gray-800'
-  
-  switch (status.toLowerCase()) {
-    case 'confirmed':
-      return 'bg-green-100 text-green-800'
-    case 'cancelled':
-      return 'bg-amber-100 text-amber-800'
-    case 'completed':
-      return 'bg-blue-100 text-blue-800'
-    default:
-      return 'bg-gray-100 text-gray-800'
+const totalSpots = computed(() => spots.value?.length || 0)
+const activeBookings = computed(() => {
+  if (!bookings.value || !Array.isArray(bookings.value)) {
+    return 0
   }
-}
-
-// Error handling function
-const handleLoadError = (error) => {
-  console.error('Error loading dashboard data:', error);
-  errorMessage.value = 'Failed to load dashboard data';
-  loadError.value = true;
-  
-  // Set fallback data to prevent null reference errors
-  if (!dashboardData.value) {
-    dashboardStore.setDashboardData({
-      totalSpots: 0,
-      totalBookings: 0,
-      revenue: { total: 0, monthly: 0, average: 0, projected: 0 },
-      bookings: { total: 0, monthly: 0, occupancyRate: 0 },
-      popularSpots: [],
-      spotPerformance: [],
-      recentBookings: []
-    });
+  return bookings.value.filter(b => b.status === 'confirmed').length
+})
+const upcomingBookings = computed(() => {
+  if (!bookings.value || !Array.isArray(bookings.value)) {
+    return 0
   }
-  
-  if (error.response?.status === 401) {
-    if (!authPromptShown.value) {
-      router.push('/auth?redirect=' + encodeURIComponent(route.fullPath));
-      authPromptShown.value = true;
-    }
-  } else {
-    toast.error('Failed to load dashboard data. Please try again later.');
+  return bookings.value.filter(b => {
+    const startDate = new Date(b.start_date)
+    return startDate >= new Date() && b.status === 'confirmed'
+  }).length
+})
+const totalEarnings = computed(() => {
+  if (!bookings.value || !Array.isArray(bookings.value)) {
+    return '0.00'
   }
-};
-
-// Updated loadDashboardData to handle errors more gracefully
-const loadDashboardData = async (force = false) => {
-  // Prevent loading if already initiated or too soon after last attempt
-  const now = Date.now();
-  if (
-    (!force && loadingInitiated.value) || 
-    (!force && now - lastLoadAttempt.value < MIN_LOAD_INTERVAL)
-  ) {
-    console.log('Skipping duplicate dashboard load request');
-    return;
+  return bookings.value
+    .filter(b => b.status === 'confirmed')
+    .reduce((sum, b) => sum + (b.cost || 0), 0)
+    .toFixed(2)
+})
+const recentBookings = computed(() => {
+  if (!bookings.value || !Array.isArray(bookings.value)) {
+    return []
   }
-  
-  // Skip load if data already exists and not forced
-  if (!force && dataLoadedInSession.value && !route.query.refresh) {
-    console.log('Using already loaded dashboard data from this session');
-    return;
-  }
-  
-  loadingInitiated.value = true;
-  lastLoadAttempt.value = now;
-  loadError.value = false;
-  errorMessage.value = '';
-  
-  if (!authStore.isLoggedIn && !isOffline()) {
-    try {
-      await authStore.initAuth();
-      if (!authStore.isLoggedIn) {
-        loadingInitiated.value = false;
-        return router.push('/auth?redirect=' + encodeURIComponent(route.fullPath));
-      }
-    } catch (error) {
-      console.error('Auth check failed:', error);
-      loadingInitiated.value = false;
-      return;
-    }
-  }
-  
-  try {
-    // Use the dashboard store to load data
-    await dashboardStore.fetchDashboardData();
-    dataLoadedInSession.value = true;
-    retryCount.value = 0;
-  } catch (err) {
-    console.error('Dashboard load error:', err);
-    
-    // Handle the error more gracefully - prevent null reference issues
-    handleLoadError(err);
-  } finally {
-    loadingInitiated.value = false;
-  }
-};
-
-// Watch for route query params to reload data when needed
-watch(() => route.query.refresh, (newVal) => {
-  if (newVal === 'true') {
-    console.log('Forced refresh requested via URL param');
-    loadDashboardData(true);
-  }
-});
-
-// Create safe data with default values to prevent null reference errors
-const safeData = computed(() => {
-  if (!dashboardData.value) {
-    // Return default structure that matches what the template expects
-    return {
-      totalSpots: 0,
-      totalBookings: 0,
-      revenue: { 
-        total: 0, 
-        monthly: 0, 
-        average: 0,
-        projected: 0,
-        cancelled: 0
-      },
-      bookings: { 
-        total: 0, 
-        monthly: 0, 
-        occupancyRate: 0,
-        growth: 0,
-        averageDuration: 0
-      },
-      popularSpots: [],
-      spotPerformance: [],
-      recentBookings: []
-    }
-  }
-  return dashboardData.value
+  return [...bookings.value]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, 4)
 })
 
-// Initialize dashboard data
-onMounted(() => {
+const loadDashboardData = async () => {
   try {
-    // Initialize the default data structure in the store if needed
-    if (!dashboardData.value) {
-      dashboardStore.setDashboardData({
-        totalSpots: 0,
-        totalBookings: 0,
-        revenue: { 
-          total: 0, 
-          monthly: 0, 
-          average: 0,
-          projected: 0,
-          cancelled: 0
-        },
-        bookings: { 
-          total: 0, 
-          monthly: 0, 
-          occupancyRate: 0,
-          growth: 0,
-          averageDuration: 0
-        },
-        popularSpots: [],
-        spotPerformance: [],
-        recentBookings: []
-      });
-    }
+    loading.value = true
+    error.value = null
     
-    // Small delay to ensure everything is properly initialized
-    setTimeout(() => {
-      loadDashboardData(false);
-    }, 500);
-  } catch (err) {
-    console.error('Error during dashboard initialization:', err);
-    handleLoadError(err);
-  }
-});
+    const currentUser = authStore.user
+    if (!currentUser) {
+      throw new Error('No user found')
+    }
 
+    const token = await authStore.getAuthToken()
+    if (!token) {
+      throw new Error('No valid authentication token found')
+    }
+
+    const response = await axios.get('/api/dashboard', {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+
+    if (!response.data) {
+      throw new Error('No user data received')
+    }
+
+    user.value = response.data
+    spots.value = response.data.spots || []
+    bookings.value = response.data.bookings || []
+  } catch (err) {
+    console.error('Error loading dashboard data:', err)
+    if (err.response?.status === 401) {
+      error.value = 'Your session has expired. Please log in again.'
+      router.push('/login')
+    } else {
+      error.value = 'Failed to load dashboard data. Please try again.'
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+const formatDate = (date) => {
+  return format(new Date(date), 'MMM d, yyyy')
+}
+
+const viewAllBookings = () => {
+  router.push('/dashboard/bookings')
+}
+
+onMounted(() => {
+  loadDashboardData()
+})
 </script>
+
+<style scoped>
+.dashboard-view {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+  transition: all 0.3s ease;
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #ff385c;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error {
+  text-align: center;
+  color: #e74c3c;
+  padding: 2rem;
+}
+
+.welcome-section {
+  margin-bottom: 2rem;
+}
+
+.welcome-section h1 {
+  font-size: 2.5rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  font-size: 1.1rem;
+  color: #666;
+}
+
+.quick-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 3rem;
+}
+
+.stat-card {
+  background: white;
+  border-radius: 24px;
+  padding: 2rem;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #ff385c, #e31c5f);
+}
+
+.stat-icon {
+  margin-bottom: 1rem;
+  color: #ff385c;
+}
+
+.stat-value {
+  display: block;
+  font-size: 2.5rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.stat-label {
+  font-size: 1rem;
+  color: #666;
+}
+
+.recent-bookings {
+  background: white;
+  border-radius: 24px;
+  padding: 2rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.section-header h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.view-all {
+  background: none;
+  border: none;
+  color: #ff385c;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.view-all:hover {
+  background: #fff5f5;
+}
+
+.bookings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+}
+
+.booking-card {
+  background: white;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s;
+}
+
+.booking-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.booking-image {
+  height: 200px;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+
+.booking-status {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: white;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.booking-status.confirmed {
+  background: #4caf50;
+}
+
+.booking-status.pending {
+  background: #ff9800;
+}
+
+.booking-status.cancelled {
+  background: #f44336;
+}
+
+.booking-info {
+  padding: 1.5rem;
+}
+
+.booking-info h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 1rem;
+}
+
+.booking-dates {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.date-label {
+  font-size: 0.875rem;
+  color: #666;
+}
+
+.date-value {
+  font-size: 0.875rem;
+  color: #333;
+  font-weight: 500;
+}
+
+.booking-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
+}
+
+.guest-name {
+  font-size: 0.875rem;
+  color: #666;
+}
+
+.booking-cost {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.no-bookings {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+}
+</style>

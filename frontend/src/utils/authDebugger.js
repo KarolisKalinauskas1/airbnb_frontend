@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
-import axios from 'axios'
+import axios from '@/axios'
+import { useAuthStore } from '@/stores/auth'
 
 export const authDebugger = {
   async checkAuthState() {
@@ -55,19 +56,6 @@ export const authDebugger = {
       } catch (error) {
         console.error('❌ /api/users/full-info failed:', error.response?.status || error.message)
       }
-      
-      try {
-        // Test without /api prefix
-        console.log('Testing /users/full-info...')
-        const directResponse = await axios.get('/users/full-info', {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`
-          }
-        })
-        console.log('✅ /users/full-info works:', directResponse.status)
-      } catch (error) {
-        console.error('❌ /users/full-info failed:', error.response?.status || error.message)
-      }
     }
     
     console.log('=== END AUTH STATE ===')
@@ -99,48 +87,123 @@ export const authDebugger = {
         const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
         
         if (refreshError) {
-          console.error('Failed to refresh session:', refreshError);
+          console.error('Token refresh failed:', refreshError);
           return false;
         }
         
-        console.log('Session refreshed successfully');
-      }
-      
-      // Try both API paths
-      let userData = null;
-      
-      try {
-        const response = await axios.get('/api/users/full-info', {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`
-          }
-        });
-        userData = response.data;
-      } catch (error) {
-        console.log('Failed with /api prefix, trying without...');
-        try {
-          const response = await axios.get('/users/full-info', {
-            headers: {
-              Authorization: `Bearer ${session.access_token}`
-            }
-          });
-          userData = response.data;
-        } catch (innerError) {
-          console.error('Both API paths failed:', innerError);
+        if (refreshData.session) {
+          console.log('Token refreshed successfully');
+          session = refreshData.session;
         }
       }
       
-      if (userData) {
-        userData.isowner = Number(userData.isowner);
-        localStorage.setItem('userData', JSON.stringify(userData));
+      // Try to fetch user data
+      const response = await axios.get('/api/users/full-info', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+      
+      if (response.data) {
+        // Update localStorage
+        localStorage.setItem('userData', JSON.stringify(response.data));
         localStorage.setItem('last_user_fetch_time', Date.now().toString());
-        console.log('✅ Fixed: User data retrieved and stored');
+        console.log('Auth state fixed successfully');
         return true;
       }
+      
+      return false;
     } catch (error) {
-      console.error('Failed to fix auth state:', error);
+      console.error('Error fixing auth state:', error);
+      if (error.response?.status === 401) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('userData');
+      }
+      return false;
+    }
+  },
+
+  /**
+   * Debug owner permissions specifically
+   */
+  async debugOwnerPermissions() {
+    const session = await supabase.auth.getSession();
+    
+    if (!session.data.session) {
+      console.log('❌ No active session found');
+      return { hasSession: false };
     }
     
-    return false;
+    const token = session.data.session.access_token;
+    
+    console.log('=== OWNER PERMISSION DEBUG ===');
+    
+    try {
+      // First check the user's permissions from frontend store
+      const authStore = useAuthStore();
+      console.log('Auth store user data:', {
+        fullUser: authStore.fullUser,
+        isOwner: authStore.fullUser?.isowner,
+        ownerType: typeof authStore.fullUser?.isowner
+      });
+      
+      // Test dashboard permission endpoint
+      console.log('Testing /api/dashboard/debug/permissions...');
+      const response = await axios.get('/api/dashboard/debug/permissions', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      console.log('✅ Permission check response:', response.data);
+      
+      // Attempt to normalize the owner value
+      if (authStore.fullUser && response.data.userData.isowner !== 1) {
+        console.log('⚠️ Owner value mismatch, attempting to normalize...');
+        
+        // Convert isowner to a consistent number format
+        const normalizedValue = 
+          authStore.fullUser.isowner === true ||
+          authStore.fullUser.isowner === 'true' ||
+          authStore.fullUser.isowner === 'yes' ||
+          authStore.fullUser.isowner === 'YES' ||
+          authStore.fullUser.isowner === '1' ||
+          authStore.fullUser.isowner === 1
+            ? 1
+            : 0;
+            
+        console.log(`Normalized isowner value: ${normalizedValue}`);
+        
+        // Update the authStore
+        authStore.fullUser = {
+          ...authStore.fullUser,
+          isowner: normalizedValue
+        };
+        
+        // Update localStorage too
+        try {
+          const userData = JSON.parse(localStorage.getItem('userData'));
+          if (userData) {
+            userData.isowner = normalizedValue;
+            localStorage.setItem('userData', JSON.stringify(userData));
+            console.log('✅ Updated localStorage userData');
+          }
+        } catch (e) {
+          console.error('Failed to update localStorage:', e);
+        }
+      }
+      
+      return {
+        success: true,
+        permissions: response.data,
+        fixed: authStore.fullUser?.isowner === 1
+      };
+    } catch (error) {
+      console.error('❌ Permission check failed:', error.response?.status, error.response?.data);
+      return {
+        success: false,
+        error: error.response?.data || error.message
+      };
+    }
   }
-}
+};

@@ -1,11 +1,11 @@
 <template>
   <div class="date-range-container">
-    <div class="grid grid-cols-2 gap-4">
+    <div class="grid grid-cols-2 gap-3">
       <div>
         <label class="block text-sm font-medium text-gray-700 mb-1">Check-in</label>
         <input 
           type="date" 
-          class="w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 focus:outline-none focus:ring-red-500 focus:border-red-500 date-input"
+          class="date-input w-full border border-gray-300 rounded-md shadow-sm px-2 py-1.5 focus:outline-none focus:ring-red-500 focus:border-red-500"
           :min="today" 
           :value="localStartDate"
           :disabled="checkingAvailability"
@@ -16,7 +16,7 @@
         <label class="block text-sm font-medium text-gray-700 mb-1">Check-out</label>
         <input 
           type="date" 
-          class="w-full border border-gray-300 rounded-md shadow-sm px-3 py-2 focus:outline-none focus:ring-red-500 focus:border-red-500 date-input"
+          class="date-input w-full border border-gray-300 rounded-md shadow-sm px-2 py-1.5 focus:outline-none focus:ring-red-500 focus:border-red-500"
           :min="minEndDate" 
           :value="localEndDate"
           :disabled="checkingAvailability"
@@ -264,8 +264,25 @@ onMounted(() => {
   width: 100%;
 }
 
+.date-input {
+  box-sizing: border-box;
+  width: 100%;
+  line-height: normal;
+  height: auto;
+}
+
 .date-input:disabled {
   background-color: #f3f4f6;
   cursor: not-allowed;
+}
+
+/* Ensure date inputs display properly */
+input[type="date"] {
+  appearance: textfield;
+  -webkit-appearance: textfield;
+  -moz-appearance: textfield;
+  box-sizing: border-box;
+  padding: 0.375rem 0.75rem;
+  width: 100%;
 }
 </style>
