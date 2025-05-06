@@ -670,9 +670,24 @@ const checkOwnerAccess = () => {
   return true;
 };
 
-const viewSpot = (spot) => {
-  // Check if user is trying to view their own spot
-  if (authStore.isLoggedIn && authStore.fullUser && spot.owner_id === authStore.fullUser.user_id) {
+const viewSpot = (spotOrId) => {
+  // Handle both spot objects and spot IDs (from map clicks)
+  let spotId;
+  let spot;
+  
+  if (typeof spotOrId === 'object' && spotOrId !== null) {
+    // Case: Regular spot object from list view
+    spot = spotOrId;
+    spotId = spot.camping_spot_id;
+  } else {
+    // Case: Spot ID from map view
+    spotId = spotOrId;
+    // Find the spot in our data if possible
+    spot = campingSpots.value.find(s => s.camping_spot_id === spotId);
+  }
+  
+  // If we found the full spot object and user is trying to view their own spot
+  if (spot && authStore.isLoggedIn && authStore.fullUser && spot.owner_id === authStore.fullUser.user_id) {
     toast.info("This is your own camping spot. You can manage it from your dashboard.");
     router.push('/dashboard/spots');
     return;
@@ -688,7 +703,7 @@ const viewSpot = (spot) => {
   
   // Navigate with proper route parameters
   router.push({
-    path: `/camper/${spot.camping_spot_id}`,
+    path: `/camper/${spotId}`,
     query: {
       start: dates.startDate,
       end: dates.endDate,
@@ -699,7 +714,7 @@ const viewSpot = (spot) => {
     console.error('Navigation error:', err);
     
     // Try alternate navigation method if needed
-    window.location.href = `/camper/${spot.camping_spot_id}?start=${dates.startDate}&end=${dates.endDate}&g=${filters.value.guests}`;
+    window.location.href = `/camper/${spotId}?start=${dates.startDate}&end=${dates.endDate}&g=${filters.value.guests}`;
   });
 };
 

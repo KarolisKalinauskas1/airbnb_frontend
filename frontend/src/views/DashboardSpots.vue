@@ -8,8 +8,38 @@
       </button>
     </div>
     
+    <!-- Loading State -->
+    <div v-if="loading" class="flex flex-col items-center justify-center py-20">
+      <div class="spinner mb-4"></div>
+      <p class="text-gray-600">Loading your camping spots...</p>
+    </div>
+    
+    <!-- Error State -->
+    <div v-else-if="error" class="bg-red-50 p-6 rounded-lg my-6 text-center">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-red-500 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+      <h2 class="text-xl font-bold mb-2 text-red-700">Error Loading Spots</h2>
+      <p class="mb-4 text-red-600">{{ error }}</p>
+      <button @click="fetchSpots" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors">
+        Try Again
+      </button>
+    </div>
+    
+    <!-- Empty State -->
+    <div v-else-if="spots.length === 0" class="bg-gray-50 p-8 rounded-lg my-6 text-center">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+      </svg>
+      <h2 class="text-xl font-bold mb-2">No Camping Spots Yet</h2>
+      <p class="mb-4 text-gray-600">You haven't added any camping spots. Start adding spots to grow your business!</p>
+      <button @click="showAddModal = true" class="bg-red-500 text-white px-6 py-3 rounded-lg hover:bg-red-600 transition-colors font-medium">
+        Add Your First Spot
+      </button>
+    </div>
+    
     <!-- Spots List with improved layout -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-6">
       <div v-for="spot in spots" :key="spot.camping_spot_id" class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
         <!-- Images Gallery -->
         <div class="relative mb-4">
@@ -205,9 +235,9 @@ const loadDashboardData = async () => {
       dashboardData.value = {
         totalBookings: data?.bookings?.total || 0,
         completedBookings: data?.bookings?.completed || 0,
-        cancelledBookings: data?.revenue?.cancelled || 0,
+        cancelledBookings: data?.revenue?.cancelled || 0, // This should reflect the cancelled bookings if needed
         occupancyRate: data?.bookings?.occupancyRate || 0,
-        totalRevenue: data?.revenue?.total || 0,
+        totalRevenue: data?.revenue?.total || 0, // Ensure this is set correctly
         activeBookings: data?.bookings?.active || 0
       }
     } catch (apiError) {
@@ -374,8 +404,21 @@ const handleCalendarDateSelected = (dateRange) => {
 
 const updateSpotPrice = async (newPrice) => {
   try {
-    await axios.patch(`/camping-spots/${selectedSpot.value.camping_spot_id}/price`, { 
-      price_per_night: newPrice 
+    // Ensure we have a fresh authentication token before updating the price
+    const token = await authStore.getAuthToken(true); // Force refresh token
+    
+    if (!token) {
+      toast.error('No authentication token available. Please log in again.');
+      return;
+    }
+    
+    // Make sure to include /api/ in the URL path and explicitly set Authorization header
+    await axios.patch(`/api/camping-spots/${selectedSpot.value.camping_spot_id}/price`, { 
+      price: newPrice 
+    }, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
     });
     
     selectedSpot.value.price_per_night = newPrice;
@@ -388,8 +431,39 @@ const updateSpotPrice = async (newPrice) => {
     toast.success('Price updated successfully');
   } catch (error) {
     console.error('Failed to update price:', error);
-    const errorMessage = error.response?.data?.error || 'Failed to update price';
-    toast.error(errorMessage);
+    
+    // Better error handling with specific messages
+    if (error.response?.status === 401) {
+      toast.error('Your session has expired. Refreshing authentication...');
+      try {
+        const newToken = await authStore.refreshToken();
+        if (!newToken) {
+          throw new Error('Failed to get a new authentication token');
+        }
+        
+        // Retry the update once more after refreshing token with proper URL and headers
+        await axios.patch(`/api/camping-spots/${selectedSpot.value.camping_spot_id}/price`, { 
+          price: newPrice 
+        }, {
+          headers: {
+            'Authorization': `Bearer ${newToken}`
+          }
+        });
+        
+        selectedSpot.value.price_per_night = newPrice;
+        const spotIndex = spots.value.findIndex(s => s.camping_spot_id === selectedSpot.value.camping_spot_id);
+        if (spotIndex !== -1) {
+          spots.value[spotIndex].price_per_night = newPrice;
+        }
+        toast.success('Price updated successfully');
+      } catch (retryError) {
+        console.error('Retry failed:', retryError);
+        toast.error('Authentication failed. Please reload the page and try again.');
+      }
+    } else {
+      const errorMessage = error.response?.data?.error || 'Failed to update price';
+      toast.error(errorMessage);
+    }
   }
 }
 </script>
@@ -399,6 +473,20 @@ const updateSpotPrice = async (newPrice) => {
   max-width: 1200px;
   margin: 0 auto;
   padding: 2rem;
+}
+
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border-left-color: #ff385c;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .max-h-\[90vh\] {

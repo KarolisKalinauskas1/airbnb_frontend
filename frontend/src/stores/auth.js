@@ -14,7 +14,7 @@ export const useAuthStore = defineStore('auth', () => {
   const lastFetch = ref(0)
   const fetchPromise = ref(null)
   const initPromise = ref(null)
-  const AUTH_TIMEOUT = 10000 // 10 seconds timeout for auth operations
+  const AUTH_TIMEOUT = 30000 // 30 seconds timeout for auth operations
   const CACHE_TIME = 5 * 60 * 1000 // 5 minutes cache
 
   // Getters

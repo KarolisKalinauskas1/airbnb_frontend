@@ -9,10 +9,15 @@
         </path>
       </svg>
       <h2 class="text-xl font-semibold mb-4">This is Your Camping Spot</h2>
-      <p class="mb-6">You cannot book your own camping spot. Redirecting to your dashboard...</p>
-      <button @click="router.push('/dashboard/spots')" class="px-4 py-2 bg-red-600 text-white rounded-md">
-        Go to Dashboard
-      </button>
+      <p class="mb-6">You cannot book your own camping spot.</p>
+      <div class="flex space-x-4 justify-center">
+        <button @click="router.push('/campers')" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">
+          Back to Campers
+        </button>
+        <button @click="router.push('/dashboard/spots')" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+          Go to Dashboard
+        </button>
+      </div>
     </div>
   </div>
 
@@ -227,8 +232,26 @@
                   </div>
                 </div>
                 
-                <!-- Date Selection with Improved Styling -->
-                <div class="space-y-4">
+                <!-- Owner's own spot warning - show instead of booking controls -->
+                <div v-if="isOwnSpot" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 my-4">
+                  <div class="flex items-start">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-yellow-600 mt-0.5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77-1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div>
+                      <p class="font-medium text-yellow-800">This is your camping spot</p>
+                      <p class="text-yellow-700 text-sm mt-1">You cannot book your own camping spot. Manage it from your dashboard instead.</p>
+                      <button 
+                        @click="router.push('/dashboard/spots')" 
+                        class="mt-3 px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors text-sm">
+                        Go to Dashboard
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Only show booking elements if not owner's own spot -->
+                <div v-else class="space-y-4">
                   <DateRangeSelector
                     v-model:startDate="dates.startDate"
                     v-model:endDate="dates.endDate"
@@ -260,7 +283,7 @@
                     <p>Please select different dates.</p>
                   </div>
 
-                  <!-- Only show button when dates are available -->
+                  <!-- Show booking button based on user type -->
                   <button 
                     v-if="!hasBlockedDates && dates.startDate && dates.endDate"
                     @click="handleBookNow" 
@@ -277,7 +300,6 @@
                   >
                     Select dates to continue
                   </button>
-                  
                 </div>
               </div>
             </div>
@@ -425,11 +447,28 @@ const totalPrice = computed(() => {
 // Check if user is the owner of THIS specific spot
 const isOwnSpot = computed(() => {
   if (!authStore.publicUser || !spot.value) return false;
-  return authStore.publicUser.user_id === spot.value.owner_id;
+  const isOwner = authStore.publicUser.user_id === spot.value.owner_id;
+  
+  // Debug logs to help identify ownership issues
+  if (isOwner) {
+    console.log('User is the owner of this spot:', 
+      { userId: authStore.publicUser.user_id, spotOwnerId: spot.value.owner_id });
+  }
+  
+  return isOwner;
 });
 
 // Check if user is an owner generally
-const isOwner = computed(() => authStore.publicUser?.isowner === 1);
+const isOwner = computed(() => {
+  const isOwnerAccount = authStore.publicUser?.isowner === 1;
+  
+  // Debug log
+  if (isOwnerAccount) {
+    console.log('User has an owner account type');
+  }
+  
+  return isOwnerAccount;
+});
 
 // Determine if the user can book the spot
 const canBook = computed(() => {
@@ -660,11 +699,33 @@ watch(() => guests.value, (newGuests) => {
 const handleBookNow = async () => {
   console.log('handleBookNow called');
   
+  // Force an immediate recheck of ownership to add an additional safety layer
+  if (authStore.publicUser && spot.value) {
+    // Do a direct comparison rather than relying on computed property
+    const isCurrentUserTheOwner = authStore.publicUser.user_id === spot.value.owner_id;
+    
+    if (isCurrentUserTheOwner) {
+      console.log('SAFETY CHECK: User is trying to book their own spot:', 
+        { userId: authStore.publicUser.user_id, spotOwnerId: spot.value.owner_id });
+      toast.error("You cannot book your own camping spot");
+      
+      // Force an immediate redirect to dashboard
+      router.push('/dashboard/spots');
+      return; // Critical - stop execution here
+    }
+  }
+  
   // First check if user is trying to book their own spot
   if (isOwnSpot.value) {
     console.log('User is trying to book their own spot');
     toast.error("You cannot book your own camping spot");
-    router.push('/dashboard/spots');
+    
+    // Add a delay before redirecting to ensure the toast is seen
+    setTimeout(() => {
+      router.push('/dashboard/spots');
+    }, 2000);
+    
+    // Important: Return immediately to prevent any further booking logic from executing
     return;
   }
 
@@ -808,6 +869,23 @@ const handleBookNow = async () => {
     if (!sessionResponse || !sessionResponse.url) {
       console.error('Invalid session response:', sessionResponse);
       throw new Error('Invalid response from server');
+    }
+    
+    // FINAL SAFETY CHECK: One last verification before redirecting to Stripe
+    // This is our last chance to prevent an owner from booking their own spot
+    if (authStore.publicUser && spot.value) {
+      const currentUserId = parseInt(authStore.publicUser.user_id);
+      const spotOwnerId = parseInt(spot.value.owner_id);
+      
+      if (currentUserId === spotOwnerId) {
+        console.error('CRITICAL SAFETY BLOCK: Prevented owner from booking their own spot');
+        loading.value = false;
+        toast.error("You cannot book your own camping spot");
+        
+        // Force immediate redirect to dashboard instead of Stripe
+        router.push('/dashboard/spots');
+        return; // Exit without redirecting to Stripe
+      }
     }
     
     toast.success('Redirecting to payment...');
@@ -969,24 +1047,25 @@ const calculateTotal = () => {
 }
 
 onMounted(async () => {
-  // Fetch spot details first
-  await loadSpotDetails();
-  
-  // Check if user is owner of THIS spot - if so, redirect to dashboard
-  if (authStore.isLoggedIn && !authStore.publicUser) {
+  // First, check if user is already authenticated with public user info
+  if (authStore.isLoggedIn && authStore.publicUser) {
+    console.log('User already logged in with public info:', authStore.publicUser);
+  } 
+  // Otherwise, fetch public user info if logged in
+  else if (authStore.isLoggedIn) {
     try {
+      console.log('Fetching public user info...');
       await authStore.fetchPublicUser(authStore.user.id, true);
+      console.log('Fetched public user info:', authStore.publicUser);
     } catch (error) {
       console.error('Error fetching user info:', error);
     }
   }
+
+  // Now load the spot details
+  await loadSpotDetails();
   
-  if (isOwnSpot.value) {
-    console.log('User is owner of this spot, redirecting to dashboard');
-    toast.info("This is your camping spot. You can't book your own spot.");
-    router.replace('/dashboard/spots');
-    return;
-  }
+  // We'll let the computed property and UI handle the owner check without automatic redirect
 });
 </script>
 

@@ -159,7 +159,7 @@
                        class="block w-4 h-1 mx-auto mt-1 rounded-full"
                        :class="{
                          'bg-red-500': day.isBlocked,
-                         'bg-blue-500': day.isBooked && !day.isBlocked
+                         'bg-blue-500': day.isBooked
                        }">
                   </span>
                 </div>
@@ -329,6 +329,98 @@ function isToday(date) {
          date.getFullYear() === today.getFullYear();
 }
 
+// Update getCalendarDays to correctly mark days and filter out past dates
+function getCalendarDays(year, month) {
+  const days = [];
+  const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0-6 (Sunday-Saturday)
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Add empty cells for days before the first day of the month
+  for (let i = 0; i < firstDayOfMonth; i++) {
+    days.push({
+      date: null,
+      dayOfMonth: null,
+      hasBooking: false,
+      isBlocked: false,
+      isBooked: false,
+      isToday: false,
+      isPast: false
+    });
+  }
+
+  // Add days of the month
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dayDate = new Date(year, month, d);
+    const dateStr = formatDateForInput(dayDate);
+    dayDate.setHours(0, 0, 0, 0);
+    
+    // Skip past dates - don't add them to the calendar
+    if (dayDate < today) {
+      // If this is the first day of the month, add a placeholder instead
+      if (d === 1) {
+        days.push({
+          date: dateStr,
+          dayOfMonth: d,
+          hasBooking: false,
+          isBlocked: false,
+          isBooked: false,
+          isToday: false,
+          isPast: true,
+          isPlaceholder: true
+        });
+      }
+      continue;
+    }
+    
+    // Find ALL bookings for this day
+    const dayBookings = bookings.value.filter(booking => {
+      if (!booking.start_date || !booking.end_date) return false;
+      
+      const bookingStart = new Date(booking.start_date);
+      const bookingEnd = new Date(booking.end_date);
+      
+      // Set times to start of day for accurate date comparison
+      bookingStart.setHours(0, 0, 0, 0);
+      bookingEnd.setHours(0, 0, 0, 0);
+      
+      // Check if the day falls within the booking range (inclusive)
+      return dayDate >= bookingStart && dayDate <= bookingEnd;
+    });
+    
+    // Determine day status based on bookings
+    const isBlocked = dayBookings.some(booking => booking.status_id === 5);
+    const isBooked = dayBookings.some(booking => booking.status_id === 2 || booking.status_id === 4);
+    
+    days.push({
+      date: dateStr,
+      dayOfMonth: d,
+      hasBooking: dayBookings.length > 0,
+      isBlocked: isBlocked,
+      isBooked: isBooked,
+      isToday: isToday(dayDate),
+      isPast: false
+    });
+  }
+  
+  // Calculate empty cells needed at the end to complete the grid
+  const totalCells = Math.ceil((days.length + firstDayOfMonth) / 7) * 7;
+  for (let i = days.length; i < totalCells; i++) {
+    days.push({
+      date: null,
+      dayOfMonth: null,
+      hasBooking: false,
+      isBlocked: false,
+      isBooked: false,
+      isToday: false,
+      isPast: false
+    });
+  }
+  
+  return days;
+}
+
 function getDayClasses(day) {
   const classes = [];
   
@@ -480,15 +572,17 @@ const processBookingResponse = (data) => {
   console.log('Processing booking data:', data);
   
   if (data.bookings && Array.isArray(data.bookings)) {
-    // Process bookings properly
-    bookings.value = data.bookings.map(booking => ({
-      ...booking,
-      // Ensure status_id is properly set
-      status_id: booking.status_id || (booking.isUnavailable ? 5 : 2),
-      // Add explicit flags for clarity
-      isBlocked: booking.status_id === 5,
-      isBooked: booking.status_id === 2 || booking.status_id === 4
-    }));
+    // Process bookings properly and filter out cancelled bookings (status_id 3)
+    bookings.value = data.bookings
+      .filter(booking => booking.status_id !== 3) // Filter out cancelled bookings
+      .map(booking => ({
+        ...booking,
+        // Ensure status_id is properly set
+        status_id: booking.status_id || (booking.isUnavailable ? 5 : 2),
+        // Add explicit flags for clarity
+        isBlocked: booking.status_id === 5,
+        isBooked: booking.status_id === 2 || booking.status_id === 4
+      }));
     
     console.log('Processed bookings:', bookings.value);
   } else {
@@ -499,80 +593,6 @@ const processBookingResponse = (data) => {
   // Emit the blocked dates for parent components
   emit('blocked-dates-loaded', bookings.value);
 };
-
-// Update getCalendarDays to correctly mark days
-function getCalendarDays(year, month) {
-  const days = [];
-  const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0-6 (Sunday-Saturday)
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // Add empty cells for days before the first day of the month
-  for (let i = 0; i < firstDayOfMonth; i++) {
-    days.push({
-      date: null,
-      dayOfMonth: null,
-      hasBooking: false,
-      isBlocked: false,
-      isBooked: false,
-      isToday: false,
-      isPast: false
-    });
-  }
-
-  // Add days of the month
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dayDate = new Date(year, month, d);
-    const dateStr = formatDateForInput(dayDate);
-    dayDate.setHours(0, 0, 0, 0);
-    
-    // Find ALL bookings for this day
-    const dayBookings = bookings.value.filter(booking => {
-      if (!booking.start_date || !booking.end_date) return false;
-      
-      const bookingStart = new Date(booking.start_date);
-      const bookingEnd = new Date(booking.end_date);
-      
-      // Set times to start of day for accurate date comparison
-      bookingStart.setHours(0, 0, 0, 0);
-      bookingEnd.setHours(0, 0, 0, 0);
-      
-      // Check if the day falls within the booking range (inclusive)
-      return dayDate >= bookingStart && dayDate <= bookingEnd;
-    });
-    
-    // Determine day status based on bookings
-    const isBlocked = dayBookings.some(booking => booking.status_id === 5);
-    const isBooked = dayBookings.some(booking => booking.status_id === 2 || booking.status_id === 4);
-    
-    days.push({
-      date: dateStr,
-      dayOfMonth: d,
-      hasBooking: dayBookings.length > 0,
-      isBlocked: isBlocked,
-      isBooked: isBooked,
-      isToday: isToday(dayDate),
-      isPast: dayDate < today
-    });
-  }
-  
-  // Calculate empty cells needed at the end to complete the grid
-  const totalCells = Math.ceil((daysInMonth + firstDayOfMonth) / 7) * 7;
-  for (let i = days.length; i < totalCells; i++) {
-    days.push({
-      date: null,
-      dayOfMonth: null,
-      hasBooking: false,
-      isBlocked: false,
-      isBooked: false,
-      isToday: false,
-      isPast: false
-    });
-  }
-  
-  return days;
-}
 
 // Fix the watches to reference loadBookings after it's declared
 onMounted(() => {

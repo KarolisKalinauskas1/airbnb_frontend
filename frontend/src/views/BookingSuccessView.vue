@@ -89,6 +89,30 @@ const loading = ref(true)
 const error = ref(null)
 const requestInProgress = ref(false)
 
+// Check for already processed session IDs
+const isSessionAlreadyProcessed = (sessionId) => {
+  try {
+    const processedSessions = JSON.parse(localStorage.getItem('processedBookingSessions') || '[]')
+    return processedSessions.includes(sessionId)
+  } catch (err) {
+    console.error('Error checking processed sessions:', err)
+    return false
+  }
+}
+
+// Mark a session ID as processed
+const markSessionAsProcessed = (sessionId) => {
+  try {
+    const processedSessions = JSON.parse(localStorage.getItem('processedBookingSessions') || '[]')
+    if (!processedSessions.includes(sessionId)) {
+      processedSessions.push(sessionId)
+      localStorage.setItem('processedBookingSessions', JSON.stringify(processedSessions))
+    }
+  } catch (err) {
+    console.error('Error marking session as processed:', err)
+  }
+}
+
 // Process booking only once per session
 const processBookingSession = async () => {
   try {
@@ -102,6 +126,13 @@ const processBookingSession = async () => {
       throw new Error('No session ID provided')
     }
     
+    // Check if the session ID has already been processed
+    if (isSessionAlreadyProcessed(sessionId)) {
+      console.log('Session ID already processed:', sessionId)
+      loading.value = false
+      return
+    }
+    
     console.log('Processing booking session with ID:', sessionId)
     
     // Use the API proxy with the correct endpoint
@@ -109,20 +140,18 @@ const processBookingSession = async () => {
       params: { session_id: sessionId }
     });
     
-    // Check if we got an auth token in the response
-    if (response.headers.authorization) {
-      const token = response.headers.authorization.replace('Bearer ', '');
-      // Update the auth store with the new token
-      await authStore.setAuthToken(token);
-    }
+    console.log('Response data:', response.data)
     
-    if (response.data && response.data.booking_id) {
-      bookingId.value = response.data.booking_id
+    if (response.data && response.data.success && response.data.booking && response.data.booking.id) {
+      bookingId.value = response.data.booking.id
       
       // Refresh user data to include the new booking
       await authStore.fetchFullUserInfo(true)
       
       toast.success('Booking confirmed successfully!')
+      
+      // Mark the session ID as processed
+      markSessionAsProcessed(sessionId)
     } else {
       throw new Error('Invalid booking data received')
     }

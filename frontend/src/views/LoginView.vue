@@ -607,24 +607,148 @@ const handleRegister = async () => {
   registerError.value = ''
   
   try {
-    // Rate limiting to prevent abuse
-    const lastRegistrationAttempt = localStorage.getItem('lastRegistrationAttempt')
-    const now = Date.now()
+    console.log('Starting registration process...')
     
-    if (lastRegistrationAttempt && now - parseInt(lastRegistrationAttempt) < 2000) {
-      throw new Error('Please wait a moment before trying again')
+    // Use direct fetch instead of axios to rule out any axios interceptor issues
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000'
+    console.log('Using API URL:', apiUrl)
+    
+    // Try direct registration with backend first using fetch
+    console.log('Step 1: Using direct backend registration with fetch')
+    
+    const registerPayload = {
+      email: registerData.value.email,
+      password: registerData.value.password,
+      full_name: registerData.value.fullName,
+      is_seller: registerData.value.isOwner,
+      license: registerData.value.isOwner ? registerData.value.license : undefined
     }
     
-    localStorage.setItem('lastRegistrationAttempt', now.toString())
+    console.log('Registration payload:', { ...registerPayload, password: '[REDACTED]' })
     
-    // Register with Supabase
+    try {
+      const response = await fetch(`${apiUrl}/api/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(registerPayload),
+        credentials: 'include'
+      })
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Backend registration failed:', response.status, errorText)
+        throw new Error(`Registration failed: ${response.status} ${errorText}`)
+      }
+      
+      const responseData = await response.json()
+      console.log('Direct backend registration successful:', responseData)
+      
+      // Auto-login after registration
+      console.log('Step 2: Auto-logging in after registration')
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: registerData.value.email,
+        password: registerData.value.password
+      })
+      
+      if (error) {
+        console.error('Auto-login failed:', error)
+        throw new Error('Registration successful but auto-login failed. Please log in manually.')
+      }
+      
+      console.log('Auto-login successful')
+      
+      // Set up the session in the auth store
+      await authStore.setSession(data.session)
+      
+      toast.success('Registration successful! You are now logged in.')
+      showRegister.value = false
+      
+      // Redirect to intended destination or dashboard
+      const redirectPath = route.query.redirect || (registerData.value.isOwner ? '/dashboard' : '/')
+      console.log('Redirecting to:', redirectPath)
+      router.push(redirectPath)
+      
+      // Clear sensitive data
+      registerData.value = {
+        email: '',
+        password: '',
+        confirmPassword: '',
+        fullName: '',
+        isOwner: false,
+        license: ''
+      }
+      
+      return // Exit early if direct registration works
+    } catch (directRegError) {
+      console.error('Direct fetch registration failed:', directRegError)
+      console.log('Falling back to Supabase + manual DB sync flow...')
+      
+      // Fall back to the original axios method if fetch fails
+      try {
+        console.log('Trying axios registration as fallback')
+        const response = await axios.post('/api/auth/register', {
+          email: registerData.value.email,
+          password: registerData.value.password,
+          full_name: registerData.value.fullName,
+          is_seller: registerData.value.isOwner,
+          license: registerData.value.isOwner ? registerData.value.license : undefined
+        })
+        
+        console.log('Axios registration successful:', response.data)
+        
+        // Auto-login after registration
+        console.log('Step 2: Auto-logging in after registration')
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: registerData.value.email,
+          password: registerData.value.password
+        })
+        
+        if (error) {
+          console.error('Auto-login failed:', error)
+          throw new Error('Registration successful but auto-login failed. Please log in manually.')
+        }
+        
+        console.log('Auto-login successful')
+        
+        // Set up the session in the auth store
+        await authStore.setSession(data.session)
+        
+        toast.success('Registration successful! You are now logged in.')
+        showRegister.value = false
+        
+        // Redirect to intended destination or dashboard
+        const redirectPath = route.query.redirect || (registerData.value.isOwner ? '/dashboard' : '/')
+        console.log('Redirecting to:', redirectPath)
+        router.push(redirectPath)
+        
+        // Clear sensitive data
+        registerData.value = {
+          email: '',
+          password: '',
+          confirmPassword: '',
+          fullName: '',
+          isOwner: false,
+          license: ''
+        }
+        
+        return // Exit early if axios registration works
+      } catch (axiosRegError) {
+        console.error('Axios registration also failed:', axiosRegError)
+        // Continue to Supabase-only registration as last resort
+      }
+    }
+    
+    // If both direct registration attempts fail, use the two-step process
+    console.log('Step 1 (fallback): Registering with Supabase auth only')
     const { data, error } = await supabase.auth.signUp({
       email: registerData.value.email,
       password: registerData.value.password,
       options: {
         data: {
           full_name: registerData.value.fullName,
-          isowner: registerData.value.isOwner ? 1 : 0, // Use 1/0 instead of true/false
+          isowner: registerData.value.isOwner ? 1 : 0,
           license: registerData.value.isOwner ? registerData.value.license : null
         }
       }
@@ -632,45 +756,17 @@ const handleRegister = async () => {
     
     if (error) throw error
     
-    // Auto-login after registration
-    const { error: loginError } = await supabase.auth.signInWithPassword({
-      email: registerData.value.email,
-      password: registerData.value.password
-    })
-    
-    if (loginError) {
-      console.error('Auto-login failed:', loginError)
-      throw new Error('Registration successful but auto-login failed. Please log in manually.')
+    if (!data || !data.user || !data.user.id) {
+      console.error('No user data returned from Supabase signup')
+      throw new Error('Failed to create account. No user data returned from authentication service.')
     }
     
-    // Get the session to access the token
-    const { data: sessionData } = await supabase.auth.getSession()
-    if (!sessionData.session) {
-      throw new Error('Failed to get session after registration')
-    }
+    console.log('Supabase auth registration successful, user ID:', data.user.id)
     
-    // Sync with backend database
-    await axios.post('/api/users', {
-      email: registerData.value.email,
-      full_name: registerData.value.fullName,
-      auth_user_id: data.user.id,
-      is_seller: registerData.value.isOwner ? true : false,
-      license: registerData.value.isOwner ? registerData.value.license : null
-    }, {
-      headers: {
-        'Authorization': `Bearer ${sessionData.session.access_token}`
-      }
-    })
+    toast.warning('Account created in auth system, but database sync failed. Some features may be limited.')
     
-    // Sync session with backend
-    await syncSessionWithBackend(sessionData.session)
-    
-    toast.success('Registration successful! You are now logged in.')
+    // Redirect to login page
     showRegister.value = false
-    
-    // Redirect to intended destination or dashboard
-    const redirectPath = route.query.redirect || (registerData.value.isOwner ? '/dashboard' : '/')
-    router.push(redirectPath)
     
     // Clear sensitive data
     registerData.value = {

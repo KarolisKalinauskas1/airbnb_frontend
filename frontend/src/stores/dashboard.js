@@ -1,17 +1,29 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import { useAuthStore } from '@/stores/auth'
-import { isLoading, setLoading } from '@/utils/requestLoadingState'
-import { logError } from '@/utils/errorMonitor'
+import { ref, computed } from 'vue'
 import dashboardService from '@/services/dashboardService'
+import { useAuthStore } from '@/stores/auth'
 
-// Simple inline function to replace the missing import
-function safeMonitorCall() {
-  return true; // Always allow the call
+// Helper to safely parse numbers
+function safeParseNumber(value, defaultValue = 0) {
+  // Handle null/undefined
+  if (value === null || value === undefined) return defaultValue;
+  
+  // Return value if already a number (and not NaN)
+  if (typeof value === 'number' && !isNaN(value)) return value;
+  
+  try {
+    const parsed = parseFloat(value);
+    return isNaN(parsed) ? defaultValue : parsed;
+  } catch {
+    return defaultValue;
+  }
 }
 
+// Maximum retry attempts for loading dashboard data
+const MAX_RETRY_ATTEMPTS = 3;
+
 export const useDashboardStore = defineStore('dashboard', () => {
-  // Initialize with default values to avoid null/undefined errors
+  // State
   const dashboardData = ref({
     revenue: {
       total: 0,
@@ -27,172 +39,310 @@ export const useDashboardStore = defineStore('dashboard', () => {
       averageDuration: 0,
       occupancyRate: 0,
       growth: 0,
-      active: 0
+      active: 0,
+      monthlyChange: 0,
+      durationChange: 0
+    },
+    insights: {
+      averageLeadTime: 0,
+      overallCancellationRate: 0,
+      repeatBookingRate: 0,
+      weekendPopularity: 0,
+      seasonalTrends: { peakMonth: 'Unknown', distribution: {} },
+      peakDays: { peakDay: 'Unknown', lowestDay: 'Unknown', weekendPercentage: 0, distribution: [] },
+      amenityImpact: []
     },
     popularSpots: [],
     spotPerformance: [],
+    spotInsights: [],
     recentBookings: [],
-    totalSpots: 0
+    totalSpots: 0,
+    currentMonth: '',
+    totalBookedDays: 0,
+    totalAvailableDays: 0,
+    occupancyChange: 0,
+    durationChange: 0,
+    averageDuration: 0,
+    lastRefreshed: null
   });
   
   const loading = ref(false)
   const error = ref(null)
-  const requestCount = ref(0);
+  const debugInfo = ref({})
+  const failedAttempts = ref(0)
+  const useDebugData = ref(false)
   
-  // Add a method to set dashboard data directly (for handling redirect issues)
-  const setDashboardData = (data) => {
-    // Create a safe copy with default values for missing properties
+  // Use debug button clicked
+  const debugMode = ref(false)
+  
+  // Get data age in minutes
+  const dataAge = computed(() => {
+    if (!dashboardData.value.lastRefreshed) return 'Never updated';
+    
+    const ageInMinutes = Math.floor((Date.now() - dashboardData.value.lastRefreshed) / 60000);
+    
+    if (ageInMinutes < 1) return 'Just now';
+    return `${ageInMinutes} minute${ageInMinutes !== 1 ? 's' : ''} ago`;
+  })
+  
+  // Dashboard data getters
+  const revenue = computed(() => dashboardData.value.revenue)
+  const bookings = computed(() => dashboardData.value.bookings)
+  const insights = computed(() => dashboardData.value.insights)
+  
+  /**
+   * Process dashboard data and ensure all values are properly parsed as numbers
+   */
+  function processData(data) {
+    if (!data) {
+      console.error('No data provided to processData');
+      return dashboardData.value;
+    }
+    
+    // Use safe parsing to ensure all numbers are valid
     const safeData = {
       revenue: {
-        total: data?.revenue?.total || 0,
-        monthly: data?.revenue?.monthly || 0,
-        average: data?.revenue?.average || 0,
-        projected: data?.revenue?.projected || 0,
-        growth: data?.revenue?.growth || 0,
-        cancelled: data?.revenue?.cancelled || 0
+        total: safeParseNumber(data?.revenue?.total),
+        monthly: safeParseNumber(data?.revenue?.monthly),
+        average: safeParseNumber(data?.revenue?.average),
+        projected: safeParseNumber(data?.revenue?.projected),
+        growth: safeParseNumber(data?.revenue?.growth),
+        cancelled: safeParseNumber(data?.revenue?.cancelled)
       },
       bookings: {
-        total: data?.bookings?.total || 0,
-        monthly: data?.bookings?.monthly || 0,
-        averageDuration: data?.bookings?.averageDuration || 0,
-        occupancyRate: data?.bookings?.occupancyRate || 0,
-        growth: data?.bookings?.growth || 0,
-        active: data?.bookings?.active || 0
+        total: safeParseNumber(data?.bookings?.total),
+        monthly: safeParseNumber(data?.bookings?.monthly),
+        averageDuration: safeParseNumber(data?.bookings?.averageDuration),
+        occupancyRate: safeParseNumber(data?.bookings?.occupancyRate),
+        growth: safeParseNumber(data?.bookings?.growth),
+        active: safeParseNumber(data?.bookings?.active),
+        monthlyChange: safeParseNumber(data?.bookings?.monthlyChange),
+        durationChange: safeParseNumber(data?.bookings?.durationChange)
       },
-      popularSpots: data?.popularSpots || [],
-      spotPerformance: data?.spotPerformance || [],
-      recentBookings: data?.recentBookings || [],
-      totalSpots: data?.totalSpots || data?.spotPerformance?.length || 0
+      // Preserve nested structures but ensure numeric values are valid
+      insights: {
+        averageLeadTime: safeParseNumber(data?.insights?.averageLeadTime),
+        overallCancellationRate: safeParseNumber(data?.insights?.overallCancellationRate),
+        repeatBookingRate: safeParseNumber(data?.insights?.repeatBookingRate),
+        weekendPopularity: safeParseNumber(data?.insights?.weekendPopularity),
+        seasonalTrends: data?.insights?.seasonalTrends || { peakMonth: 'Unknown', distribution: {} },
+        peakDays: data?.insights?.peakDays || { 
+          peakDay: 'Unknown', 
+          lowestDay: 'Unknown', 
+          weekendPercentage: 0,
+          distribution: [] 
+        },
+        amenityImpact: Array.isArray(data?.insights?.amenityImpact) 
+          ? data.insights.amenityImpact.map(item => ({
+              ...item,
+              spotCount: safeParseNumber(item.spotCount),
+              bookingCount: safeParseNumber(item.bookingCount),
+              avgRevenuePerBooking: safeParseNumber(item.avgRevenuePerBooking),
+              avgPerformance: safeParseNumber(item.avgPerformance),
+              impact: safeParseNumber(item.impact)
+            }))
+          : []
+      },
+      popularSpots: Array.isArray(data?.popularSpots) 
+        ? data.popularSpots.map(spot => ({
+            ...spot,
+            revenue: safeParseNumber(spot.revenue),
+            bookings: safeParseNumber(spot.bookings),
+            occupancyRate: safeParseNumber(spot.occupancyRate)
+          }))
+        : [],
+      spotPerformance: Array.isArray(data?.spotPerformance)
+        ? data.spotPerformance.map(spot => ({
+            ...spot,
+            performance: safeParseNumber(spot.performance),
+            changePercentage: safeParseNumber(spot.changePercentage),
+            revenue: safeParseNumber(spot.revenue),
+            occupancyRate: safeParseNumber(spot.occupancyRate),
+            bookings: safeParseNumber(spot.bookings)
+          }))
+        : [],
+      spotInsights: Array.isArray(data?.spotInsights)
+        ? data.spotInsights.map(spot => ({
+            ...spot,
+            repeatBookingRate: safeParseNumber(spot.repeatBookingRate),
+            averageLeadTime: safeParseNumber(spot.averageLeadTime),
+            cancellationRate: safeParseNumber(spot.cancellationRate),
+            weekendPopularity: safeParseNumber(spot.weekendPopularity)
+          }))
+        : [],
+      recentBookings: Array.isArray(data?.recentBookings)
+        ? data.recentBookings.map(booking => ({
+            ...booking,
+            revenue: safeParseNumber(booking.revenue)
+          }))
+        : [],
+      durationChange: safeParseNumber(data?.durationChange),
+      occupancyChange: safeParseNumber(data?.occupancyChange),
+      totalSpots: safeParseNumber(data?.totalSpots || data?.spotPerformance?.length),
+      currentMonth: data?.currentMonth || '',
+      totalBookedDays: safeParseNumber(data?.totalBookedDays),
+      totalAvailableDays: safeParseNumber(data?.totalAvailableDays),
+      averageDuration: safeParseNumber(data?.averageDuration),
+      lastRefreshed: Date.now()
     };
     
-    // Update data store
-    dashboardData.value = safeData;
-    error.value = null;
-  };
-
-  // Function to check if we should allow a new request
-  const shouldAllowRequest = () => {
-    requestCount.value++;
+    // Save debugging info
+    debugInfo.value = {
+      timestamp: new Date().toISOString(),
+      hasRevenue: !!data?.revenue,
+      hasBookings: !!data?.bookings,
+      hasInsights: !!data?.insights,
+      spotCount: safeData.spotPerformance.length,
+      recentBookingsCount: safeData.recentBookings.length,
+      revenueTotal: safeData.revenue.total,
+      bookingsTotal: safeData.bookings.total,
+      dataType: typeof data
+    };
     
-    if (requestCount.value > 5) {
-      requestCount.value = 0;
-      error.value = 'Too many dashboard requests. Please wait a moment and try again.';
-      return false;
-    }
-    
-    return true;
-  };
-
-  const fetchDashboardData = async (options = {}) => {
-    const requestId = 'dashboard-analytics';
-    const { forceRefresh = false } = options;
-    
-    // Don't allow concurrent requests
-    if (typeof isLoading === 'function' && isLoading(requestId)) {
-      console.log('Dashboard data fetch already in progress, skipping duplicate request');
-      return dashboardData.value;
-    }
-
-    // Prevent too many simultaneous requests
-    if (!shouldAllowRequest()) {
-      return dashboardData.value;
-    }
-
-    loading.value = true;
-    error.value = null;
-    
+    return safeData;
+  }
+  
+  /**
+   * Load dashboard data
+   */
+  async function loadDashboardData(forceRefresh = false) {
     try {
-      // Set loading state if function exists
-      if (typeof setLoading === 'function') {
-        setLoading(requestId, true);
-      }
+      loading.value = true;
+      error.value = null;
       
-      // Get the auth store to ensure we have a valid token
+      // Get the auth store to check for token and permissions
       const authStore = useAuthStore();
       
-      // Make sure we have a valid token
-      await authStore.getAuthToken();
-      
-      if (!authStore.token) {
-        throw new Error('No valid authentication token available');
+      // Ensure auth is initialized
+      if (!authStore.initialized) {
+        console.log('Auth not initialized, initializing now');
+        await authStore.initAuth();
       }
       
-      // Use our new dashboard service
-      const data = await dashboardService.getAnalytics({ forceRefresh });
+      const token = authStore.token;
       
-      // Process and set the data
-      setDashboardData(data || {});
-      
-      // Cache the data in session storage for fallback
-      try {
-        sessionStorage.setItem('dashboardData', JSON.stringify(data));
-        console.log('Dashboard data cached in session storage');
-      } catch (cacheError) {
-        console.warn('Failed to cache dashboard data:', cacheError);
-      }
-      
-      return dashboardData.value;
-      
-    } catch (err) {
-      console.error('Dashboard data fetch error:', err);
-      
-      // Try to use cached data as a last resort
-      try {
-        const cachedData = sessionStorage.getItem('dashboardData');
-        if (cachedData) {
-          console.log('Using cached dashboard data from session storage');
-          const parsedData = JSON.parse(cachedData);
-          setDashboardData(parsedData);
+      // Check if user is an owner for proper error messages
+      if (!authStore.isOwner) {
+        console.warn('User is not an owner, dashboard access restricted');
+        
+        if (debugMode.value) {
+          console.log('Debug mode enabled, attempting to continue anyway');
+          
+          // Try to verify owner status with permission debug endpoint
+          const permissionCheck = await dashboardService.checkOwnerPermissions();
+          
+          if (!permissionCheck.isOwner) {
+            console.error('User confirmed as non-owner:', permissionCheck);
+            throw new Error('Owner account required to view analytics');
+          } else {
+            console.log('Owner status confirmed via permissions check');
+          }
         }
-      } catch (cacheError) {
-        console.error('Failed to load cached dashboard data:', cacheError);
       }
       
-      // Store the auth store reference to avoid the "authStore is not defined" error
-      const authStore = useAuthStore();
-      
-      // Log the error with the error monitoring utility
-      safeMonitorCall(() => {
-        logError(err, 'dashboard-fetch', { 
-          url: '/dashboard/analytics',
-          authToken: authStore.token ? 'present' : 'missing'
+      // Decide whether to use debug data or real data
+      let data;
+      if (useDebugData.value) {
+        console.log('Using debug analytics data');
+        data = await dashboardService.getDebugAnalytics();
+      } else {
+        // Use dashboard service with forced refresh
+        console.log('Calling dashboard service getAnalytics with forceRefresh:', forceRefresh);
+        data = await dashboardService.getAnalytics({ 
+          forceRefresh,
+          token 
         });
+      }
+      
+      // Verify we got valid data
+      if (!data || !data.revenue || !data.bookings) {
+        console.warn('Dashboard service returned incomplete data:', data);
+        
+        // Allow a few retry attempts
+        if (failedAttempts.value < MAX_RETRY_ATTEMPTS) {
+          failedAttempts.value++;
+          console.log(`Retry attempt ${failedAttempts.value}/${MAX_RETRY_ATTEMPTS}`);
+          
+          // Only switch to debug data on the second attempt
+          if (failedAttempts.value === 2 && !useDebugData.value) {
+            console.log('Switching to debug data after failed attempt');
+            useDebugData.value = true;
+          }
+          
+          // Try again
+          return await loadDashboardData(true);
+        } else {
+          throw new Error('Invalid or incomplete dashboard data');
+        }
+      }
+
+      // Reset failed attempts on success
+      failedAttempts.value = 0;
+      
+      // Process and store the data
+      dashboardData.value = processData(data);
+      
+      // Log successful data load
+      console.log('Dashboard data loaded successfully:', {
+        hasRevenue: !!dashboardData.value.revenue,
+        revenueTotal: dashboardData.value.revenue.total,
+        bookingsTotal: dashboardData.value.bookings.total
       });
       
-      error.value = err.message || 'Failed to fetch dashboard data';
+      return dashboardData.value;
+    } catch (err) {
+      error.value = err.message || 'Failed to load dashboard data';
+      console.error('Error loading dashboard data:', err);
       
-      // Ensure we have at least empty data to prevent rendering errors
-      if (!dashboardData.value || !dashboardData.value.revenue) {
-        setDashboardData({
-          revenue: {},
-          bookings: {},
-          popularSpots: [],
-          spotPerformance: [],
-          recentBookings: [],
-          totalSpots: 0
-        });
+      // If using debug data already failed, reset the flag
+      if (useDebugData.value && failedAttempts.value >= MAX_RETRY_ATTEMPTS) {
+        useDebugData.value = false;
       }
       
-      return dashboardData.value;
+      throw err;
     } finally {
       loading.value = false;
-      
-      // Reset loading state if function exists
-      if (typeof setLoading === 'function') {
-        setLoading(requestId, false);
-      }
     }
-  };
+  }
 
-  // Alias fetchData to fetchDashboardData for backward compatibility
-  const fetchData = fetchDashboardData;
+  /**
+   * Toggle debug mode
+   */
+  function toggleDebugMode() {
+    debugMode.value = !debugMode.value;
+    console.log('Debug mode:', debugMode.value);
+    return debugMode.value;
+  }
+
+  /**
+   * Use debug data for the dashboard
+   */
+  async function useDebugDataMode() {
+    useDebugData.value = true;
+    return await loadDashboardData(true);
+  }
+  
+  /**
+   * Reset back to real data mode
+   */
+  async function resetToRealData() {
+    useDebugData.value = false;
+    return await loadDashboardData(true);
+  }
 
   return {
     dashboardData,
     loading,
     error,
-    fetchDashboardData,
-    fetchData,
-    setDashboardData
+    debugInfo,
+    debugMode,
+    dataAge,
+    revenue,
+    bookings,
+    insights,
+    loadDashboardData,
+    toggleDebugMode,
+    useDebugDataMode,
+    resetToRealData
   }
 })

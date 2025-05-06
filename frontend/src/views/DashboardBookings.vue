@@ -102,24 +102,7 @@
                   <!-- Price -->
                   <p class="text-lg font-semibold text-red-600 mt-1">€{{ formatCurrency(booking.total_price) }}</p>
                   
-                  <!-- Action buttons -->
-                  <div class="flex space-x-3 mt-3">
-                    <button 
-                      v-if="canUpdateStatus(booking.status)" 
-                      @click="updateBookingStatus(booking.booking_id, 'completed')"
-                      class="text-sm text-green-600 hover:text-green-800"
-                    >
-                      Mark as Completed
-                    </button>
-                    
-                    <button 
-                      v-if="canCancelBooking(booking.status)" 
-                      @click="updateBookingStatus(booking.booking_id, 'cancelled')"
-                      class="text-sm text-red-600 hover:text-red-800"
-                    >
-                      Cancel
-                    </button>
-                  </div>
+                  <!-- Action buttons removed for fairness to users -->
                 </div>
               </div>
             </div>
@@ -364,45 +347,6 @@ const getStatusLabel = (status) => {
   };
   
   return statusMap[status] || 'Unknown';
-};
-
-// Check if booking can be marked as completed
-const canUpdateStatus = (status) => {
-  if (!status) return false;
-  // Only allow updating status for confirmed bookings (status_id 2)
-  return status === 2;
-};
-
-// Check if booking can be cancelled
-const canCancelBooking = (status) => {
-  if (!status) return false;
-  // Allow cancelling confirmed bookings (status_id 2)
-  return status === 2;
-};
-
-// Update booking status
-const updateBookingStatus = async (bookingId, newStatus) => {
-  try {
-    loading.value = true;
-    
-    // Send request to update booking status
-    await axios.patch(`/api/bookings/${bookingId}`, {
-      status: newStatus
-    });
-    
-    // Update local booking data
-    const bookingIndex = bookings.value.findIndex(b => b.booking_id === bookingId);
-    if (bookingIndex !== -1) {
-      bookings.value[bookingIndex].status = newStatus;
-    }
-    
-    toast.success(`Booking has been marked as ${newStatus}`);
-  } catch (err) {
-    console.error('Failed to update booking status:', err);
-    toast.error('Failed to update booking status');
-  } finally {
-    loading.value = false;
-  }
 };
 
 // Fetch all bookings

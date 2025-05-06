@@ -1,20 +1,31 @@
 import axios from 'axios';
 import { useAuthStore } from '@/stores/auth';
-import { setupMockInterceptors } from '@/utils/mockApiHandler';
 
 // Create axios instance with optimized configuration
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
-  timeout: 10000, // 10 second timeout
+  timeout: 15000, // 15 second timeout
+  withCredentials: true, // Enable credentials for cross-origin requests
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
   }
 });
 
-// Optimized request interceptor
+// Debug logging for all requests
 apiClient.interceptors.request.use(
   async (config) => {
+    console.log('=== AXIOS REQUEST ===');
+    console.log('URL:', config.baseURL + config.url);
+    console.log('Method:', config.method);
+    console.log('Headers:', config.headers);
+
+    // Don't log sensitive data like passwords
+    const safeData = { ...config.data };
+    if (safeData.password) safeData.password = '[REDACTED]';
+
+    console.log('Data:', safeData);
+
     // Check if this is a public route (GET requests only)
     const isPublicRoute = config.method.toLowerCase() === 'get' && (
       config.url.includes('/api/camping-spots') || 
@@ -44,14 +55,34 @@ apiClient.interceptors.request.use(
     return config;
   },
   (error) => {
+    console.error('Request error:', error);
     return Promise.reject(error);
   }
 );
 
-// Optimized response interceptor with token refresh
+// Debug logging for all responses
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log('=== AXIOS RESPONSE ===');
+    console.log('Status:', response.status);
+    console.log('Data:', response.data);
+    return response;
+  },
   async (error) => {
+    console.error('=== AXIOS ERROR ===');
+    if (error.response) {
+      // The request was made and the server responded with an error status
+      console.error('Status:', error.response.status);
+      console.error('Data:', error.response.data);
+      console.error('Headers:', error.response.headers);
+    } else if (error.request) {
+      // The request was made but no response was received
+      console.error('Request error (no response):', error.request);
+    } else {
+      // Something happened in setting up the request
+      console.error('Error setting up request:', error.message);
+    }
+
     const originalRequest = error.config;
     
     // If the error is 401 and we haven't retried yet
@@ -77,20 +108,9 @@ apiClient.interceptors.response.use(
       }
     }
     
-    // Handle 404 errors gracefully
-    if (error.response?.status === 404) {
-      console.warn('API endpoint not found:', error.config.url);
-      // Return empty data instead of throwing error
-      return { data: [] };
-    }
-    
+    // Return the error
     return Promise.reject(error);
   }
 );
-
-// Setup mock interceptors for development
-if (process.env.NODE_ENV === 'development') {
-  setupMockInterceptors(apiClient);
-}
 
 export default apiClient;

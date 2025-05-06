@@ -161,6 +161,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import axios from '@/axios'
 import { useToast } from 'vue-toastification'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps({
   campingSpotId: {
@@ -259,6 +260,10 @@ const fetchSuggestion = async () => {
   error.value = null;
   
   try {
+    // Force refresh the auth token before making request
+    const authStore = useAuthStore();
+    const token = await authStore.getAuthToken(true);
+    
     let response = null;
     
     // Try API endpoint first
@@ -267,7 +272,8 @@ const fetchSuggestion = async () => {
       response = await axios.get(`/api/camping-spots/${props.campingSpotId}/price-suggestion`, {
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         }
       });
     } catch (apiError) {
@@ -277,7 +283,8 @@ const fetchSuggestion = async () => {
       response = await axios.get(`/camping-spots/${props.campingSpotId}/price-suggestion`, {
         headers: {
           'Accept': 'application/json',
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         bypassDedupe: true
       });
@@ -307,7 +314,10 @@ const fetchSuggestion = async () => {
     console.log('Updated suggestion data:', suggestion.value);
   } catch (err) {
     console.error('Failed to fetch price suggestion:', err);
-    error.value = err.message || 'Failed to fetch price suggestion';
+    // Don't show error to user after price update - it's confusing since the price update succeeded
+    if (!err.message?.includes('401') && !err.message?.includes('Unauthorized')) {
+      error.value = err.message || 'Failed to fetch price suggestion';
+    }
   } finally {
     loading.value = false;
   }
@@ -330,13 +340,22 @@ const confirmPriceUpdate = () => {
   showConfirmModal.value = true;
 };
 
-// Execute price update after confirmation
-const confirmUpdate = async () => {
+// Update price function
+const updatePrice = async () => {
+  if (priceToUpdate.value <= 0) {
+    toast.error('Price must be greater than zero');
+    return;
+  }
+  
   try {
     // Close modal first for better UX
     showConfirmModal.value = false;
     
     console.log('Updating price to:', priceToUpdate.value);
+    
+    // Force refresh auth token before making the request
+    const { getAuthToken } = useAuthStore();
+    await getAuthToken(true);
     
     // Make the API call to update the price
     const response = await axios({
@@ -372,8 +391,43 @@ const confirmUpdate = async () => {
   } catch (err) {
     console.error('Error in price update:', err);
     console.error('Error details:', err.response?.data);
-    toast.error('Failed to update price. Please try again.');
+    
+    if (err.response?.status === 401) {
+      toast.error('Your session has expired. Please reload the page and try again.');
+      
+      // Try to refresh the token and retry once
+      try {
+        const { refreshToken } = useAuthStore();
+        await refreshToken();
+        
+        const retryResponse = await axios({
+          method: 'PATCH',
+          url: `/api/camping-spots/${props.campingSpotId}/price`,
+          data: {
+            price: priceToUpdate.value
+          },
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (retryResponse.status === 200) {
+          emit('update-price', priceToUpdate.value);
+          toast.success('Price updated successfully');
+        }
+      } catch (retryError) {
+        console.error('Retry failed:', retryError);
+        toast.error('Authentication failed. Please reload the page.');
+      }
+    } else {
+      toast.error('Failed to update price. Please try again.');
+    }
   }
+};
+
+// Execute price update after confirmation
+const confirmUpdate = async () => {
+  await updatePrice();
 };
 
 // Set up watchers

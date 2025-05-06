@@ -152,33 +152,48 @@
             <form @submit.prevent="changePassword" class="password-form">
               <div class="form-group">
                 <label for="currentPassword">Current Password</label>
-                    <input
-                  id="currentPassword" 
-                  v-model="passwordData.currentPassword" 
-                      type="password"
-                  placeholder="Enter current password"
-                      required
-                    >
-                  </div>
+                <div class="password-input-wrapper">
+                  <input
+                    id="currentPassword" 
+                    v-model="passwordData.currentPassword" 
+                    :type="showCurrentPassword ? 'text' : 'password'"
+                    placeholder="Enter current password"
+                    required
+                  >
+                  <button type="button" @click="togglePasswordVisibility('current')" class="password-toggle">
+                    {{ showCurrentPassword ? 'Hide' : 'Show' }}
+                  </button>
+                </div>
+              </div>
               <div class="form-group">
                 <label for="newPassword">New Password</label>
-                    <input
-                  id="newPassword" 
-                  v-model="passwordData.newPassword" 
-                      type="password"
-                  placeholder="Enter new password"
-                      required
-                    >
-                  </div>
+                <div class="password-input-wrapper">
+                  <input
+                    id="newPassword" 
+                    v-model="passwordData.newPassword" 
+                    :type="showNewPassword ? 'text' : 'password'"
+                    placeholder="Enter new password"
+                    required
+                  >
+                  <button type="button" @click="togglePasswordVisibility('new')" class="password-toggle">
+                    {{ showNewPassword ? 'Hide' : 'Show' }}
+                  </button>
+                </div>
+              </div>
               <div class="form-group">
                 <label for="confirmPassword">Confirm New Password</label>
-                    <input
-                  id="confirmPassword" 
-                  v-model="passwordData.confirmPassword" 
-                      type="password"
-                  placeholder="Confirm new password"
-                      required
-                    >
+                <div class="password-input-wrapper">
+                  <input
+                    id="confirmPassword" 
+                    v-model="passwordData.confirmPassword" 
+                    :type="showConfirmPassword ? 'text' : 'password'"
+                    placeholder="Confirm new password"
+                    required
+                  >
+                  <button type="button" @click="togglePasswordVisibility('confirm')" class="password-toggle">
+                    {{ showConfirmPassword ? 'Hide' : 'Show' }}
+                  </button>
+                </div>
               </div>
               <button type="submit" :disabled="changingPassword" class="save-button">
                 {{ changingPassword ? 'Updating...' : 'Update Password' }}
@@ -389,11 +404,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import axios from 'axios'
+import axios from '@/axios' // Using the configured axios instance
 import { format } from 'date-fns'
+import { useToast } from 'vue-toastification'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const toast = useToast()
 
 const loading = ref(true)
 const error = ref(null)
@@ -417,6 +434,21 @@ const passwordData = ref({
   newPassword: '',
   confirmPassword: ''
 })
+
+// Password visibility toggles
+const showCurrentPassword = ref(false)
+const showNewPassword = ref(false)
+const showConfirmPassword = ref(false)
+
+const togglePasswordVisibility = (field) => {
+  if (field === 'current') {
+    showCurrentPassword.value = !showCurrentPassword.value
+  } else if (field === 'new') {
+    showNewPassword.value = !showNewPassword.value
+  } else if (field === 'confirm') {
+    showConfirmPassword.value = !showConfirmPassword.value
+  }
+}
 
 const totalBookings = computed(() => bookings.value.length)
 const upcomingBookings = computed(() => bookings.value.filter(booking => {
@@ -543,16 +575,29 @@ const changePassword = async () => {
       }
     })
 
+    // Clear password fields after successful change
     passwordData.value = {
       currentPassword: '',
       newPassword: '',
       confirmPassword: ''
     }
     
+    // Show success toast notification
+    toast.success('Password changed successfully!', {
+      icon: '🔒',
+      timeout: 5000
+    })
+    
+    // Reset any error message
     error.value = null
   } catch (err) {
     console.error('Error changing password:', err)
     error.value = err.response?.data?.message || 'Failed to change password. Please try again.'
+    
+    // Show error toast
+    toast.error(error.value, {
+      timeout: 5000
+    })
   } finally {
     changingPassword.value = false
   }
@@ -968,6 +1013,36 @@ input {
 input:focus {
   outline: none;
   border-color: #ff385c;
+}
+
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  width: 100%;
+}
+
+.password-input-wrapper input {
+  flex: 1;
+  padding-right: 60px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #ff385c;
+  cursor: pointer;
+  font-size: 0.875rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.password-toggle:hover {
+  background-color: rgba(255, 56, 92, 0.1);
 }
 
 .save-button {

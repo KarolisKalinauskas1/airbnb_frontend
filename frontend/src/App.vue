@@ -21,6 +21,9 @@
         </div>
       </template>
     </Suspense>
+    
+    <!-- Chatbot component - available on all pages -->
+    <ChatbotComponent v-if="!isInitializing && !authError" />
   </div>
 </template>
 
@@ -29,6 +32,7 @@ import { ref, onMounted, onUnmounted, provide, readonly, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import NavBar from '@/components/common/NavBar.vue'
+import ChatbotComponent from '@/components/ChatbotComponent.vue'
 
 const isInitializing = ref(true)
 const authError = ref(null)
