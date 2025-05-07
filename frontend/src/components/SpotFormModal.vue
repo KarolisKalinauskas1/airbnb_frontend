@@ -368,7 +368,17 @@ const handleSubmit = async () => {
             'Content-Type': 'multipart/form-data',
           },
         });
-        emit('spot-updated', response.data);
+        
+        // Make sure we have the complete updated data to emit
+        if (response.data && response.data.camping_spot_id) {
+          emit('spot-updated', response.data);
+          toast.success('Spot updated successfully');
+        } else {
+          // If the response data is incomplete, fetch the full spot data
+          const fullSpotResponse = await axios.get(`/api/camping-spots/${props.spot.camping_spot_id}`);
+          emit('spot-updated', fullSpotResponse.data);
+          toast.success('Spot updated successfully');
+        }
       } catch (error) {
         console.error('Error updating camping spot:', error);
         if (error.response?.status === 401) {

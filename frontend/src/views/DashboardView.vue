@@ -17,7 +17,7 @@
           <p class="subtitle">Here's what's happening with your camping spots</p>
         </div>
 
-        <!-- Quick Stats -->
+        <!-- Quick Stats - Only the 4 most important metrics -->
         <div class="quick-stats">
           <div class="stat-card">
             <div class="stat-icon">
@@ -28,6 +28,16 @@
             </div>
             <span class="stat-value">{{ totalSpots }}</span>
             <span class="stat-label">Total Spots</span>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+              </svg>
+            </div>
+            <span class="stat-value">{{ totalRevenue }}</span>
+            <span class="stat-label">Total Revenue</span>
           </div>
 
           <div class="stat-card">
@@ -50,18 +60,8 @@
                 <polyline points="12 6 12 12 16 14"></polyline>
               </svg>
             </div>
-            <span class="stat-value">{{ upcomingBookings }}</span>
-            <span class="stat-label">Upcoming</span>
-          </div>
-
-          <div class="stat-card">
-            <div class="stat-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-              </svg>
-            </div>
-            <span class="stat-value">{{ totalEarnings }}</span>
-            <span class="stat-label">Total Earnings</span>
+            <span class="stat-value">{{ occupancyRate }}%</span>
+            <span class="stat-label">Occupancy Rate</span>
           </div>
         </div>
 
@@ -107,12 +107,14 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useDashboardStore } from '@/stores/dashboard'
 import DashboardLayout from '@/components/DashboardLayout.vue'
 import axios from 'axios'
 import { format } from 'date-fns'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const dashboardStore = useDashboardStore()
 
 const loading = ref(true)
 const loadingBookings = ref(false)
@@ -120,32 +122,42 @@ const error = ref(null)
 const user = ref(null)
 const spots = ref([])
 const bookings = ref([])
+const analytics = ref(null)
 
+// Basic metrics
 const totalSpots = computed(() => spots.value?.length || 0)
+
 const activeBookings = computed(() => {
   if (!bookings.value || !Array.isArray(bookings.value)) {
     return 0
   }
   return bookings.value.filter(b => b.status === 'confirmed').length
 })
-const upcomingBookings = computed(() => {
-  if (!bookings.value || !Array.isArray(bookings.value)) {
-    return 0
+
+// Revenue metric using either basic bookings or analytics data
+const totalRevenue = computed(() => {
+  // First try to get from analytics as it's more accurate
+  if (analytics.value?.revenue?.total) {
+    return formatCurrency(analytics.value.revenue.total)
   }
-  return bookings.value.filter(b => {
-    const startDate = new Date(b.start_date)
-    return startDate >= new Date() && b.status === 'confirmed'
-  }).length
-})
-const totalEarnings = computed(() => {
+  
+  // Fallback to basic calculation
   if (!bookings.value || !Array.isArray(bookings.value)) {
     return '0.00'
   }
-  return bookings.value
-    .filter(b => b.status === 'confirmed')
-    .reduce((sum, b) => sum + (b.cost || 0), 0)
-    .toFixed(2)
+  
+  return formatCurrency(
+    bookings.value
+      .filter(b => b.status === 'confirmed')
+      .reduce((sum, b) => sum + (b.cost || 0), 0)
+  )
 })
+
+// Occupancy rate from analytics data
+const occupancyRate = computed(() => {
+  return analytics.value?.bookings?.occupancyRate || 0
+})
+
 const recentBookings = computed(() => {
   if (!bookings.value || !Array.isArray(bookings.value)) {
     return []
@@ -154,6 +166,12 @@ const recentBookings = computed(() => {
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .slice(0, 4)
 })
+
+// Format currency with 2 decimal places
+const formatCurrency = (value) => {
+  const num = parseFloat(value)
+  return isNaN(num) ? '0.00' : num.toFixed(2)
+}
 
 const loadDashboardData = async () => {
   try {
@@ -170,6 +188,7 @@ const loadDashboardData = async () => {
       throw new Error('No valid authentication token found')
     }
 
+    // Load basic dashboard data
     const response = await axios.get('/api/dashboard', {
       headers: {
         Authorization: `Bearer ${token}`
@@ -183,6 +202,18 @@ const loadDashboardData = async () => {
     user.value = response.data
     spots.value = response.data.spots || []
     bookings.value = response.data.bookings || []
+
+    // Also load analytics data if the user is an owner
+    if (authStore.isOwner) {
+      try {
+        // Load analytics data using the dashboard store
+        await dashboardStore.loadDashboardData(false)
+        analytics.value = dashboardStore.dashboardData
+      } catch (analyticsErr) {
+        console.error('Error loading analytics data:', analyticsErr)
+        // Don't fail the whole dashboard if analytics fail
+      }
+    }
   } catch (err) {
     console.error('Error loading dashboard data:', err)
     if (err.response?.status === 401) {

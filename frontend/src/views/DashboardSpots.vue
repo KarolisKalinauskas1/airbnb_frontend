@@ -97,6 +97,7 @@
       :spot="editingSpot"
       @close="closeAddModal"
       @spot-created="handleSaveSpot"
+      @spot-updated="handleUpdateSpot"
     />
 
     <!-- Delete Confirmation Modal -->
@@ -366,6 +367,33 @@ async function handleSaveSpot(spotData) {
   } catch (error) {
     console.error('Failed to process form submission:', error);
     toast.error('Failed to process form. Please try again.');
+  }
+}
+
+// Handle a spot update from the modal
+async function handleUpdateSpot(updatedSpotData) {
+  try {
+    if (!updatedSpotData || !updatedSpotData.camping_spot_id) {
+      console.error('Invalid updated spot data received');
+      return;
+    }
+    
+    // Find and update the spot in our local array immediately
+    const spotIndex = spots.value.findIndex(s => s.camping_spot_id === updatedSpotData.camping_spot_id);
+    if (spotIndex !== -1) {
+      // Update the spot in the array with all the new data
+      spots.value[spotIndex] = {
+        ...spots.value[spotIndex],
+        ...updatedSpotData
+      };
+      console.log('Spot updated locally:', spots.value[spotIndex]);
+    }
+    
+    // Close the modal
+    closeAddModal();
+  } catch (error) {
+    console.error('Error handling spot update:', error);
+    toast.error('Error updating spot data in UI');
   }
 }
 

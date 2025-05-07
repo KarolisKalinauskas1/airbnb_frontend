@@ -246,10 +246,11 @@ const capitalizeFirst = (str) => {
   return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
-// Format price to 0 decimal places
+// Format price with correct decimal places
 const formatPrice = (price) => {
   if (price === null || price === undefined) return '0';
-  return Math.round(Number(price));
+  // Convert to number and format with 1 decimal place
+  return Number(price).toFixed(1);
 };
 
 // Fetch price suggestion from API

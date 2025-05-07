@@ -115,18 +115,11 @@
             </div>
           </div>
           
-          <!-- Simplified Date Blocks List for non-owners -->
+          <!-- Simplified Date Blocks List for non-owners - REMOVED list display -->
           <div v-else-if="!isOwner && bookings.length > 0" class="space-y-3 mb-6">
             <div class="text-sm font-medium mb-2">Unavailable Dates:</div>
             <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
-              <p class="text-center">This camping spot is not available on the following dates:</p>
-              <div class="mt-2 flex flex-wrap gap-2">
-                <span v-for="(booking, index) in bookings" :key="index" 
-                     class="px-3 py-1 rounded-full text-xs font-medium"
-                     :class="booking.status_id === 5 ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'">
-                  {{ formatDateRange(booking.start_date, booking.end_date) }}
-                </span>
-              </div>
+              <p class="text-center">Some dates are unavailable. Please check the calendar below.</p>
             </div>
           </div>
           
@@ -329,26 +322,12 @@ function isToday(date) {
          date.getFullYear() === today.getFullYear();
 }
 
-// Update getCalendarDays to correctly mark days and filter out past dates
+// Update getCalendarDays to correctly mark days and include past dates
 function getCalendarDays(year, month) {
   const days = [];
-  const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0-6 (Sunday-Saturday)
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-
-  // Add empty cells for days before the first day of the month
-  for (let i = 0; i < firstDayOfMonth; i++) {
-    days.push({
-      date: null,
-      dayOfMonth: null,
-      hasBooking: false,
-      isBlocked: false,
-      isBooked: false,
-      isToday: false,
-      isPast: false
-    });
-  }
 
   // Add days of the month
   for (let d = 1; d <= daysInMonth; d++) {
@@ -356,23 +335,8 @@ function getCalendarDays(year, month) {
     const dateStr = formatDateForInput(dayDate);
     dayDate.setHours(0, 0, 0, 0);
     
-    // Skip past dates - don't add them to the calendar
-    if (dayDate < today) {
-      // If this is the first day of the month, add a placeholder instead
-      if (d === 1) {
-        days.push({
-          date: dateStr,
-          dayOfMonth: d,
-          hasBooking: false,
-          isBlocked: false,
-          isBooked: false,
-          isToday: false,
-          isPast: true,
-          isPlaceholder: true
-        });
-      }
-      continue;
-    }
+    // Check if the date is in the past
+    const isPast = dayDate < today;
     
     // Find ALL bookings for this day
     const dayBookings = bookings.value.filter(booking => {
@@ -400,21 +364,7 @@ function getCalendarDays(year, month) {
       isBlocked: isBlocked,
       isBooked: isBooked,
       isToday: isToday(dayDate),
-      isPast: false
-    });
-  }
-  
-  // Calculate empty cells needed at the end to complete the grid
-  const totalCells = Math.ceil((days.length + firstDayOfMonth) / 7) * 7;
-  for (let i = days.length; i < totalCells; i++) {
-    days.push({
-      date: null,
-      dayOfMonth: null,
-      hasBooking: false,
-      isBlocked: false,
-      isBooked: false,
-      isToday: false,
-      isPast: false
+      isPast: isPast
     });
   }
   
@@ -427,7 +377,7 @@ function getDayClasses(day) {
   // Base styling
   classes.push('text-center', 'relative');
   
-  // Skip empty cells or past days
+  // Skip empty cells
   if (!day.dayOfMonth) {
     classes.push('bg-white');
     return classes.join(' ');
@@ -438,22 +388,21 @@ function getDayClasses(day) {
     classes.push('font-bold border-2 border-blue-500');
   }
   
-  // Past days
+  // Past days - show them but with muted styling
   if (day.isPast) {
     classes.push('text-gray-400 bg-gray-50');
-    return classes.join(' ');
-  }
-  
-  // Booking status styling
-  if (day.isBlocked) {
-    // Owner blocked dates
-    classes.push('bg-red-50 text-red-900');
-  } else if (day.isBooked) {
-    // Customer booked dates
-    classes.push('bg-blue-50 text-blue-900');
   } else {
-    // Available dates
-    classes.push('bg-white hover:bg-gray-50');
+    // Booking status styling for non-past days
+    if (day.isBlocked) {
+      // Owner blocked dates
+      classes.push('bg-red-50 text-red-900');
+    } else if (day.isBooked) {
+      // Customer booked dates
+      classes.push('bg-blue-50 text-blue-900');
+    } else {
+      // Available dates
+      classes.push('bg-white hover:bg-gray-50');
+    }
   }
   
   return classes.join(' ');
@@ -572,9 +521,22 @@ const processBookingResponse = (data) => {
   console.log('Processing booking data:', data);
   
   if (data.bookings && Array.isArray(data.bookings)) {
+    // Get today's date for filtering out past bookings
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
     // Process bookings properly and filter out cancelled bookings (status_id 3)
+    // Also filter out bookings that ended in the past
     bookings.value = data.bookings
-      .filter(booking => booking.status_id !== 3) // Filter out cancelled bookings
+      .filter(booking => {
+        // Filter out cancelled bookings
+        if (booking.status_id === 3) return false;
+        
+        // Filter out past bookings (end date is before today)
+        const endDate = new Date(booking.end_date);
+        endDate.setHours(0, 0, 0, 0);
+        return endDate >= today;
+      })
       .map(booking => ({
         ...booking,
         // Ensure status_id is properly set
@@ -584,7 +546,7 @@ const processBookingResponse = (data) => {
         isBooked: booking.status_id === 2 || booking.status_id === 4
       }));
     
-    console.log('Processed bookings:', bookings.value);
+    console.log('Processed bookings (after filtering past dates):', bookings.value);
   } else {
     console.warn('No bookings data found in response');
     bookings.value = [];

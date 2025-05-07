@@ -162,7 +162,7 @@ const updateSpotPrice = async (newPrice) => {
     toast.info('Updating price...');
     
     const response = await axios.patch(`/api/camping-spots/${selectedSpot.value.camping_spot_id}/price`, {
-      price_per_night: newPrice
+      price: newPrice // Changed from price_per_night to price to match the backend API
     });
     
     if (response.data) {
@@ -174,7 +174,15 @@ const updateSpotPrice = async (newPrice) => {
         spots.value[spotIndex].price_per_night = newPrice;
       }
       
-      toast.success('Price updated successfully!');
+      // Removed duplicate success toast - the PriceSuggestionWidget already shows one
+      
+      // Force refresh the PriceSuggestionWidget component
+      // by temporarily unsetting and resetting the selectedSpot
+      const temp = selectedSpot.value;
+      selectedSpot.value = null;
+      setTimeout(() => {
+        selectedSpot.value = temp;
+      }, 100);
     } else {
       throw new Error('Invalid response data');
     }

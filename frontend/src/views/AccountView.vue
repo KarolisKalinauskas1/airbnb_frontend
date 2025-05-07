@@ -261,18 +261,23 @@
             </div>
             <div v-else class="bookings-grid">
               <div v-for="booking in previousBookings" :key="booking.id" class="booking-card">
-                <div class="booking-image" :style="{ backgroundImage: `url(${booking.spot.images?.[0]?.image_url || '/placeholder.jpg'})` }">
-                  <div class="booking-status" :class="getStatusClass(booking.status)">
-                    {{ getStatusText(booking.status) }}
-                  </div>
-                </div>
                 <div class="booking-info">
-                  <h3>{{ booking.spot.name }}</h3>
+                  <div class="booking-header">
+                    <h3 class="booking-title">{{ booking.spot.name }}</h3>
+                    <span class="booking-status" :class="getStatusClass(booking.status)">
+                      {{ getStatusText(booking.status) }}
+                    </span>
+                  </div>
                   <div class="booking-dates">
-                    <span class="date-label">Check-in</span>
-                    <span class="date-value">{{ formatDate(booking.start_date) }}</span>
-                    <span class="date-label">Check-out</span>
-                    <span class="date-value">{{ formatDate(booking.end_date) }}</span>
+                    <span class="date-value">{{ formatDate(booking.start_date) }} - {{ formatDate(booking.end_date) }}</span>
+                  </div>
+                  <div class="booking-actions">
+                    <button 
+                      class="info-button"
+                      @click="showBookingDetails(booking)"
+                    >
+                      More Info
+                    </button>
                   </div>
                 </div>
               </div>
@@ -379,9 +384,23 @@
             </div>
           </div>
           
-          <div>
-            <p class="text-sm text-gray-500">Total Price</p>
-            <p class="font-medium">€{{ selectedBooking?.cost }}</p>
+          <!-- Cost breakdown section -->
+          <div class="mt-4 pt-4 border-t border-gray-100">
+            <h4 class="font-medium mb-2">Cost Breakdown</h4>
+            <div class="space-y-2">
+              <div class="flex justify-between">
+                <p class="text-sm text-gray-600">Base price</p>
+                <p class="text-sm">€{{ typeof selectedBooking?.baseCost === 'number' ? selectedBooking.baseCost.toFixed(2) : parseFloat(selectedBooking?.baseCost).toFixed(2) }}</p>
+              </div>
+              <div class="flex justify-between">
+                <p class="text-sm text-gray-600">Service fee (10%)</p>
+                <p class="text-sm">€{{ typeof selectedBooking?.serviceFee === 'number' ? selectedBooking.serviceFee.toFixed(2) : parseFloat(selectedBooking?.serviceFee).toFixed(2) }}</p>
+              </div>
+              <div class="flex justify-between font-medium pt-2 border-t border-gray-100">
+                <p>Total</p>
+                <p>€{{ typeof selectedBooking?.totalCost === 'number' ? selectedBooking.totalCost.toFixed(2) : parseFloat(selectedBooking?.totalCost).toFixed(2) }}</p>
+              </div>
+            </div>
           </div>
           
           <div class="pt-4 border-t">
@@ -528,13 +547,24 @@ const loadBookings = async () => {
           console.log('Booking ID:', booking.booking_id)
           console.log('Status:', booking.status_booking_transaction?.status)
           console.log('Status ID:', booking.status_booking_transaction?.status_id)
+          
+          // Ensure all cost values are numbers, not strings
+          const baseCost = parseFloat(booking.cost) || 0
+          const serviceFee = parseFloat(booking.serviceFee) || baseCost * 0.1
+          const transactionAmount = parseFloat(booking.transaction?.amount) || 0
+          const totalAmount = transactionAmount || (baseCost + serviceFee)
+          
           return {
             id: booking.booking_id,
             start_date: booking.start_date,
             end_date: booking.end_date,
             status: booking.status_booking_transaction?.status,
             status_id: booking.status_booking_transaction?.status_id,
-            cost: booking.cost,
+            // Ensure all cost values are proper numbers
+            cost: transactionAmount || baseCost + serviceFee,
+            serviceFee: serviceFee,
+            baseCost: baseCost,
+            totalCost: totalAmount,
             spot: {
               name: booking.camping_spot?.title || 'Unknown Spot',
               description: booking.camping_spot?.description || '',
