@@ -283,6 +283,9 @@ const handleCancel = async () => {
     await authStore.fetchFullUserInfo(true); // Force refresh
     toast.success('Booking cancelled successfully');
     await refreshBookingDetails();
+    
+    // Dispatch event to notify other components
+    window.dispatchEvent(new Event('booking-changed'));
   } catch (error) {
     toast.error(error.response?.data?.error || 'Failed to cancel booking');
   } finally {

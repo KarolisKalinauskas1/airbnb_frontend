@@ -751,73 +751,27 @@ const fetchAmenities = async () => {
   }
 };
 
-// Load saved filters and dates from session storage
-onMounted(async () => {
-  // Try to load filters from session storage
-  const savedFilters = sessionStorage.getItem('campersFilters');
-  if (savedFilters) {
-    try {
-      filters.value = JSON.parse(savedFilters);
-    } catch (e) {
-      console.error("Failed to parse saved filters:", e);
-    }
-  }
-  
-  // Try to load dates from session storage
-  const savedDates = sessionStorage.getItem('campersDates');
-  if (savedDates) {
-    try {
-      const parsedDates = JSON.parse(savedDates);
-      dates.startDate = parsedDates.startDate;
-      dates.endDate = parsedDates.endDate;
-      updateDateRangeText();
-    } catch (e) {
-      console.error("Failed to parse saved dates:", e);
-    }
-  } else {
-    // Set default dates (tomorrow and day after tomorrow)
-    const today = new Date();
-    const tomorrow = new Date();
-    tomorrow.setDate(today.getDate() + 1);
-    const afterTomorrow = new Date();
-    afterTomorrow.setDate(today.getDate() + 2);
-      
-    dates.startDate = tomorrow.toISOString().split('T')[0];
-    dates.endDate = afterTomorrow.toISOString().split('T')[0];
-    updateDateRangeText();
-  }
-  
-  // Try to load location from session storage
-  const savedLocation = sessionStorage.getItem('campersLocation');
-  if (savedLocation) {
-    try {
-      selectedLocation.value = JSON.parse(savedLocation);
-      locationSearchText.value = selectedLocation.value.display_name;
-    } catch (e) {
-      console.error("Failed to parse saved location:", e);
-    }
-  }
-  
-  // Check if user is logged in and fetch full information
-  if (authStore.isLoggedIn && !authStore.fullUser) {
-    try {
-      await authStore.fetchFullUserInfo(true);
-    } catch (error) {
-      console.error('Error fetching user info:', error);
-    }
-  }
-  
-  // Fetch amenities
-  await fetchAmenities();
+// Add event listener for booking changes
+onMounted(() => {
+  // Listen for booking changes
+  window.addEventListener('booking-changed', handleBookingChange);
   
   // Initial fetch
   fetchCampingSpots();
 });
 
 onUnmounted(() => {
+  // Clean up event listener
+  window.removeEventListener('booking-changed', handleBookingChange);
   document.removeEventListener('click', handleClickOutside);
   handleLocationSearch.cancel();
 });
+
+// Handle booking changes
+const handleBookingChange = () => {
+  console.log('Booking changed, refreshing camping spots...');
+  fetchCampingSpots();
+};
 </script>
 
 <style scoped>
