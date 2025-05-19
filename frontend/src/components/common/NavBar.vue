@@ -152,9 +152,13 @@ const handleLogout = async () => {
 // Initialize auth state once
 onMounted(async () => {
   try {
-    console.log('NavBar: Initializing auth...')
-    if (!authStore.isInitialized) {
+    console.log('NavBar: Checking auth...')
+    // Only initialize if not already initialized
+    if (!authStore.isInitialized && !authStore.isInitializing) {
+      console.log('NavBar: Auth not initialized, initializing...')
       await authStore.initAuth()
+    } else {
+      console.log('NavBar: Auth already initialized or initializing, skipping')
     }
     isLoading.value = false
     updateMenuItems()

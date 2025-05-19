@@ -6,6 +6,7 @@ import PaymentView from '../views/PaymentView.vue'
 import BookingSuccessView from '../views/BookingSuccessView.vue'
 import BookingFailedView from '../views/BookingFailedView.vue'
 import DashboardBookings from '@/views/DashboardBookings.vue'
+import SocialAuthSuccess from '@/views/SocialAuthSuccess.vue' // Import the new component
 import { useAuthStore } from '@/stores/auth'
 import axios from '@/axios'
 import { isBackendAvailable, getCachedData } from '@/utils/connectionHelper'
@@ -63,19 +64,37 @@ async function bookingAuthGuard(to, from, next) {
     next();
     return;
   }
+  
+  // Special case: If this is the review route, just let it proceed
+  // The ReviewView component will handle any booking validation
+  if (to.name === 'Review') {
+    console.log(`Booking auth guard: Allowing direct access to review page for booking ID ${bookingId}`);
+    isNavigationRunning = false;
+    next();
+    return;
+  }
 
   try {
+    console.log(`Booking auth guard: Verifying booking ID ${bookingId}`);
     // Try to access the booking - the backend will verify permissions
     await axios.get(`/api/bookings/${bookingId}`);
+    console.log(`Booking auth guard: Successfully verified booking ID ${bookingId}`);
     isNavigationRunning = false;
     next();
   } catch (error) {
+    console.error('Booking auth guard error:', error.response?.status, error.message);
     isNavigationRunning = false;
     if (error.response?.status === 403) {
       // Unauthorized access
+      console.warn('Booking auth guard: User not authorized to access this booking');
+      next('/account');
+    } else if (error.response?.status === 404) {
+      // Booking not found
+      console.warn(`Booking auth guard: Booking ${bookingId} not found`);
       next('/account');
     } else {
       // Other errors - proceed but the component will handle display
+      console.warn('Booking auth guard: Other error, allowing component to handle:', error.message);
       next();
     }
   }
@@ -312,6 +331,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/review/:id',
+    name: 'Review',
+    component: lazyLoad('ReviewView'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/renter-dashboard',
     name: 'renter-dashboard',
     component: lazyLoad('RenterDashboardView'),
@@ -366,6 +391,11 @@ const routes = [
     }
   },
   {
+    path: '/social-auth-success',
+    name: 'SocialAuthSuccess',
+    component: SocialAuthSuccess // Add the new route
+  },
+  {
     path: '/404',
     name: 'NotFound',
     component: lazyLoad('NotFound')
@@ -398,28 +428,37 @@ router.beforeEach(async (to, from, next) => {
   // Ensure auth is initialized
   if (!authStore.initialized) {
     try {
+      console.log('Router guard: Auth not initialized, initializing now...')
       await authStore.initAuth()
+      console.log('Router guard: Auth initialization completed, isLoggedIn:', authStore.isLoggedIn)
     } catch (error) {
       console.error('Auth initialization failed:', error)
     }
+  } else {
+    console.log('Router guard: Auth already initialized, isLoggedIn:', authStore.isLoggedIn)
   }
 
   // Handle auth page access
-  if (to.path === '/auth' && authStore.isAuthenticated) {
+  if (to.path === '/auth' && authStore.isLoggedIn) {
+    console.log('Router guard: Already authenticated, redirecting from auth page to home')
     return next('/')
   }
 
   // Quick check for routes not requiring auth
   if (!requiresAuth) {
+    console.log('Router guard: Route does not require auth, allowing access to', to.path)
     return next()
   }
 
   // Check authentication
-  if (!authStore.isAuthenticated) {
+  if (!authStore.isLoggedIn) {
+    console.log('Router guard: User not authenticated, redirecting to auth page from', to.path)
     return next({
       path: '/auth',
       query: { redirect: to.fullPath }
     })
+  } else {
+    console.log('Router guard: User is authenticated, allowing access to', to.path)
   }
 
   // Check seller/renter requirements

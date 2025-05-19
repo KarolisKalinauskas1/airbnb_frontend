@@ -1,0 +1,320 @@
+<template>
+  <div class="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-3xl mx-auto bg-white rounded-lg shadow-md p-6 md:p-8">
+      <div v-if="loading" class="flex justify-center items-center h-64">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-green-700"></div>
+      </div>
+      
+      <div v-else-if="error" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
+        {{ error }}
+      </div>
+      
+      <div v-else-if="submitted" class="text-center py-10">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-green-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+        </svg>
+        <h2 class="text-2xl font-semibold text-gray-800 mb-2">Thank You!</h2>
+        <p class="text-gray-600 mb-6">Your review has been submitted successfully.</p>
+        <router-link to="/account" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-700 hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+          Back to Account
+        </router-link>
+      </div>
+      
+      <div v-else>
+        <h1 class="text-2xl font-bold text-gray-900 mb-1">Rate Your Stay</h1>
+        <p class="text-gray-600 mb-6" v-if="booking">
+          {{ booking.spot?.name || 'Your Booking' }} &middot; {{ formatDateRange(booking.start_date, booking.end_date) }}
+        </p>
+        
+        <div v-if="reviewExists && review.rating > 0" class="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded mb-6">
+          You have already reviewed this booking. You can update your review below.
+        </div>
+        
+        <form @submit.prevent="submitReview" class="space-y-6">
+          <div>
+            <label class="block text-gray-700 text-sm font-medium mb-2">
+              How would you rate your overall experience?
+            </label>
+            <div class="flex items-center space-x-2 text-2xl">
+              <button 
+                v-for="star in 5" 
+                :key="star" 
+                type="button"
+                @click="rating = star"
+                class="focus:outline-none transition-colors"
+                :class="{ 'text-yellow-400': star <= rating, 'text-gray-300': star > rating }"
+              >
+                ★
+              </button>
+              <span class="ml-2 text-sm text-gray-500">{{ ratingText }}</span>
+            </div>
+          </div>
+          
+          <div>
+            <label for="comment" class="block text-gray-700 text-sm font-medium mb-2">
+              Share your experience (optional)
+            </label>
+            <textarea
+              id="comment"
+              v-model="comment"
+              rows="5"
+              class="shadow-sm focus:ring-green-500 focus:border-green-500 block w-full sm:text-sm border-gray-300 rounded-md"
+              placeholder="Tell others about your stay..."
+            ></textarea>
+          </div>
+          
+          <div class="pt-4">
+            <button
+              type="submit"
+              :disabled="!isValid || submitting"
+              class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-700 hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+            >
+              {{ submitting ? 'Submitting...' : (reviewExists && review.rating > 0 ? 'Update Review' : 'Submit Review') }}
+            </button>
+          </div>
+        </form>
+        
+        <div class="mt-6 text-center">
+          <router-link to="/account" class="text-sm text-green-700 hover:text-green-900">
+            Back to Account
+          </router-link>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useToast } from 'vue-toastification'
+import { useAuthStore } from '@/stores/auth'
+import axios from '@/axios' // Import configured axios instance
+
+const route = useRoute()
+const router = useRouter()
+const toast = useToast()
+const authStore = useAuthStore()
+
+// State
+const booking = ref(null)
+const review = ref(null)
+const reviewExists = ref(false)
+const loading = ref(true)
+const submitting = ref(false)
+const submitted = ref(false)
+const error = ref(null)
+const rating = ref(0)
+const comment = ref('')
+
+// Computed
+const ratingText = computed(() => {
+  const texts = [
+    'Select a rating',
+    'Poor',
+    'Fair',
+    'Good',
+    'Very Good',
+    'Excellent'
+  ]
+  return texts[rating.value] || 'Select a rating'
+})
+
+const isValid = computed(() => {
+  return rating.value > 0
+})
+
+// Format date range for display
+const formatDateRange = (start, end) => {
+  const formatDate = (dateStr) => {
+    const date = new Date(dateStr)
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric', 
+      year: 'numeric' 
+    })
+  }
+  
+  return `${formatDate(start)} - ${formatDate(end)}`
+}
+
+// Fetch booking data and existing review
+const fetchBookingData = async () => {
+  loading.value = true
+  error.value = null
+  
+  try {
+    if (!authStore.isLoggedIn) {
+      router.push('/auth')
+      return
+    }
+    
+    const bookingId = route.params.id
+    if (!bookingId) {
+      throw new Error('Booking ID is required')
+    }
+      // Get auth token
+    const token = await authStore.getAuthToken()
+    
+    console.log(`Review page opened for booking ID: ${bookingId}`)
+    
+    // Fetch booking details using axios
+    try {
+      console.log(`Fetching booking data for ID: ${bookingId}`)
+      const bookingResponse = await axios.get(`/api/bookings/${bookingId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+      
+      booking.value = bookingResponse.data
+      console.log('Successfully fetched booking data:', booking.value)
+      
+    } catch (bookingErr) {
+      console.error('Error fetching booking:', bookingErr)
+      
+      // Handle specific error cases
+      if (bookingErr.response?.status === 404) {
+        error.value = 'This booking could not be found. It may have been deleted or you may not have access to it.'
+        toast.error(error.value)
+        loading.value = false
+        setTimeout(() => {
+          router.push('/account')
+        }, 3000)
+        return      } else if (bookingErr.response?.status === 403) {
+        error.value = 'You do not have permission to review this booking.'
+        toast.error(error.value)
+        loading.value = false
+        setTimeout(() => {
+          router.push('/account')
+        }, 3000)
+        return
+      } else {
+        error.value = bookingErr.response?.data?.error || 'Failed to fetch booking details. Please try again later.'
+        toast.error(error.value)
+        loading.value = false
+        setTimeout(() => {
+          router.push('/account')
+        }, 3000)
+        return
+      }
+    }
+      // Check for existing review
+    try {
+      console.log(`Checking for existing review for booking ID: ${bookingId}`)
+      const reviewResponse = await axios.get(`/api/reviews/booking/${bookingId}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+      
+      review.value = reviewResponse.data
+      reviewExists.value = true
+      
+      // Pre-fill form with existing review data
+      if (review.value.rating > 0) {
+        rating.value = review.value.rating
+      }
+      
+      if (review.value.comment) {
+        comment.value = review.value.comment
+      }
+      
+      console.log('Found existing review:', review.value)
+    } catch (reviewError) {
+      if (reviewError.response?.status === 404) {
+        // This is normal - just means no review exists yet
+        console.log('No existing review found for this booking')
+        reviewExists.value = false
+        review.value = null
+      } else {
+        console.warn('Error checking for existing review:', reviewError)
+        // Still continue - don't block the user from creating a review just because we couldn't check for existing ones
+      }
+    }  } catch (err) {
+    console.error('Error in fetchBookingData:', err)
+    error.value = err.message || 'Failed to load booking details'
+    toast.error(error.value)
+    setTimeout(() => {
+      router.push('/account')
+    }, 3000)
+  } finally {
+    loading.value = false
+  }
+}
+
+// Submit review
+const submitReview = async () => {
+  if (!isValid.value) return
+  
+  submitting.value = true
+  error.value = null
+  
+  try {
+    const bookingId = route.params.id
+    const token = await authStore.getAuthToken()
+    
+    const method = reviewExists.value ? 'PUT' : 'POST'
+    const endpoint = reviewExists.value 
+      ? `/api/reviews/${review.value.review_id}`
+      : `/api/reviews`
+    
+    const reviewData = {
+      booking_id: parseInt(bookingId),
+      rating: rating.value,
+      comment: comment.value || null
+    }
+    
+    console.log(`Submitting review to ${endpoint} with method ${method}:`, reviewData)
+    
+    const response = await axios({
+      method,
+      url: endpoint,
+      data: reviewData,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    
+    console.log('Review submitted successfully:', response.data)
+    toast.success('Your review has been submitted!')
+    submitted.value = true
+  } catch (err) {
+    console.error('Error submitting review:', err)
+    error.value = err.response?.data?.error || err.message || 'Failed to submit review'
+    toast.error(error.value)
+  } finally {
+    submitting.value = false
+  }
+}
+
+// Initialize
+onMounted(() => {
+  fetchBookingData()
+})
+</script>
+
+<style scoped>
+/* Star rating animations */
+.text-yellow-400 {
+  color: #f59e0b;
+  animation: pulse 0.3s ease-in-out;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.3); }
+  100% { transform: scale(1); }
+}
+
+button:focus {
+  outline: none;
+}
+
+/* Form styling */
+textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+</style>

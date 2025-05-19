@@ -277,14 +277,15 @@
                       @click="showBookingDetails(booking)"
                     >
                       More Info
-                    </button>                    <button
-                      v-if="isReviewEligible(booking) && !hasReview(booking)"
+                    </button>
+                    <button
+                      v-if="!hasReview(booking)"
                       class="review-button"
                       @click="openReviewModal(booking)"
                     >
                       Leave Review
                     </button>
-                    <div v-else-if="hasReview(booking)" class="has-review-badge">
+                    <div v-else class="has-review-badge">
                       <span class="review-icon">★</span> Reviewed
                     </div>
                   </div>
@@ -411,8 +412,8 @@
               </div>
             </div>
           </div>
-            <!-- Cancel booking button removed from details view as requested -->
-          <!-- <div class="pt-4 border-t">
+          
+          <div class="pt-4 border-t">
             <button 
               v-if="selectedBooking?.status === 'Confirmed'"
               @click="openCancelModal(selectedBooking)"
@@ -421,7 +422,7 @@
             >
               {{ cancellingBooking === selectedBooking?.id ? 'Cancelling...' : 'Cancel Booking' }}
             </button>
-          </div> -->
+          </div>
         </div>
       </div>
     </div>
@@ -452,7 +453,7 @@
           </svg>
           <h2 class="text-2xl font-semibold text-gray-800 mb-2">Thank You!</h2>
           <p class="text-gray-600 mb-6">Your review has been submitted successfully.</p>
-          <button @click="closeReviewModal" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-400">
+          <button @click="closeReviewModal" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-700 hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
             Close
           </button>
         </div>
@@ -503,7 +504,7 @@
               <button
                 type="submit"
                 :disabled="!isReviewValid || reviewSubmitting"
-                class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-400 disabled:opacity-50"
+                class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-700 hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
               >
                 {{ reviewSubmitting ? 'Submitting...' : (reviewExists ? 'Update Review' : 'Submit Review') }}
               </button>
@@ -646,22 +647,8 @@ const getStatusText = (status) => {
   }
 }
 
-// Check if a booking has a valid review (rating > 0)
 const hasReview = (booking) => {
-  return booking.has_review === true
-}
-
-// Check if a booking is eligible for review (completed and past end date)
-const isReviewEligible = (booking) => {
-  // Must be a confirmed or completed booking
-  if (booking.status !== 'Confirmed' && booking.status !== 'Completed') {
-    return false
-  }
-  
-  // Must be in the past
-  const endDate = new Date(booking.end_date)
-  const now = new Date()
-  return endDate <= now
+  return booking.has_review
 }
 
 // Actions
@@ -777,7 +764,7 @@ const changePassword = async () => {
   
   try {
     const token = await authStore.getAuthToken()
-    const response = await axios.post('/api/users/change-password', {
+    await axios.post('/api/users/change-password', {
       current_password: passwordData.currentPassword,
       new_password: passwordData.newPassword
     }, {
@@ -786,7 +773,6 @@ const changePassword = async () => {
       }
     })
     
-    console.log('Password change response:', response.data)
     toast.success('Password changed successfully')
     
     // Clear form
@@ -798,8 +784,7 @@ const changePassword = async () => {
     activeTab.value = 'upcoming'
   } catch (err) {
     console.error('Error changing password:', err)
-    const errorMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to change password. Please try again.'
-    toast.error(errorMsg)
+    toast.error(err.response?.data?.message || 'Failed to change password. Please try again.')
   } finally {
     changingPassword.value = false
   }
@@ -807,12 +792,6 @@ const changePassword = async () => {
 
 // Review functions
 const openReviewModal = async (booking) => {
-  // First check if the booking is eligible for review
-  if (!isReviewEligible(booking)) {
-    toast.error('This booking is not eligible for review. Only past bookings can be reviewed.')
-    return
-  }
-  
   selectedBookingForReview.value = booking
   showReviewModal.value = true
   reviewLoading.value = true
@@ -855,24 +834,13 @@ const openReviewModal = async (booking) => {
 }
 
 const submitReview = async () => {
-  if (!isReviewValid.value) {
-    toast.error('Please provide a valid rating before submitting')
-    return
-  }
-  
-  // Double check that the booking is eligible for review
-  if (!selectedBookingForReview.value || !isReviewEligible(selectedBookingForReview.value)) {
-    reviewError.value = 'This booking is not eligible for review'
-    toast.error(reviewError.value)
-    return
-  }
+  if (!isReviewValid.value) return
   
   reviewSubmitting.value = true
   reviewError.value = null
   
   try {
-    console.log('Submitting review for booking:', selectedBookingForReview.value.id)
-    const token = await authStore.getAuthToken(true) // Force token refresh for this important operation
+    const token = await authStore.getAuthToken()
     const bookingId = selectedBookingForReview.value.id
     
     const method = reviewExists.value ? 'PUT' : 'POST'
@@ -880,17 +848,13 @@ const submitReview = async () => {
       ? `/api/reviews/booking/${bookingId}`
       : `/api/reviews`
     
-    console.log(`Review submission: Using ${method} request to ${endpoint}`)
-    
     const reviewPayload = {
       booking_id: parseInt(bookingId),
       rating: reviewData.rating,
       comment: reviewData.comment || null
     }
     
-    console.log('Review payload:', reviewPayload)
-    
-    const response = await axios({
+    await axios({
       method,
       url: endpoint,
       data: reviewPayload,
@@ -900,8 +864,6 @@ const submitReview = async () => {
       }
     })
     
-    console.log('Review submission successful:', response.data)
-    
     // Mark the booking as reviewed
     const bookingIndex = bookings.value.findIndex(b => b.id === bookingId)
     if (bookingIndex !== -1) {
@@ -910,39 +872,9 @@ const submitReview = async () => {
     
     toast.success('Your review has been submitted!')
     reviewSubmitted.value = true
-    
-    // Close the modal after a short delay
-    setTimeout(() => {
-      showReviewModal.value = false
-    }, 1500)
-      } catch (err) {
+  } catch (err) {
     console.error('Error submitting review:', err)
-    
-    // Detailed error logging
-    console.log('Error details:', {
-      status: err.response?.status,
-      statusText: err.response?.statusText,
-      data: err.response?.data,
-      message: err.message
-    })
-    
-    // User-friendly error message based on the error type
-    if (err.response?.status === 400) {
-      reviewError.value = err.response.data.error || 'Invalid review submission. Please check your input.'
-    } else if (err.response?.status === 401 || err.response?.status === 403) {
-      reviewError.value = 'Authentication error. Please log in again and retry.'
-      // Attempt to refresh auth
-      try {
-        await authStore.refreshToken()
-      } catch (refreshErr) {
-        console.error('Failed to refresh token:', refreshErr)
-      }
-    } else if (err.response?.status === 404) {
-      reviewError.value = 'The booking could not be found. Please refresh the page and try again.'
-    } else {
-      reviewError.value = err.response?.data?.error || err.message || 'Failed to submit review. Please try again.'
-    }
-    
+    reviewError.value = err.response?.data?.error || err.message || 'Failed to submit review'
     toast.error(reviewError.value)
   } finally {
     reviewSubmitting.value = false
@@ -962,539 +894,5 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.account-view {
-  padding: 1.5rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-}
-
-.spinner {
-  width: 50px;
-  height: 50px;
-  border: 5px solid rgba(0, 128, 0, 0.1);
-  border-radius: 50%;
-  border-top-color: #FF5A5F;
-  animation: spin 1s linear infinite;
-  margin-bottom: 1rem;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.error {
-  background-color: #fef2f2;
-  color: #b91c1c;
-  padding: 1rem;
-  border: 1px solid #fecaca;
-  border-radius: 0.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.main-info-section {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-@media (max-width: 768px) {
-  .main-info-section {
-    grid-template-columns: 1fr;
-  }
-}
-
-.user-profile-card {
-  background-color: #ffffff;
-  border-radius: 0.75rem;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  padding: 1.5rem;
-}
-
-.profile-header {
-  display: flex;
-  align-items: center;
-  margin-bottom: 1.5rem;
-}
-
-.user-avatar {
-  position: relative;
-  margin-right: 1.25rem;
-}
-
-.avatar-circle {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;  background-color: #FF5A5F;
-  color: white;
-  font-size: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.online-status {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  background-color: #10B981;
-  border: 2px solid white;
-  border-radius: 50%;
-  bottom: 0;
-  right: 0;
-}
-
-.user-title h1 {
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin: 0 0 0.25rem 0;
-  color: #111827;
-}
-
-/* Account status badges removed as requested */
-
-.profile-details {
-  margin: 1rem 0 1.5rem 0;
-}
-
-.detail-item {
-  display: flex;
-  align-items: center;
-  margin-bottom: 0.75rem;
-}
-
-.detail-icon {
-  width: 36px;
-  height: 36px;
-  background-color: #F3F4F6;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 1rem;
-  color: #6B7280;
-}
-
-.detail-content {
-  display: flex;
-  flex-direction: column;
-}
-
-.label {
-  color: #6B7280;
-  font-size: 0.75rem;
-}
-
-.value {
-  color: #111827;
-  font-weight: 500;
-}
-
-.profile-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.action-button {
-  display: flex;
-  align-items: center;
-  background-color: #F9FAFB;
-  color: #111827;
-  padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
-  font-weight: 500;
-  border: 1px solid #E5E7EB;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.action-button:hover {
-  background-color: #F3F4F6;
-  border-color: #D1D5DB;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.action-button svg {
-  margin-right: 0.5rem;
-}
-
-.quick-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 1rem;
-}
-
-.stat-card {
-  background-color: #ffffff;
-  border-radius: 0.75rem;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  padding: 1.25rem;
-  text-align: center;
-  cursor: pointer;
-}
-
-.stat-icon {
-  display: flex;  justify-content: center;
-  margin-bottom: 0.75rem;
-  color: #FF5A5F;
-}
-
-.stat-value {
-  display: block;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 0.25rem;
-}
-
-.stat-label {
-  color: #6B7280;
-  font-size: 0.875rem;
-}
-
-.tabs-section {
-  background-color: #ffffff;
-  border-radius: 0.75rem;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-  margin-top: 2rem;
-}
-
-.tabs {
-  display: flex;
-  border-bottom: 1px solid #E5E7EB;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.tab-button {
-  padding: 0.75rem 1rem;
-  background-color: transparent;
-  border: none;
-  color: #6B7280;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-}
-
-.tab-button.active {  color: #FF5A5F;
-  border-bottom: 2px solid #FF5A5F;
-}
-
-.tab-icon {
-  margin-right: 0.5rem;
-}
-
-.tab-content {
-  padding: 1.5rem;
-}
-
-.section-header {
-  margin-bottom: 1.5rem;
-}
-
-.section-header h2 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #111827;
-  margin: 0 0 0.25rem 0;
-}
-
-.section-description {
-  color: #6B7280;
-  font-size: 0.875rem;
-}
-
-.no-bookings {
-  padding: 3rem 0;
-  text-align: center;
-  color: #6B7280;
-}
-
-.bookings-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 1rem;
-}
-
-.booking-card {
-  background-color: #ffffff;
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  border: 1px solid #E5E7EB;
-  overflow: hidden;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.booking-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.booking-info {
-  padding: 1rem;
-}
-
-.booking-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 0.5rem;
-}
-
-.booking-title {
-  font-size: 1rem;
-  font-weight: 600;
-  margin: 0;
-  color: #111827;
-}
-
-.booking-status {
-  padding: 0.25rem 0.5rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.status-confirmed {
-  background-color: #D1FAE5;
-  color: #065F46;
-}
-
-.status-cancelled {
-  background-color: #FEE2E2;
-  color: #B91C1C;
-}
-
-.status-completed {
-  background-color: #DBEAFE;
-  color: #1E40AF;
-}
-
-.status-pending {
-  background-color: #FEF3C7;
-  color: #92400E;
-}
-
-.booking-dates {
-  margin-bottom: 0.75rem;
-  color: #6B7280;
-  font-size: 0.875rem;
-}
-
-.date-value {
-  font-weight: 500;
-}
-
-.booking-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-.info-button, .cancel-button, .review-button {
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  border: none;
-  flex: 1;
-  transition: all 0.3s ease;
-}
-
-.info-button:hover, .cancel-button:hover, .review-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.info-button {
-  background-color: #F3F4F6;
-  color: #111827;
-}
-
-.cancel-button {
-  background-color: #FEE2E2;
-  color: #B91C1C;
-}
-
-.review-button {
-  background-color: #D1FAE5;
-  color: #065F46;
-}
-
-.has-review-badge {
-  display: flex;
-  align-items: center;
-  background-color: #F3F4F6;
-  color: #111827;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-.review-icon {
-  color: #F59E0B;
-  margin-right: 0.25rem;
-}
-
-.password-form {
-  max-width: 500px;
-}
-
-.form-group {
-  margin-bottom: 1.5rem;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 500;
-  color: #374151;
-}
-
-.password-input-wrapper {
-  position: relative;
-}
-
-.password-input-wrapper input {
-  width: 100%;
-  padding: 0.5rem 1rem;
-  padding-right: 4rem;
-  border: 1px solid #D1D5DB;
-  border-radius: 0.375rem;
-  font-size: 1rem;
-}
-
-.password-toggle {
-  position: absolute;
-  right: 0.5rem;
-  top: 50%;
-  transform: translateY(-50%);
-  background: transparent;
-  border: none;
-  color: #6B7280;
-  font-size: 0.875rem;
-  cursor: pointer;
-}
-
-.save-button {  background-color: #FF5A5F;
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 0.375rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.save-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  background-color: #E74E53;
-}
-
-.save-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.booking-image {
-  height: 200px;
-  background-size: cover;
-  background-position: center;
-  position: relative;
-  border-radius: 0.375rem;
-  margin-bottom: 1rem;
-}
-
-.booking-image .booking-status {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-}
-
-/* Fix for modals */
-.fixed {
-  position: fixed;
-}
-
-.inset-0 {
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-}
-
-.bg-black {
-  background-color: rgba(0, 0, 0, 0.5);
-}
-
-.bg-opacity-50 {
-  background-color: rgba(0, 0, 0, 0.5);
-}
-
-.flex {
-  display: flex;
-}
-
-.items-center {
-  align-items: center;
-}
-
-.justify-center {
-  justify-content: center;
-}
-
-.z-50 {
-  z-index: 50;
-}
-
-.p-4 {
-  padding: 1rem;
-}
-
-.bg-white {
-  background-color: white;
-}
-
-.rounded-lg {
-  border-radius: 0.5rem;
-}
-
-.p-6 {
-  padding: 1.5rem;
-}
-
-.max-w-md {
-  max-width: 28rem;
-}
-
-.w-full {
-  width: 100%;
-}
-
-.mx-4 {
-  margin-left: 1rem;
-  margin-right: 1rem;
-}
-
-.shadow-xl {
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-}
+/* Account view styles would be here */
 </style>

@@ -287,9 +287,8 @@
                   <button 
                     v-if="!hasBlockedDates && dates.startDate && dates.endDate"
                     @click="handleBookNow" 
-                    class="w-full bg-gradient-to-r from-rose-500 to-red-600 text-white py-4 rounded-xl font-semibold hover:from-rose-600 hover:to-red-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
-                  >
-                    {{ isOwner ? 'Booking Not Available (Owner Account)' : 'Reserve now' }}
+                    class="w-full bg-gradient-to-r from-rose-500 to-red-600 text-white py-4 rounded-xl font-semibold hover:from-rose-600 hover:to-red-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"                  >
+                    Reserve now
                   </button>
 
                   <!-- Show a disabled state when there are no dates selected -->
@@ -728,13 +727,13 @@ const handleBookNow = async () => {
     // Important: Return immediately to prevent any further booking logic from executing
     return;
   }
-
-  // Check if user is an owner (but not of this spot)
-  if (isOwner.value) {
-    console.log('User is an owner trying to book a spot');
-    toast.error("Owner accounts cannot book spots. Please use a renter account.");
-    return;
-  }
+  // Check if user is an owner and this is their own spot - we already handled this case above
+  // Commented out the general owner restriction - owners can now book other spots
+  // if (isOwner.value) {
+  //   console.log('User is an owner trying to book a spot');
+  //   toast.error("Owner accounts cannot book spots. Please use a renter account.");
+  //   return;
+  // }
 
   // Validate date selection
   if (!dates.value.startDate || !dates.value.endDate) {

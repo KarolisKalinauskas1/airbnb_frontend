@@ -18,12 +18,8 @@
         <div class="loading-container">
           <div class="loading-spinner"></div>
           <p v-if="loadingMessage" class="loading-message">{{ loadingMessage }}</p>
-        </div>
-      </template>
+        </div>      </template>
     </Suspense>
-    
-    <!-- Chatbot component - available on all pages -->
-    <ChatbotComponent v-if="!isInitializing && !authError" />
   </div>
 </template>
 
@@ -32,7 +28,6 @@ import { ref, onMounted, onUnmounted, provide, readonly, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
 import NavBar from '@/components/common/NavBar.vue'
-import ChatbotComponent from '@/components/ChatbotComponent.vue'
 
 const isInitializing = ref(true)
 const authError = ref(null)
@@ -79,11 +74,14 @@ const initAuth = async () => {
         console.error('Failed to parse stored user data:', error)
         localStorage.removeItem('supabase.auth.user')
       }
-    }
-
-    // Initialize auth
+    }    // Initialize auth
     loadingMessage.value = 'Checking authentication...'
-    await authStore.initAuth()
+    if (!authStore.isInitialized && !authStore.isInitializing) {
+      console.log('App: Auth not initialized, initializing...')
+      await authStore.initAuth()
+    } else {
+      console.log('App: Auth already initialized or initializing, skipping')
+    }
     
     // Clear timeout on success
     clearTimeout(initTimeout)

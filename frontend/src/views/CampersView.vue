@@ -663,10 +663,11 @@ const resetFilters = () => {
 };
 
 const checkOwnerAccess = () => {
-  if (isOwner.value) {
-    toast.error('As an owner, you cannot book camping spots. Please log in with a renter account to book spots.');
-    return false;
-  }
+  // Remove the owner restriction - owners can now book other spots too
+  // if (isOwner.value) {
+  //   toast.error('As an owner, you cannot book camping spots. Please log in with a renter account to book spots.');
+  //   return false;
+  // }
   return true;
 };
 
@@ -755,6 +756,36 @@ const fetchAmenities = async () => {
 onMounted(() => {
   // Listen for booking changes
   window.addEventListener('booking-changed', handleBookingChange);
+  
+  // Check for saved dates in sessionStorage
+  const savedDates = sessionStorage.getItem('campersDates');
+  if (savedDates) {
+    try {
+      const parsedDates = JSON.parse(savedDates);
+      if (parsedDates.startDate && parsedDates.endDate) {
+        dates.startDate = parsedDates.startDate;
+        dates.endDate = parsedDates.endDate;
+        updateDateRangeText();
+      }
+    } catch (error) {
+      console.error('Error parsing saved dates:', error);
+    }
+  }
+  
+  // Check for saved location in sessionStorage
+  const savedLocation = sessionStorage.getItem('campersLocation');
+  if (savedLocation) {
+    try {
+      selectedLocation.value = JSON.parse(savedLocation);
+      if (selectedLocation.value) {
+        locationSearchText.value = selectedLocation.value.display_name;
+        filters.value.lat = selectedLocation.value.lat;
+        filters.value.lng = selectedLocation.value.lon;
+      }
+    } catch (error) {
+      console.error('Error parsing saved location:', error);
+    }
+  }
   
   // Initial fetch
   fetchCampingSpots();

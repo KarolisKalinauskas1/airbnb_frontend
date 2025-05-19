@@ -19,6 +19,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Getters
   const isAuthenticated = computed(() => !!user.value)
+  const isLoggedIn = computed(() => !!user.value)  // Alias for isAuthenticated for code consistency
   const currentUser = computed(() => user.value)
   const isOwner = computed(() => {
     return (
@@ -105,28 +106,38 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function fetchPublicUser(authUserId, force = false) {
     const now = Date.now()
+    console.log('fetchPublicUser called with authUserId:', authUserId, 'force:', force)
 
     // Return cached data if available and not forced
     if (!force && publicUser.value && (now - lastFetch.value) < CACHE_TIME) {
+      console.log('fetchPublicUser: Returning cached user data')
       return publicUser.value
     }
 
     // If there's already a fetch in progress, return its promise
     if (fetchPromise.value) {
+      console.log('fetchPublicUser: Fetch already in progress, returning existing promise')
       return fetchPromise.value
     }
 
+    console.log('fetchPublicUser: Making API call to /api/users/me')
     try {
       const promise = withTimeout(axios.get('/api/users/me'), AUTH_TIMEOUT, 'Public user fetch timed out')
       fetchPromise.value = promise
       const response = await promise
+      console.log('fetchPublicUser: Success, received user data:', 
+        { id: response.data.user_id, email: response.data.email, name: response.data.full_name })
       publicUser.value = response.data
       lastFetch.value = now
       return response.data
     } catch (error) {
       console.error('Error fetching public user:', error)
+      console.log('fetchPublicUser: Error details:', 
+        { message: error.message, status: error.response?.status, data: error.response?.data })
+      
       // Only clear public user data on actual errors, not timeouts
       if (!error.message.includes('timed out')) {
+        console.log('fetchPublicUser: Clearing public user data due to error')
         publicUser.value = null
       }
       return null
@@ -336,6 +347,7 @@ export const useAuthStore = defineStore('auth', () => {
     publicUser,
     // Getters
     isAuthenticated,
+    isLoggedIn,
     currentUser,
     isOwner,
     // Actions

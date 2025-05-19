@@ -149,13 +149,23 @@ const checkDatesAvailability = async (start, end) => {
         endDate: end
       }
     })
+      const bookings = response.data.bookings || []
     
-    const bookings = response.data.bookings || []
+    // Filter the bookings to only include those that should block the date range
+    // Exclude cancelled bookings (status_id = 3) as they don't block availability
+    const blockingBookings = bookings.filter(booking => booking.status_id !== 3)
     
-    // If we have bookings in this range, it means the dates are unavailable
-    if (bookings.length > 0) {
+    // If we have non-cancelled bookings in this range, it means the dates are unavailable
+    if (blockingBookings.length > 0) {
       validationError.value = 'These dates are not available for booking'
       return false
+    }
+    
+    // If there are cancelled bookings, we can show them but still allow booking
+    const cancelledBookings = bookings.filter(booking => booking.status_id === 3)
+    if (cancelledBookings.length > 0) {
+      console.log('Note: There are cancelled bookings in this date range', cancelledBookings)
+      // We don't need to block the booking, just informational
     }
     
     return true

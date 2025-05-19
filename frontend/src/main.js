@@ -76,14 +76,19 @@ supabase.auth.onAuthStateChange((event, session) => {
   }
 })
 
-// Initialize auth and mount app
-authStore.initAuth()
-  .then(() => {
-    console.log('Auth initialization completed')
-    app.mount('#app')
-  })
-  .catch((error) => {
-    console.error('Auth initialization failed:', error)
-    // Still mount the app even if auth init fails
-    app.mount('#app')
-  })
+// Mount the app immediately to prevent loading delays
+app.mount('#app')
+
+// Start auth initialization in the background
+if (!authStore.isInitialized && !authStore.isInitializing) {
+  console.log('Main: Starting auth initialization in background')
+  authStore.initAuth()
+    .then(() => {
+      console.log('Main: Auth initialization completed')
+    })
+    .catch((error) => {
+      console.error('Main: Auth initialization failed:', error)
+    })
+} else {
+  console.log('Main: Auth already initialized or initializing')
+}

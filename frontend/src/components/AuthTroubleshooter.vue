@@ -81,10 +81,9 @@ async function fixAuthState() {
   
   try {
     const fixed = await authDebugger.fixAuthState();
-    
-    if (fixed) {
+      if (fixed) {
       status.value = 'success';
-      // Refresh auth store state
+      // Refresh auth store state with force refresh to ensure we have latest data
       await authStore.initAuth({ forceRefresh: true });
     } else {
       status.value = 'error';
