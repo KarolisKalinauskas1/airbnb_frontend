@@ -55,19 +55,6 @@
                 <span class="value">{{ formatDate(user?.created_at) }}</span>
               </div>
             </div>
-
-            <div class="detail-item">
-              <div class="detail-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                  <circle cx="12" cy="7" r="4"></circle>
-                </svg>
-              </div>
-              <div class="detail-content">
-                <span class="label">Account Status</span>
-                <span class="value">{{ user?.verified ? 'Verified' : 'Not Verified' }}</span>
-              </div>
-            </div>
           </div>
 
           <div class="profile-actions">
@@ -213,12 +200,10 @@
             </div>
             <div v-else-if="upcomingBookings.length === 0" class="no-bookings">
               <p>No upcoming bookings found</p>
-            </div>
-            <div v-else class="bookings-grid">
-              <div v-for="booking in upcomingBookings" :key="booking.id" class="booking-card">
+            </div>            <div v-else class="bookings-grid">              <div v-for="booking in upcomingBookings" :key="booking.id" class="booking-card">
                 <div class="booking-info">
                   <div class="booking-header">
-                    <h3 class="booking-title">{{ booking.spot.name }}</h3>
+                    <h3 class="booking-title">{{ booking.spot?.name || booking.spot?.title || booking.camping_spot?.title || booking.camping_spot?.name || booking.campsite?.name || booking.campsite?.title || 'Camping Spot' }}</h3>
                     <span class="booking-status" :class="getStatusClass(booking.status)">
                       {{ getStatusText(booking.status) }}
                     </span>
@@ -258,12 +243,10 @@
             </div>
             <div v-else-if="previousBookings.length === 0" class="no-bookings">
               <p>No previous bookings found</p>
-            </div>
-            <div v-else class="bookings-grid">
-              <div v-for="booking in previousBookings" :key="booking.id" class="booking-card">
+            </div>            <div v-else class="bookings-grid">              <div v-for="booking in previousBookings" :key="booking.id" class="booking-card">
                 <div class="booking-info">
                   <div class="booking-header">
-                    <h3 class="booking-title">{{ booking.spot.name }}</h3>
+                    <h3 class="booking-title">{{ booking.spot?.name || booking.spot?.title || booking.camping_spot?.title || booking.camping_spot?.name || booking.campsite?.name || booking.campsite?.title || 'Camping Spot' }}</h3>
                     <span class="booking-status" :class="getStatusClass(booking.status)">
                       {{ getStatusText(booking.status) }}
                     </span>
@@ -304,12 +287,10 @@
             </div>
             <div v-else-if="cancelledBookings.length === 0" class="no-bookings">
               <p>No cancelled bookings found</p>
-            </div>
-            <div v-else class="bookings-grid">
-              <div v-for="booking in cancelledBookings" :key="booking.id" class="booking-card">
+            </div>            <div v-else class="bookings-grid">              <div v-for="booking in cancelledBookings" :key="booking.id" class="booking-card">
                 <div class="booking-info">
                   <div class="booking-header">
-                    <h3 class="booking-title">{{ booking.spot.name }}</h3>
+                    <h3 class="booking-title">{{ booking.spot?.name || booking.spot?.title || booking.camping_spot?.title || booking.camping_spot?.name || booking.campsite?.name || booking.campsite?.title || 'Camping Spot' }}</h3>
                     <span class="booking-status" :class="getStatusClass(booking.status)">
                       {{ getStatusText(booking.status) }}
                     </span>
@@ -363,11 +344,10 @@
       </div>
     </div>
 
-    <!-- Booking Details Modal -->
-    <div v-if="showDetailsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <!-- Booking Details Modal -->    <div v-if="showDetailsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
         <div class="flex justify-between items-start mb-4">
-          <h3 class="text-xl font-semibold">{{ selectedBooking?.spot.name }}</h3>
+          <h3 class="text-xl font-semibold">{{ selectedBooking?.spot?.name || selectedBooking?.spot?.title || selectedBooking?.camping_spot?.title || 'Camping Spot' }}</h3>
           <button @click="showDetailsModal = false" class="text-gray-500 hover:text-gray-700">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -575,9 +555,16 @@ const tabs = [
 
 // Computed properties
 const upcomingBookings = computed(() => {
-  return bookings.value.filter(booking => {
+  const filtered = bookings.value.filter(booking => {
     return booking.status === 'Confirmed' && new Date(booking.end_date) >= new Date()
   })
+  // Log the first booking to see its structure
+  if (filtered.length > 0) {
+    console.log('First upcoming booking data:', filtered[0])
+    console.log('Spot property:', filtered[0].spot)
+    console.log('camping_spot property:', filtered[0].camping_spot)
+  }
+  return filtered
 })
 
 const previousBookings = computed(() => {
@@ -695,8 +682,7 @@ const loadUserData = async () => {
 
 const loadBookings = async () => {
   loadingBookings.value = true
-  
-  try {
+    try {
     const token = await authStore.getAuthToken()
     const response = await axios.get('/api/bookings/user', {
       headers: {
@@ -704,6 +690,11 @@ const loadBookings = async () => {
       }
     })
     
+    if (response.data && response.data.length > 0) {
+      console.log('DEBUG: First booking structure:', response.data[0])
+      console.log('DEBUG: spot property:', response.data[0].spot)
+      console.log('DEBUG: camping_spot property:', response.data[0].camping_spot)
+    }
     bookings.value = response.data
   } catch (err) {
     console.error('Error loading bookings:', err)
