@@ -29,13 +29,15 @@ export function configureAxiosInterceptors() {
 
     // Only add auth token for non-public routes
     if (!isPublicRoute) {
-      const authStore = useAuthStore();
-      try {
+      const authStore = useAuthStore();      try {
         // Force refresh token for PUT requests
         const forceRefresh = config.method.toLowerCase() === 'put';
         const token = await authStore.getAuthToken(forceRefresh);
-        if (token) {
+        if (token && typeof token === 'string') {
           config.headers.Authorization = `Bearer ${token}`;
+          console.log('Interceptor: Setting auth header:', `Bearer ${token.substring(0, 10)}...`); // Log partial token for debugging
+        } else {
+          console.error('Interceptor: Invalid token format:', typeof token);
         }
       } catch (error) {
         console.error('Error getting auth token:', error);
@@ -74,18 +76,20 @@ export function configureAxiosInterceptors() {
         try {
           // Mark request as retried
           originalRequest._retry = true;
-          
-          // Try to refresh the token
+            // Try to refresh the token
           const authStore = useAuthStore();
           const success = await authStore.refreshToken();
           
           if (success) {
             // Get the new token
-            const token = authStore.getAuthToken();
-            if (token) {
+            const token = await authStore.getAuthToken(); // Fixed: needs to be awaited
+            if (token && typeof token === 'string') {
               originalRequest.headers.Authorization = `Bearer ${token}`;
+              console.log('Interceptor: Refreshed auth header:', `Bearer ${token.substring(0, 10)}...`); // Log partial token for debugging
               // Retry the original request
               return axios(originalRequest);
+            } else {
+              console.error('Interceptor: Invalid token format after refresh:', typeof token);
             }
           }
           

@@ -24,6 +24,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true, // Enable detection of OAuth redirects
     storageKey: 'supabase.auth.token', // Explicit key for localStorage
     storage: window.localStorage, // Use localStorage for storing session data
+    flowType: 'implicit', // Use implicit flow type for faster auth
     // Increase debug level to help diagnose issues
     debug: import.meta.env.DEV
   }

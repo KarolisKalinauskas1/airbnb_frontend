@@ -166,6 +166,7 @@
                   :base-price="selectedSpot.price_per_night"
                   :is-owner="true"
                   :owner-id="authStore.fullUser?.user_id"
+                  :view-only="false"
                   @date-selected="handleCalendarDateSelected"
                 />
               </div>

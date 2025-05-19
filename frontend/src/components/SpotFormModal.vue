@@ -397,12 +397,13 @@ const handleSubmit = async () => {
         } else {
           throw error;
         }
-      }
-    } else {
+      }    } else {
       // Create new spot
+      const token = await authStore.getAuthToken();
       response = await axios.post('/api/camping-spots', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
+          'Authorization': `Bearer ${token}`
         },
       });
       emit('spot-created', response.data);

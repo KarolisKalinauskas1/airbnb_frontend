@@ -827,24 +827,31 @@ const openReviewModal = async (booking) => {
   try {
     // Check if a review already exists
     const token = await authStore.getAuthToken()
-    try {
-      const response = await axios.get(`/api/reviews/booking/${booking.id}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
+    console.log('Auth token type:', typeof token)
+    
+    // Ensure token is a string
+    if (token && typeof token === 'string') {
+      try {
+        const response = await axios.get(`/api/reviews/booking/${booking.id}`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
+        
+        if (response.data) {
+          // Pre-fill form with existing review data
+          reviewData.rating = response.data.rating || 0
+          reviewData.comment = response.data.comment || ''
+          reviewExists.value = true
         }
-      })
-      
-      if (response.data) {
-        // Pre-fill form with existing review data
-        reviewData.rating = response.data.rating || 0
-        reviewData.comment = response.data.comment || ''
-        reviewExists.value = true
+      } catch (err) {
+        // 404 error is expected if no review exists yet
+        if (err.response?.status !== 404) {
+          console.warn('Error checking for existing review:', err)
+        }
       }
-    } catch (err) {
-      // 404 error is expected if no review exists yet
-      if (err.response?.status !== 404) {
-        console.warn('Error checking for existing review:', err)
-      }
+    } else {
+      console.error('Invalid token format:', typeof token)
     }
   } catch (err) {
     reviewError.value = 'Failed to load review information. Please try again.'
@@ -869,10 +876,15 @@ const submitReview = async () => {
   
   reviewSubmitting.value = true
   reviewError.value = null
-  
-  try {
+    try {
     console.log('Submitting review for booking:', selectedBookingForReview.value.id)
     const token = await authStore.getAuthToken(true) // Force token refresh for this important operation
+    console.log('submitReview token type:', typeof token)
+    
+    if (!token || typeof token !== 'string') {
+      throw new Error(`Invalid token format: ${typeof token}`)
+    }
+    
     const bookingId = selectedBookingForReview.value.id
     
     const method = reviewExists.value ? 'PUT' : 'POST'

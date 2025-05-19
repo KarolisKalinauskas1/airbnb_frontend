@@ -629,18 +629,38 @@ const handleGoogleLogin = async () => {
     googleLoginProcessing.value = true
     googleLoginError.value = null
     
-    // Get the Google auth URL from the backend
-    const response = await axios.get('/api/auth/oauth/google/login')
+    console.log('Starting Google login process with Supabase...')    // Use Supabase's built-in OAuth provider support
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/?source=oauth`,
+        scopes: 'profile email',
+        // Include query parameter for previous page if needed
+        queryParams: {
+          returnTo: router.currentRoute.value.query.returnTo || '/',
+          redirectMode: 'direct' // Use direct redirection mode
+        }
+      }
+    })
     
-    if (response.data && response.data.authUrl) {
-      // Redirect to Google authorization page
-      window.location.href = response.data.authUrl
+    if (error) {
+      console.error('Supabase Google login error:', error)
+      throw error
+    }
+    
+    console.log('Supabase OAuth data:', data)
+    
+    if (data && data.url) {
+      console.log('Redirecting to Supabase OAuth URL:', data.url)
+      // Redirect to Google authorization page via Supabase
+      window.location.href = data.url
     } else {
-      throw new Error('Invalid response from authentication server')
+      console.error('Invalid response format from Supabase:', data)
+      throw new Error('Invalid response from Supabase: Missing OAuth URL')
     }
   } catch (error) {
     console.error('Google login error:', error)
-    googleLoginError.value = 'Failed to connect to Google. Please try again later.'
+    googleLoginError.value = `Failed to connect to Google: ${error.message}`
     toast.error('Google login failed. Please try again.')
   } finally {
     googleLoginProcessing.value = false

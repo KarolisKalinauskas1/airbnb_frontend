@@ -42,11 +42,11 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   // Actions
-  async function initAuth() {
+  async function initAuth(options = {}) {
     // Return existing promise if initialization is in progress
-    if (initPromise.value) return initPromise.value
-    // Return early if already initialized
-    if (initialized.value) return Promise.resolve()
+    if (initPromise.value && !options.forceRefresh) return initPromise.value
+    // Return early if already initialized and not forcing refresh
+    if (initialized.value && !options.forceRefresh) return Promise.resolve()
     
     initPromise.value = (async () => {
       try {
@@ -242,6 +242,8 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function getAuthToken(forceRefresh = false) {
     try {
+      console.log('getAuthToken called with forceRefresh:', forceRefresh);
+      
       // First check localStorage for token
       const storedToken = localStorage.getItem('supabase.auth.token');
       if (storedToken) {
@@ -249,7 +251,12 @@ export const useAuthStore = defineStore('auth', () => {
           const { access_token, expires_at } = JSON.parse(storedToken);
           // Check if token is expired
           if (expires_at && Date.now() < expires_at * 1000) {
-            return access_token;
+            console.log('Using stored token, type:', typeof access_token);
+            if (typeof access_token === 'string') {
+              return access_token;
+            } else {
+              console.error('Stored access_token is not a string:', typeof access_token);
+            }
           }
         } catch (e) {
           console.warn('Failed to parse stored token:', e);
@@ -263,6 +270,13 @@ export const useAuthStore = defineStore('auth', () => {
       if (sessionError) throw sessionError;
       
       if (currentSession?.access_token) {
+        console.log('Got token from session, type:', typeof currentSession.access_token);
+        
+        if (typeof currentSession.access_token !== 'string') {
+          console.error('Session token is not a string!', typeof currentSession.access_token);
+          throw new Error('Invalid token format: token must be a string');
+        }
+        
         // Store the new token
         localStorage.setItem('supabase.auth.token', JSON.stringify({
           access_token: currentSession.access_token,
@@ -280,6 +294,7 @@ export const useAuthStore = defineStore('auth', () => {
         }
       }
 
+      console.error('No valid authentication token found');
       throw new Error('No valid authentication token available');
     } catch (error) {
       console.error('Error getting auth token:', error);

@@ -24,24 +24,24 @@ apiClient.interceptors.request.use(
     const safeData = { ...config.data };
     if (safeData.password) safeData.password = '[REDACTED]';
 
-    console.log('Data:', safeData);
-
-    // Check if this is a public route (GET requests only)
+    console.log('Data:', safeData);    // Check if this is a public route (GET requests only)
     const isPublicRoute = config.method.toLowerCase() === 'get' && (
       config.url.includes('/api/camping-spots') || 
       config.url.includes('/api/locations') || 
       config.url.includes('/api/countries') || 
       config.url.includes('/api/amenities') ||
-      config.url.includes('/api/bookings/success') // Add success route to public routes
-    );
-
-    // Only add auth token for non-public routes
+      config.url.includes('/api/bookings/success') || // Add success route to public routes
+      config.url.includes('/api/auth/oauth') // Add OAuth routes to public routes
+    );// Only add auth token for non-public routes
     if (!isPublicRoute) {
       const authStore = useAuthStore();
       try {
         const token = await authStore.getAuthToken();
-        if (token) {
+        if (token && typeof token === 'string') {
           config.headers.Authorization = `Bearer ${token}`;
+          console.log('Setting auth header:', `Bearer ${token.substring(0, 10)}...`); // Log partial token for debugging
+        } else {
+          console.error('Invalid token format:', typeof token);
         }
       } catch (error) {
         console.error('Error getting auth token:', error);
@@ -88,15 +88,15 @@ apiClient.interceptors.response.use(
     // If the error is 401 and we haven't retried yet
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
-      
-      try {
+        try {
         const authStore = useAuthStore();
         // Try to refresh the token
         const newToken = await authStore.getAuthToken(true); // force refresh
         
-        if (newToken) {
+        if (newToken && typeof newToken === 'string') {
           // Update the authorization header
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          console.log('Refreshed auth header:', `Bearer ${newToken.substring(0, 10)}...`); // Log partial token for debugging
           // Retry the original request
           return apiClient(originalRequest);
         }

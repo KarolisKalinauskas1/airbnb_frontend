@@ -3,7 +3,14 @@
     <div class="mb-6 flex justify-between items-center">
       <h1 class="text-2xl font-semibold">My Camping Spots</h1>
       <button @click="showAddModal = true" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 cursor-pointer transition-colors">
-        Add New Spot
+   import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
+import DashboardLayout from '@/components/DashboardLayout.vue'
+import axios from '@/axios'
+import { useDashboardStore } from '@/stores/dashboard'
+import { useAuthStore } from '@/stores/auth'
+// Import new components
+import AvailabilityCalendar from '@/components/AvailabilityCalendar.vue'
+import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New Spot
       </button>
     </div>
 
@@ -266,8 +273,7 @@
                   :owner-id="authStore.fullUser?.user_id"
                 />
               </div>
-              
-              <div>
+                <div v-if="isOwner || authStore.fullUser?.user_id === editingSpot.owner_id">
                 <PriceSuggestionWidget
                   :camping-spot-id="editingSpot.camping_spot_id"
                   :current-price="form.price || editingSpot.price_per_night"
@@ -303,7 +309,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import DashboardLayout from '@/components/DashboardLayout.vue'
 import axios from '@/axios'
 import { useDashboardStore } from '@/stores/dashboard'
@@ -312,11 +318,17 @@ import { useAuthStore } from '@/stores/auth'
 import AvailabilityCalendar from '@/components/AvailabilityCalendar.vue'
 import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue'
 
+const authStore = useAuthStore()
 const availableAmenities = ref([])
 const countries = ref([])
 const spots = ref([])
 const showAddModal = ref(false)
 const editingSpot = ref(null)
+
+// Determine if the current user is an owner or admin
+const isOwner = computed(() => {
+  return authStore.fullUser?.user_type === 'owner' || authStore.fullUser?.user_type === 'admin'
+})
 
 const form = reactive({
   title: '',

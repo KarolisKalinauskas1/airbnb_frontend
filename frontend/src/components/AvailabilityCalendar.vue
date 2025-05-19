@@ -16,8 +16,8 @@
       </button>
     </div>
 
-    <!-- Calendar Header with Block Dates Button for Owners -->
-    <div v-if="isOwner" class="mb-4 flex justify-between items-center">
+    <!-- Calendar Header with Block Dates Button for Owners ONLY when in owner view -->
+    <div v-if="isOwner && !viewOnly" class="mb-4 flex justify-between items-center">
       <h3 class="font-medium text-lg">{{ calendarTitle }}</h3>
       <button 
         @click="toggleBlockingMode" 
@@ -28,8 +28,8 @@
       </button>
     </div>
 
-    <!-- Date Range Selector for Blocking Dates (Only shown in blocking mode) -->
-    <div v-if="blockingMode && isOwner" class="mb-6 bg-white p-4 rounded-lg shadow-sm border border-red-200 bg-red-50">
+    <!-- Date Range Selector for Blocking Dates (Only shown in blocking mode AND is owner) -->
+    <div v-if="blockingMode && isOwner && !viewOnly" class="mb-6 bg-white p-4 rounded-lg shadow-sm border border-red-200 bg-red-50">
       <h3 class="font-medium mb-3">Block Date Range</h3>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div>
@@ -205,6 +205,10 @@ const props = defineProps({
   ownerId: {
     type: [Number, String],
     default: null
+  },
+  viewOnly: {
+    type: Boolean,
+    default: false
   }
 });
 

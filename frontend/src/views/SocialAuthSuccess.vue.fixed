@@ -37,12 +37,13 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { supabase } from '@/lib/supabase';
 import axios from '@/axios';
 
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
 
 const loading = ref(true);
@@ -50,7 +51,6 @@ const success = ref(false);
 const pageTitle = ref('Processing your login...');
 const statusMessage = ref('Please wait while we set up your account.');
 
-// Simple function to go home - no need to check anything else
 const navigateToHome = () => {
   router.push('/');
 };
@@ -74,31 +74,10 @@ onMounted(async () => {
       throw new Error('No session found. Authentication failed.');
     }
     
-    console.log('Successfully retrieved Supabase session');
+    console.log('Successfully retrieved Supabase session for:', session.user.email);
     
     // Use the user data from Supabase session
     const { user } = session;
-    
-    // Log the user structure to debug
-    console.log('User data from Supabase:', JSON.stringify(user, null, 2));
-    
-    // Make sure we have the user email
-    if (!user || !user.email) {
-      console.error('Missing user email in session data:', user);
-      
-      // Check if we can find the email elsewhere in the user object
-      const email = user?.identities?.[0]?.identity_data?.email || 
-                    user?.app_metadata?.email ||
-                    user?.user_metadata?.email;
-                    
-      if (email) {
-        console.log('Found email in alternative location:', email);
-        // We found an email, so we can proceed
-        user.email = email;
-      } else {
-        throw new Error('Could not find email in user data. Authentication failed.');
-      }
-    }
     
     console.log('User authenticated with Supabase:', user.email);
     
@@ -109,11 +88,8 @@ onMounted(async () => {
       const backendResponse = await axios.post('/api/auth/oauth/google/supabase-callback', {
         supabase_id: user.id,
         email: user.email,
-        full_name: user.user_metadata?.full_name || 
-                  user.user_metadata?.name || 
-                  user.identities?.[0]?.identity_data?.full_name || 
-                  user.identities?.[0]?.identity_data?.name,
-        avatar_url: user.user_metadata?.avatar_url || user.identities?.[0]?.identity_data?.avatar_url
+        full_name: user.user_metadata?.full_name || user.user_metadata?.name,
+        avatar_url: user.user_metadata?.avatar_url
       });
       
       const backendData = backendResponse.data;
@@ -127,15 +103,13 @@ onMounted(async () => {
       // Initialize auth store with the new token
       await authStore.initAuth({ forceRefresh: true });
       
-      // Automatically redirect to home page after a short delay
-      success.value = true;
-      pageTitle.value = 'Login Successful!';
-      statusMessage.value = 'You have been successfully logged in with Google. Redirecting...';
-      
-      // Redirect to home page after a short delay
-      setTimeout(() => {
-        router.push('/');
-      }, 1500); // 1.5 second delay to show success message
+      if (authStore.isLoggedIn) {
+        success.value = true;
+        pageTitle.value = 'Login Successful!';
+        statusMessage.value = 'You have been successfully logged in with Google.';
+      } else {
+        throw new Error('Failed to initialize session');
+      }
     } catch (backendError) {
       console.error('Backend synchronization error:', backendError);
       throw new Error(`Backend sync failed: ${backendError.message}`);
@@ -145,14 +119,6 @@ onMounted(async () => {
     success.value = false;
     pageTitle.value = 'Authentication Failed';
     statusMessage.value = `We encountered an issue while signing you in: ${error.message}. Please try again.`;
-    
-    // If we're logged in with Supabase but our backend sync failed,
-    // we should sign out of Supabase to prevent a state mismatch
-    try {
-      await supabase.auth.signOut();
-    } catch (signOutError) {
-      console.error('Failed to sign out of Supabase after error:', signOutError);
-    }
   } finally {
     loading.value = false;
   }

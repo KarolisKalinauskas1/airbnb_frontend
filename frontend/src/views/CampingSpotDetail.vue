@@ -168,26 +168,19 @@
               </div>
             </div>
 
-            <!-- Availability Calendar Section -->
-            <div class="border-t pt-10 mt-10">
+            <!-- Availability Calendar Section -->              <div class="border-t pt-10 mt-10">
               <h2 class="text-2xl font-semibold mb-6">Availability Calendar</h2>
               <div class="grid grid-cols-1 gap-8">
                 <AvailabilityCalendar 
                   v-if="spot"
-                  :camping-spot-id="spot.camping_spot_id" 
+                  :camping-spot-id="spot.camping_spot_id"
                   :base-price="spot.price_per_night"
-                  :is-owner="isOwner"
+                  :is-owner="false"
                   :owner-id="spot.owner_id"
+                  :view-only="true"
                   @blocked-dates-loaded="handleBlockedDates"
                 />
-                <div v-if="isOwner" class="mt-4">
-                  <PriceSuggestionWidget
-                    :camping-spot-id="spot.camping_spot_id"
-                    :current-price="spot.price_per_night"
-                    :show-update-button="isOwner"
-                    @update-price="handlePriceUpdate"
-                  />
-                </div>
+                <!-- Price suggestion widget removed for security and user-friendliness -->
               </div>
             </div>
 

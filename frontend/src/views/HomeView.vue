@@ -1,15 +1,82 @@
 <script setup>
-import { ref, computed, onMounted, reactive, onBeforeUnmount } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, reactive, onBeforeUnmount, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useToast } from 'vue-toastification'
+import { supabase } from '@/lib/supabase'
+import axios from '@/axios'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
+const toast = useToast()
+
+// State for OAuth handling
+const oauthProcessing = ref(false)
 
 const isOwner = computed(() => authStore.isOwner)
 const activeTab = ref(0) // For feature tabs animation
 const heroVisible = ref(false) // For hero section animation
 const activeExperience = ref(0) // For unique experiences carousel
+
+// Handle OAuth callback if needed
+async function handleOAuthCallback() {
+  if (route.query.source === 'oauth') {
+    oauthProcessing.value = true
+    
+    try {
+      console.log('HomeView: Detected OAuth callback, processing...')
+      
+      // Clean up the URL to remove the OAuth parameters
+      const cleanPath = router.currentRoute.value.path
+      router.replace({ path: cleanPath })
+      
+      // Get Supabase session
+      const { data, error } = await supabase.auth.getSession()
+      
+      if (error) {
+        console.error('Error retrieving Supabase session:', error)
+        toast.error('Login was not completed successfully. Please try again.')
+        return
+      }
+      
+      if (data?.session?.user) {
+        const user = data.session.user
+        console.log('Successfully retrieved user data from Supabase session')
+        
+        // Sync with our backend
+        try {
+          const backendResponse = await axios.post('/api/auth/oauth/google/supabase-callback', {
+            supabase_id: user.id,
+            email: user.email,
+            full_name: user.user_metadata?.full_name || user.user_metadata?.name,
+            avatar_url: user.user_metadata?.avatar_url
+          })
+          
+          // Store token and user info
+          localStorage.setItem('token', backendResponse.data.token)
+          localStorage.setItem('user_id', backendResponse.data.user.user_id)
+          localStorage.setItem('user_email', user.email)
+          
+          // Initialize auth store with the new token
+          await authStore.initAuth({ forceRefresh: true })
+          toast.success('Login successful! Welcome back.')
+        } catch (backendError) {
+          console.error('Backend synchronization error:', backendError)
+          toast.error('There was an issue completing your login. Please try again.')
+        }
+      } else {
+        console.error('No user data found in Supabase session')
+        toast.warning('Login was not completed. Please try again.')
+      }
+    } catch (error) {
+      console.error('Error in OAuth processing:', error)
+      toast.error('Authentication error. Please try again.')
+    } finally {
+      oauthProcessing.value = false
+    }
+  }
+}
 
 // Unique camping experiences - impressive showcase section
 const uniqueExperiences = [
@@ -240,6 +307,9 @@ onMounted(async () => {
   
   // Start auto-rotation for experiences
   startExperienceRotation()
+
+  // Handle OAuth callback
+  await handleOAuthCallback()
 })
 
 // Clean up interval on unmount

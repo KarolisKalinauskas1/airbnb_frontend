@@ -118,8 +118,19 @@ const retryAuth = async () => {
   await initAuth()
 }
 
-onMounted(() => {
-  initAuth()
+onMounted(async () => {
+  // Check for direct OAuth callback first
+  const queryParams = new URLSearchParams(window.location.search);
+  const isOAuthCallback = queryParams.get('source') === 'oauth';
+  
+  if (isOAuthCallback) {
+    console.log('Detected direct OAuth callback, handling authentication...');
+    // We'll let the router handle this, but we still need to init auth
+    await initAuth({ priority: true });
+  } else {
+    // Normal initialization
+    initAuth();
+  }
 })
 
 onUnmounted(() => {

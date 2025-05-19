@@ -393,7 +393,10 @@ const routes = [
   {
     path: '/social-auth-success',
     name: 'SocialAuthSuccess',
-    component: SocialAuthSuccess // Add the new route
+    component: SocialAuthSuccess, // Keep for backward compatibility
+    meta: {
+      deprecated: true // Mark as deprecated
+    }
   },
   {
     path: '/404',
@@ -424,6 +427,28 @@ router.beforeEach(async (to, from, next) => {
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
   const requiresSeller = to.matched.some(record => record.meta.requiresSeller)
   const requiresRenter = to.matched.some(record => record.meta.requiresRenter)
+  
+  // Handle direct OAuth callback to home page
+  if (to.path === '/' && to.query.source === 'oauth') {
+    console.log('Router guard: Detected OAuth callback to home page')
+    
+    // We'll let the HomeView component handle the OAuth processing
+    // Just clean up the URL to not show the OAuth parameters
+    if (to.query.source) {
+      const query = { ...to.query };
+      delete query.source;
+      
+      if (Object.keys(query).length === 0) {
+        // If no other query parameters, just use the path
+        next({ path: to.path, replace: true });
+        return;
+      } else {
+        // Keep other query parameters if they exist
+        next({ path: to.path, query, replace: true });
+        return;
+      }
+    }
+  }
 
   // Ensure auth is initialized
   if (!authStore.initialized) {
