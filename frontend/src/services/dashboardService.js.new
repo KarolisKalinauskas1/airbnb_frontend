@@ -1,12 +1,14 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/lib/supabase'
+
 // Implement a more robust request cache with a longer timeout
 const requestCache = {
   data: null,
   timestamp: null,
   CACHE_TIMEOUT: 120000, // Increase to 2 minutes to reduce frequent refreshes
-    set(data) {
+  
+  set(data) {
     if (!data) {
       return;
     }
@@ -17,17 +19,20 @@ const requestCache = {
     };
     this.timestamp = Date.now();
   },
+  
   get() {
     if (this.timestamp && Date.now() - this.timestamp < this.CACHE_TIMEOUT) {
       return this.data;
     }
     return null;
   },
+  
   clear() {
     this.data = null;
     this.timestamp = null;
   }
 };
+
 /**
  * Parse numbers safely with fallbacks
  * @param {any} value - Value to parse as number
@@ -47,6 +52,7 @@ function safeParseNumber(value, defaultValue = 0) {
     return defaultValue;
   }
 }
+
 /**
  * Dashboard data service
  */
@@ -64,6 +70,7 @@ class DashboardService {
     this.MIN_REQUEST_INTERVAL = 2000; // Minimum 2 seconds between identical requests
     this.PENDING_CLEAR_DELAY = 1500; // Increased from 500ms to 1.5s to better prevent duplicates
     this.REQUEST_TIMEOUT = 30000; // 30 seconds timeout for requests
+    
     // Add request interceptor to handle auth token
     this.api.interceptors.request.use(async (config) => {
       try {
@@ -71,12 +78,15 @@ class DashboardService {
         // Ensure auth is initialized
         if (!authStore.initialized) {
           await authStore.initAuth();
-        }        // Check if user is authenticated
+        }
+        // Check if user is authenticated
         if (!authStore.isAuthenticated) {
+          console.warn('User not authenticated');
           throw new Error('Authentication required');
         }
-        // Check if user is owner - backend will handle owner validation
+        // Check if user is owner
         if (!authStore.isOwner) {
+          console.warn('User not an owner');
           // Don't throw here - backend will handle owner validation
         }
         // Get the current session
@@ -96,23 +106,24 @@ class DashboardService {
         }
         // Add timeout to the request
         config.timeout = this.REQUEST_TIMEOUT;
-        return config;      } catch (error) {
-        // Authentication error - handled silently in production
+        return config;
+      } catch (error) {
+        console.error('Request interceptor error:', error);
         return Promise.reject(error);
       }
     })
+    
     // Add response interceptor to handle token refresh
     this.api.interceptors.response.use(
       (response) => {
         return response;
       },
       async (error) => {
-        // Log minimal information in production
-        const errorInfo = {
+        console.error('API response error:', {
           url: error.config?.url,
-          status: error.response?.status
-        };
-        
+          status: error.response?.status,
+          message: error.message
+        });
         if (error.response?.status === 401) {
           try {
             const { data } = await supabase.auth.refreshSession();
@@ -122,24 +133,42 @@ class DashboardService {
               return this.api.request(error.config);
             }
           } catch (refreshError) {
-            // Session refresh failed
+            console.error('Token refresh failed:', refreshError);
           }
         }
         return Promise.reject(error);
       }
     );
-  }  /**
+  }
+
+  /**
    * Check if user has owner permissions
    * @returns {Promise<Object>} Permission status
    */
   async checkOwnerPermissions() {
     try {
-      const response = await this.api.get('/api/dashboard/permissions');
+      const response = await this.api.get('/api/dashboard/debug/permissions');
       return response.data;
     } catch (error) {
+      console.error('Error checking owner permissions:', error);
       return { isOwner: false, error: error.message };
     }
   }
+
+  /**
+   * Get debug analytics data
+   * @returns {Promise<Object>} Simplified analytics data for debugging
+   */
+  async getDebugAnalytics() {
+    try {
+      const response = await this.api.get('/api/dashboard/debug/analytics');
+      return response.data;
+    } catch (error) {
+      console.error('Error getting debug analytics:', error);
+      throw error;
+    }
+  }
+
   /**
    * Get analytics data
    * @param {Object} options - Request options
@@ -150,16 +179,21 @@ class DashboardService {
   async getAnalytics(options = {}) {
     try {
       const { forceRefresh, token } = options;
-      const endpoint = `/api/dashboard/analytics${forceRefresh ? '?refresh=true' : ''}`;      // Return cached data if available and not forcing refresh
+      const endpoint = `/api/dashboard/analytics${forceRefresh ? '?refresh=true' : ''}`;
+      
+      // Return cached data if available and not forcing refresh
       if (!forceRefresh) {
         const cachedData = requestCache.get();
         if (cachedData) {
           return cachedData;
         }
-      }      // Check if the endpoint is currently locked
+      }
+      
+      // Check if the endpoint is currently locked
       if (this.requestLocks[endpoint]) {
         return this.pendingRequests[endpoint] || requestCache.get() || Promise.reject(new Error('Request in progress'));
       }
+      
       // Prevent rapid identical requests
       const now = Date.now();
       if (
@@ -173,8 +207,10 @@ class DashboardService {
           return requestCache.get();
         }
       }
+      
       // Update timestamp for this endpoint
       this.requestTimestamps[endpoint] = now;
+      
       // Check for pending requests to the same endpoint
       if (this.pendingRequests[endpoint]) {
         return this.pendingRequests[endpoint];
@@ -182,6 +218,7 @@ class DashboardService {
       
       // Lock this endpoint to prevent duplicate requests
       this.requestLocks[endpoint] = true;
+      
       // Configure request with the provided token if available
       const config = {};
       if (token) {
@@ -190,14 +227,18 @@ class DashboardService {
           Authorization: `Bearer ${token}`
         };
       }
+      
       // Create the promise for this request
       this.pendingRequests[endpoint] = (async () => {
         try {
-          const response = await this.api.get(endpoint, config);          const rawData = response.data;
+          const response = await this.api.get(endpoint, config);
+          const rawData = response.data;
+          
           // Transform data to ensure proper numeric types
           if (rawData) {
             // Deep clone the data to avoid reference issues
             const data = JSON.parse(JSON.stringify(rawData));
+            
             // Process and ensure all numeric values are properly parsed
             const processedData = {
               ...data,
@@ -252,12 +293,15 @@ class DashboardService {
               spotInsights: data.spotInsights,
               currentMonth: data.currentMonth,
               totalSpots: safeParseNumber(data.totalSpots)
-            };            // Processed data is now ready for caching
+            };
+            
             // Cache data for future requests
             requestCache.set(processedData);
             return processedData;
           }
-          return rawData;        } catch (error) {
+          return rawData;
+        } catch (error) {
+          console.error('Analytics request failed:', error);
           throw error;
         } finally {
           // Clear pending request reference after a delay
@@ -268,7 +312,10 @@ class DashboardService {
           }, this.PENDING_CLEAR_DELAY);
         }
       })();
-      return this.pendingRequests[endpoint];    } catch (error) {
+      
+      return this.pendingRequests[endpoint];
+    } catch (error) {
+      console.error('Error in dashboard analytics request:', error);
       // Return cached data as fallback if available
       const cachedData = requestCache.get();
       if (cachedData) {
@@ -277,40 +324,50 @@ class DashboardService {
       throw error;
     }
   }
+
   /**
    * Get camping spots owned by the current user
-   */  async getCampingSpots() {
+   */
+  async getCampingSpots() {
     try {
       const response = await this.api.get('/api/dashboard/spots');
       return response.data;
     } catch (error) {
+      console.error('Error fetching camping spots:', error);
       throw error;
     }
   }
+
   /**
    * Get owner bookings
    * @returns {Promise<Array>} List of bookings for owner's camping spots
-   */  async getOwnerBookings() {
+   */
+  async getOwnerBookings() {
     try {
       const response = await this.api.get('/api/dashboard/bookings');
       return response.data;
     } catch (error) {
+      console.error('Error fetching owner bookings:', error);
       throw error;
     }
   }
+
   async createSpot(spotData) {
     const response = await this.api.post('/api/dashboard/spots', spotData);
     return response.data;
   }
+
   async updateSpot(spotId, spotData) {
     const response = await this.api.put(`/api/dashboard/spots/${spotId}`, spotData);
     return response.data;
   }
+
   async deleteSpot(spotId) {
     const response = await this.api.delete(`/api/dashboard/spots/${spotId}`);
     return response.data;
   }
 }
+
 // Create a single instance of the service
 const dashboardService = new DashboardService();
 export default dashboardService;

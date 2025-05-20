@@ -1,212 +1,1 @@
-/**
- * Session Helper Utility
- * 
- * This utility helps manage user sessions and coordinates authentication processes.
- */
-
-import { ref } from 'vue';
-import { supabase } from '@/lib/supabase';
-import axios from '@/axios';
-
-// Configuration values with defaults
-const config = {
-  SYNC_TIMEOUT: 3000,
-  PING_TIMEOUT: 2000,
-  MIN_SYNC_INTERVAL: 60000,
-  DEFAULT_MONITOR_INTERVAL: 120000
-};
-
-// Session monitor state
-const monitorState = ref({
-  isRunning: false,
-  lastSyncTime: 0,
-  lastPingTime: 0,
-  interval: null,
-  pingSuccess: false,
-  syncSuccess: false
-});
-
-/**
- * Configure the session monitor
- * @param {object} options - Configuration options
- */
-export function configureSessionMonitor(options = {}) {
-  // Update configuration with provided values
-  Object.assign(config, options);
-  console.log('Session monitor configured', config);
-}
-
-/**
- * Refresh an expired token
- * @param {string} token - The expired token
- * @returns {Promise<string>} The new token
- */
-async function refreshToken(token) {
-  try {
-    const response = await axios.post('/api/auth/refresh-token', { token });
-    return response.data.token;
-  } catch (error) {
-    console.error('Failed to refresh token:', error);
-    throw error;
-  }
-}
-
-/**
- * Sync session with backend server
- * @param {object} session - Supabase session object
- * @returns {Promise<boolean>} Success status
- */
-export async function syncSessionWithBackend(session) {
-  if (!session || !session.access_token) {
-    console.error('Cannot sync session: No valid session provided');
-    return false;
-  }
-
-  try {
-    console.log('Syncing session with backend...');
-    
-    try {
-      // Try to sync session with backend
-      await axios.post('/api/auth/sync-session', 
-        { token: session.access_token },
-        { 
-          headers: { 
-            Authorization: `Bearer ${session.access_token}` 
-          },
-          withCredentials: true,
-          timeout: config.SYNC_TIMEOUT
-        }
-      );
-    } catch (error) {
-      // If token expired, try to refresh it
-      if (error.response?.status === 401 && error.response?.data?.error === 'jwt expired') {
-        const newToken = await refreshToken(session.access_token);
-        // Retry with new token
-        await axios.post('/api/auth/sync-session', 
-          { token: newToken },
-          { 
-            headers: { 
-              Authorization: `Bearer ${newToken}` 
-            },
-            withCredentials: true,
-            timeout: config.SYNC_TIMEOUT
-          }
-        );
-      } else {
-        throw error;
-      }
-    }
-    
-    console.log('Session successfully synced with backend');
-    monitorState.value.lastSyncTime = Date.now();
-    monitorState.value.syncSuccess = true;
-    return true;
-  } catch (error) {
-    console.error('Failed to sync session with backend:', error);
-    monitorState.value.syncSuccess = false;
-    return false;
-  }
-}
-
-/**
- * Start session monitoring to keep the session alive and detect issues
- * @param {number} interval - Check interval in milliseconds
- * @returns {object} - Controller object with refresh and stop methods
- */
-export function startSessionMonitor(interval = config.DEFAULT_MONITOR_INTERVAL) {
-  let monitorInterval = null;
-  
-  const checkSession = async () => {
-    const now = Date.now();
-    
-    // Don't sync too frequently
-    if (now - monitorState.value.lastSyncTime < config.MIN_SYNC_INTERVAL) {
-      return;
-    }
-    
-    try {
-      // Check if the API is reachable first
-      if (now - monitorState.value.lastPingTime > config.MIN_SYNC_INTERVAL / 2) {
-        await pingApi();
-      }
-      
-      // Only try to sync if API is reachable
-      if (monitorState.value.pingSuccess) {
-        await syncSession();
-      }
-    } catch (error) {
-      console.warn('Error in session monitor:', error);
-    }
-  };
-  
-  const pingApi = async () => {
-    try {
-      const response = await axios.get('/api/ping', { 
-        timeout: config.PING_TIMEOUT,
-        skipAuth: true
-      });
-      monitorState.value.pingSuccess = response.status === 200;
-      monitorState.value.lastPingTime = Date.now();
-      return true;
-    } catch (error) {
-      monitorState.value.pingSuccess = false;
-      monitorState.value.lastPingTime = Date.now();
-      return false;
-    }
-  };
-  
-  const syncSession = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      // Only try to sync if we have a valid session
-      if (session && session.access_token) {
-        await syncSessionWithBackend(session);
-      } else {
-        monitorState.value.syncSuccess = false;
-      }
-    } catch (error) {
-      monitorState.value.syncSuccess = false;
-    }
-    
-    monitorState.value.lastSyncTime = Date.now();
-  };
-  
-  const refresh = () => {
-    // Clear existing interval if any
-    if (monitorInterval) {
-      clearInterval(monitorInterval);
-    }
-    
-    // Start a new interval
-    monitorState.value.isRunning = true;
-    monitorInterval = setInterval(checkSession, interval);
-    
-    // Run immediately once
-    checkSession();
-  };
-  
-  // Start the monitor immediately
-  refresh();
-  
-  // Return controller object
-  return {
-    refresh,
-    stop: () => {
-      if (monitorInterval) {
-        clearInterval(monitorInterval);
-        monitorInterval = null;
-        monitorState.value.isRunning = false;
-      }
-    },
-    getState: () => monitorState.value,
-    pingNow: pingApi,
-    syncNow: syncSession
-  };
-}
-
-export default {
-  configureSessionMonitor,
-  startSessionMonitor,
-  syncSessionWithBackend
-};
+/** * Session Helper Utility *  * This utility helps manage user sessions and coordinates authentication processes. */import { ref } from 'vue';import { supabase } from '@/lib/supabase';import axios from '@/axios';// Configuration values with defaultsconst config = {  SYNC_TIMEOUT: 3000,  PING_TIMEOUT: 2000,  MIN_SYNC_INTERVAL: 60000,  DEFAULT_MONITOR_INTERVAL: 120000};// Session monitor stateconst monitorState = ref({  isRunning: false,  lastSyncTime: 0,  lastPingTime: 0,  interval: null,  pingSuccess: false,  syncSuccess: false});/** * Configure the session monitor * @param {object} options - Configuration options */export function configureSessionMonitor(options = {}) {  // Update configuration with provided values  Object.assign(config, options);}/** * Refresh an expired token * @param {string} token - The expired token * @returns {Promise<string>} The new token */async function refreshToken(token) {  try {    const response = await axios.post('/api/auth/refresh-token', { token });    return response.data.token;  } catch (error) {    console.error('Failed to refresh token:', error);    throw error;  }}/** * Sync session with backend server * @param {object} session - Supabase session object * @returns {Promise<boolean>} Success status */export async function syncSessionWithBackend(session) {  if (!session || !session.access_token) {    console.error('Cannot sync session: No valid session provided');    return false;  }  try {    try {      // Try to sync session with backend      await axios.post('/api/auth/sync-session',         { token: session.access_token },        {           headers: {             Authorization: `Bearer ${session.access_token}`           },          withCredentials: true,          timeout: config.SYNC_TIMEOUT        }      );    } catch (error) {      // If token expired, try to refresh it      if (error.response?.status === 401 && error.response?.data?.error === 'jwt expired') {        const newToken = await refreshToken(session.access_token);        // Retry with new token        await axios.post('/api/auth/sync-session',           { token: newToken },          {             headers: {               Authorization: `Bearer ${newToken}`             },            withCredentials: true,            timeout: config.SYNC_TIMEOUT          }        );      } else {        throw error;      }    }    monitorState.value.lastSyncTime = Date.now();    monitorState.value.syncSuccess = true;    return true;  } catch (error) {    console.error('Failed to sync session with backend:', error);    monitorState.value.syncSuccess = false;    return false;  }}/** * Start session monitoring to keep the session alive and detect issues * @param {number} interval - Check interval in milliseconds * @returns {object} - Controller object with refresh and stop methods */export function startSessionMonitor(interval = config.DEFAULT_MONITOR_INTERVAL) {  let monitorInterval = null;  const checkSession = async () => {    const now = Date.now();    // Don't sync too frequently    if (now - monitorState.value.lastSyncTime < config.MIN_SYNC_INTERVAL) {      return;    }    try {      // Check if the API is reachable first      if (now - monitorState.value.lastPingTime > config.MIN_SYNC_INTERVAL / 2) {        await pingApi();      }      // Only try to sync if API is reachable      if (monitorState.value.pingSuccess) {        await syncSession();      }    } catch (error) {      console.warn('Error in session monitor:', error);    }  };  const pingApi = async () => {    try {      const response = await axios.get('/api/ping', {         timeout: config.PING_TIMEOUT,        skipAuth: true      });      monitorState.value.pingSuccess = response.status === 200;      monitorState.value.lastPingTime = Date.now();      return true;    } catch (error) {      monitorState.value.pingSuccess = false;      monitorState.value.lastPingTime = Date.now();      return false;    }  };  const syncSession = async () => {    try {      const { data: { session } } = await supabase.auth.getSession();      // Only try to sync if we have a valid session      if (session && session.access_token) {        await syncSessionWithBackend(session);      } else {        monitorState.value.syncSuccess = false;      }    } catch (error) {      monitorState.value.syncSuccess = false;    }    monitorState.value.lastSyncTime = Date.now();  };  const refresh = () => {    // Clear existing interval if any    if (monitorInterval) {      clearInterval(monitorInterval);    }    // Start a new interval    monitorState.value.isRunning = true;    monitorInterval = setInterval(checkSession, interval);    // Run immediately once    checkSession();  };  // Start the monitor immediately  refresh();  // Return controller object  return {    refresh,    stop: () => {      if (monitorInterval) {        clearInterval(monitorInterval);        monitorInterval = null;        monitorState.value.isRunning = false;      }    },    getState: () => monitorState.value,    pingNow: pingApi,    syncNow: syncSession  };}export default {  configureSessionMonitor,  startSessionMonitor,  syncSessionWithBackend};

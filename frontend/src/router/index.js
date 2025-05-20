@@ -68,17 +68,14 @@ async function bookingAuthGuard(to, from, next) {
   // Special case: If this is the review route, just let it proceed
   // The ReviewView component will handle any booking validation
   if (to.name === 'Review') {
-    console.log(`Booking auth guard: Allowing direct access to review page for booking ID ${bookingId}`);
     isNavigationRunning = false;
     next();
     return;
   }
 
   try {
-    console.log(`Booking auth guard: Verifying booking ID ${bookingId}`);
     // Try to access the booking - the backend will verify permissions
     await axios.get(`/api/bookings/${bookingId}`);
-    console.log(`Booking auth guard: Successfully verified booking ID ${bookingId}`);
     isNavigationRunning = false;
     next();
   } catch (error) {
@@ -170,13 +167,6 @@ function ownerGuard(to, from, next) {
 // Dashboard guard for routes that require dashboard access
 function dashboardGuard(to, from, next) {
   const authStore = useAuthStore();
-  
-  console.log('Dashboard guard:', {
-    path: to.path,
-    isLoggedIn: authStore.isLoggedIn,
-    isOwner: authStore.isOwner,
-    user: authStore.user
-  });
   
   // If user isn't logged in at all, redirect to login
   if (!authStore.isLoggedIn || !authStore.token) {
@@ -350,30 +340,7 @@ const routes = [
     name: 'Offline',
     component: lazyLoad('OfflinePage')
   },
-  {
-    path: '/network-diagnostics',
-    name: 'NetworkDiagnostics',
-    component: () => import('@/views/NetworkDiagnosticView.vue'),
-    meta: {
-      requiresAuth: false // Allow access even when not authenticated
-    }
-  },
-  {
-    path: '/api-debug',
-    name: 'ApiDebug',
-    component: () => import('../views/ApiDebugView.vue'),
-    meta: {
-      requiresAuth: false // Allow access even when not authenticated
-    }
-  },
-  {
-    path: '/api-test',
-    name: 'ApiTest',
-    component: () => import('@/views/ApiTestView.vue'),
-    meta: {
-      requiresAuth: false // Allow access even when not authenticated
-    }
-  },
+
   {
     path: '/reset-password',
     name: 'ResetPassword',
@@ -382,14 +349,7 @@ const routes = [
       title: 'Reset Password'
     }
   },
-  {
-    path: '/auth-debug',
-    name: 'auth-debug',
-    component: () => import('@/views/AuthDebugView.vue'),
-    meta: {
-      title: 'Auth Debugging'
-    }
-  },
+
   {
     path: '/social-auth-success',
     name: 'SocialAuthSuccess',
@@ -430,7 +390,6 @@ router.beforeEach(async (to, from, next) => {
   
   // Handle direct OAuth callback to home page
   if (to.path === '/' && to.query.source === 'oauth') {
-    console.log('Router guard: Detected OAuth callback to home page')
     
     // We'll let the HomeView component handle the OAuth processing
     // Just clean up the URL to not show the OAuth parameters
@@ -453,37 +412,28 @@ router.beforeEach(async (to, from, next) => {
   // Ensure auth is initialized
   if (!authStore.initialized) {
     try {
-      console.log('Router guard: Auth not initialized, initializing now...')
       await authStore.initAuth()
-      console.log('Router guard: Auth initialization completed, isLoggedIn:', authStore.isLoggedIn)
     } catch (error) {
       console.error('Auth initialization failed:', error)
     }
-  } else {
-    console.log('Router guard: Auth already initialized, isLoggedIn:', authStore.isLoggedIn)
   }
 
   // Handle auth page access
   if (to.path === '/auth' && authStore.isLoggedIn) {
-    console.log('Router guard: Already authenticated, redirecting from auth page to home')
     return next('/')
   }
 
   // Quick check for routes not requiring auth
   if (!requiresAuth) {
-    console.log('Router guard: Route does not require auth, allowing access to', to.path)
     return next()
   }
 
   // Check authentication
   if (!authStore.isLoggedIn) {
-    console.log('Router guard: User not authenticated, redirecting to auth page from', to.path)
     return next({
       path: '/auth',
       query: { redirect: to.fullPath }
     })
-  } else {
-    console.log('Router guard: User is authenticated, allowing access to', to.path)
   }
 
   // Check seller/renter requirements

@@ -1,1503 +1,1 @@
-<template>
-  <div class="account-view">
-    <div v-if="loading" class="loading">
-      <div class="spinner"></div>
-      <p>Loading account information...</p>
-    </div>
-    <div v-else-if="error" class="error">
-      <p>{{ error }}</p>
-      <button @click="loadUserData">Retry</button>
-    </div>
-    <div v-else class="account-content">
-      <!-- Main User Info Section -->
-      <div class="main-info-section">
-        <div class="user-profile-card">
-          <div class="profile-header">
-            <div class="user-avatar">
-              <div class="avatar-circle">
-                {{ user?.full_name?.charAt(0)?.toUpperCase() || 'U' }}
-              </div>
-              <div class="online-status"></div>
-            </div>
-            <div class="user-title">
-              <h1>{{ user?.full_name || 'User' }}</h1>
-              <div class="account-type-badge" :class="{ 'owner': user?.isowner }">
-                {{ user?.isowner ? 'Owner' : 'Guest' }}
-              </div>
-            </div>
-          </div>
-
-          <div class="profile-details">
-            <div class="detail-item">
-              <div class="detail-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                  <polyline points="22,6 12,13 2,6"></polyline>
-                </svg>
-              </div>
-              <div class="detail-content">
-                <span class="label">Email</span>
-                <span class="value">{{ user?.email }}</span>
-              </div>
-            </div>
-
-            <div class="detail-item">
-              <div class="detail-icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                  <line x1="16" y1="2" x2="16" y2="6"></line>
-                  <line x1="8" y1="2" x2="8" y2="6"></line>
-                  <line x1="3" y1="10" x2="21" y2="10"></line>
-                </svg>
-              </div>
-              <div class="detail-content">
-                <span class="label">Member since</span>
-                <span class="value">{{ formatDate(user?.created_at) }}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="profile-actions">
-            <button class="action-button" @click="activeTab = 'password'">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-              </svg>
-              Change Password
-            </button>
-            <button class="action-button" @click="activeTab = 'upcoming'">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                <line x1="16" y1="2" x2="16" y2="6"></line>
-                <line x1="8" y1="2" x2="8" y2="6"></line>
-                <line x1="3" y1="10" x2="21" y2="10"></line>
-              </svg>
-              View Bookings
-            </button>
-          </div>
-        </div>
-
-        <div class="quick-stats">
-          <div class="stat-card" @click="activeTab = 'upcoming'">
-            <div class="stat-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-                <polyline points="10 9 9 9 8 9"></polyline>
-              </svg>
-            </div>
-            <span class="stat-value">{{ totalBookings }}</span>
-            <span class="stat-label">Total Bookings</span>
-          </div>
-
-          <div class="stat-card" @click="activeTab = 'upcoming'">
-            <div class="stat-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
-              </svg>
-            </div>
-            <span class="stat-value">{{ upcomingBookingsCount }}</span>
-            <span class="stat-label">Upcoming</span>
-          </div>
-
-          <div class="stat-card" @click="activeTab = 'previous'">
-            <div class="stat-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-              </svg>
-            </div>
-            <span class="stat-value">{{ previousBookingsCount }}</span>
-            <span class="stat-label">Previous</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Tabs Section -->
-      <div class="tabs-section">
-        <div class="tabs">
-          <button 
-            v-for="tab in tabs" 
-            :key="tab.id"
-            :class="['tab-button', { active: activeTab === tab.id }]"
-            @click="activeTab = tab.id"
-          >
-            <span class="tab-icon">{{ tab.icon }}</span>
-            <span class="tab-label">{{ tab.label }}</span>
-          </button>
-        </div>
-
-        <div class="tab-content">
-          <!-- Password Tab -->
-          <div v-if="activeTab === 'password'" class="section">
-            <div class="section-header">
-              <h2>Security Settings</h2>
-              <p class="section-description">Update your password to keep your account secure</p>
-            </div>
-            <form @submit.prevent="changePassword" class="password-form">
-              <div class="form-group">
-                <label for="currentPassword">Current Password</label>
-                <div class="password-input-wrapper">
-                  <input
-                    id="currentPassword" 
-                    v-model="passwordData.currentPassword" 
-                    :type="showCurrentPassword ? 'text' : 'password'"
-                    placeholder="Enter current password"
-                    required
-                  >
-                  <button type="button" @click="togglePasswordVisibility('current')" class="password-toggle">
-                    {{ showCurrentPassword ? 'Hide' : 'Show' }}
-                  </button>
-                </div>
-              </div>
-              <div class="form-group">
-                <label for="newPassword">New Password</label>
-                <div class="password-input-wrapper">
-                  <input
-                    id="newPassword" 
-                    v-model="passwordData.newPassword" 
-                    :type="showNewPassword ? 'text' : 'password'"
-                    placeholder="Enter new password"
-                    required
-                  >
-                  <button type="button" @click="togglePasswordVisibility('new')" class="password-toggle">
-                    {{ showNewPassword ? 'Hide' : 'Show' }}
-                  </button>
-                </div>
-              </div>
-              <div class="form-group">
-                <label for="confirmPassword">Confirm New Password</label>
-                <div class="password-input-wrapper">
-                  <input
-                    id="confirmPassword" 
-                    v-model="passwordData.confirmPassword" 
-                    :type="showConfirmPassword ? 'text' : 'password'"
-                    placeholder="Confirm new password"
-                    required
-                  >
-                  <button type="button" @click="togglePasswordVisibility('confirm')" class="password-toggle">
-                    {{ showConfirmPassword ? 'Hide' : 'Show' }}
-                  </button>
-                </div>
-              </div>
-              <button type="submit" :disabled="changingPassword" class="save-button">
-                {{ changingPassword ? 'Updating...' : 'Update Password' }}
-              </button>
-            </form>
-          </div>
-
-          <!-- Bookings Tabs -->
-          <div v-if="activeTab === 'upcoming'" class="section">
-            <div class="section-header">
-              <h2>Upcoming Bookings</h2>
-              <p class="section-description">Your future camping adventures</p>
-            </div>
-            <div v-if="loadingBookings" class="loading">
-              <div class="spinner"></div>
-              <p>Loading bookings...</p>
-            </div>
-            <div v-else-if="upcomingBookings.length === 0" class="no-bookings">
-              <p>No upcoming bookings found</p>
-            </div>            <div v-else class="bookings-grid">              <div v-for="booking in upcomingBookings" :key="booking.id" class="booking-card">
-                <div class="booking-info">
-                  <div class="booking-header">
-                    <h3 class="booking-title">{{ booking.spot?.name || booking.spot?.title || booking.camping_spot?.title || booking.camping_spot?.name || booking.campsite?.name || booking.campsite?.title || 'Camping Spot' }}</h3>
-                    <span class="booking-status" :class="getStatusClass(booking.status)">
-                      {{ getStatusText(booking.status) }}
-                    </span>
-                  </div>
-                  <div class="booking-dates">
-                    <span class="date-value">{{ formatDate(booking.start_date) }} - {{ formatDate(booking.end_date) }}</span>
-                  </div>
-                  <div class="booking-actions">
-                    <button 
-                      class="info-button"
-                      @click="showBookingDetails(booking)"
-                    >
-                      More Info
-                    </button>
-                    <button 
-                      v-if="booking.status === 'Confirmed'"
-                      @click="openCancelModal(booking)"
-                      class="cancel-button"
-                      :disabled="cancellingBooking === booking.id"
-                    >
-                      {{ cancellingBooking === booking.id ? 'Cancelling...' : 'Cancel Booking' }}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="activeTab === 'previous'" class="section">
-            <div class="section-header">
-              <h2>Previous Bookings</h2>
-              <p class="section-description">Your past camping experiences</p>
-            </div>
-            <div v-if="loadingBookings" class="loading">
-              <div class="spinner"></div>
-              <p>Loading bookings...</p>
-            </div>
-            <div v-else-if="previousBookings.length === 0" class="no-bookings">
-              <p>No previous bookings found</p>
-            </div>            <div v-else class="bookings-grid">              <div v-for="booking in previousBookings" :key="booking.id" class="booking-card">
-                <div class="booking-info">
-                  <div class="booking-header">
-                    <h3 class="booking-title">{{ booking.spot?.name || booking.spot?.title || booking.camping_spot?.title || booking.camping_spot?.name || booking.campsite?.name || booking.campsite?.title || 'Camping Spot' }}</h3>
-                    <span class="booking-status" :class="getStatusClass(booking.status)">
-                      {{ getStatusText(booking.status) }}
-                    </span>
-                  </div>
-                  <div class="booking-dates">
-                    <span class="date-value">{{ formatDate(booking.start_date) }} - {{ formatDate(booking.end_date) }}</span>
-                  </div>
-                  <div class="booking-actions">
-                    <button 
-                      class="info-button"
-                      @click="showBookingDetails(booking)"
-                    >
-                      More Info
-                    </button>                    <button
-                      v-if="isReviewEligible(booking) && !hasReview(booking)"
-                      class="review-button"
-                      @click="openReviewModal(booking)"
-                    >
-                      Leave Review
-                    </button>
-                    <div v-else-if="hasReview(booking)" class="has-review-badge">
-                      <span class="review-icon">★</span> Reviewed
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="activeTab === 'cancelled'" class="section">
-            <div class="section-header">
-              <h2>Cancelled Bookings</h2>
-              <p class="section-description">Your cancelled camping adventures</p>
-            </div>
-            <div v-if="loadingBookings" class="loading">
-              <div class="spinner"></div>
-              <p>Loading bookings...</p>
-            </div>
-            <div v-else-if="cancelledBookings.length === 0" class="no-bookings">
-              <p>No cancelled bookings found</p>
-            </div>            <div v-else class="bookings-grid">              <div v-for="booking in cancelledBookings" :key="booking.id" class="booking-card">
-                <div class="booking-info">
-                  <div class="booking-header">
-                    <h3 class="booking-title">{{ booking.spot?.name || booking.spot?.title || booking.camping_spot?.title || booking.camping_spot?.name || booking.campsite?.name || booking.campsite?.title || 'Camping Spot' }}</h3>
-                    <span class="booking-status" :class="getStatusClass(booking.status)">
-                      {{ getStatusText(booking.status) }}
-                    </span>
-                  </div>
-                  <div class="booking-dates">
-                    <span class="date-value">{{ formatDate(booking.start_date) }} - {{ formatDate(booking.end_date) }}</span>
-                  </div>
-                  <div class="booking-actions">
-                    <button 
-                      class="info-button"
-                      @click="showBookingDetails(booking)"
-                    >
-                      More Info
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Cancel Booking Modal -->
-    <div v-if="showCancelModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
-        <h3 class="text-xl font-semibold mb-4 text-red-600">Cancel Booking</h3>
-        <div class="mb-6">
-          <p class="text-gray-700 mb-4">
-            Are you sure you want to cancel this booking?
-          </p>
-          <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
-            <p class="font-bold mb-2">⚠️ Warning</p>
-            <p>This action cannot be undone and your payment will <span class="font-bold">not</span> be refunded.</p>
-          </div>
-        </div>
-        <div class="flex justify-end gap-4">
-          <button 
-            @click="showCancelModal = false"
-            class="px-4 py-2 text-gray-600 hover:text-gray-800"
-          >
-            Keep Booking
-          </button>
-          <button 
-            @click="confirmCancelBooking"
-            class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
-          >
-            Yes, Cancel Booking
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Booking Details Modal -->    <div v-if="showDetailsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
-        <div class="flex justify-between items-start mb-4">
-          <h3 class="text-xl font-semibold">{{ selectedBooking?.spot?.name || selectedBooking?.spot?.title || selectedBooking?.camping_spot?.title || 'Camping Spot' }}</h3>
-          <button @click="showDetailsModal = false" class="text-gray-500 hover:text-gray-700">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        
-        <div class="space-y-4">
-          <div class="booking-image" :style="{ backgroundImage: `url(${selectedBooking?.spot.images?.[0]?.image_url || '/placeholder.jpg'})` }">
-            <div class="booking-status" :class="getStatusClass(selectedBooking?.status)">
-              {{ getStatusText(selectedBooking?.status) }}
-            </div>
-          </div>
-
-          <div class="flex justify-between">
-            <div>
-              <p class="text-sm text-gray-500">Check-in</p>
-              <p class="font-medium">{{ formatDate(selectedBooking?.start_date) }}</p>
-            </div>
-            <div>
-              <p class="text-sm text-gray-500">Check-out</p>
-              <p class="font-medium">{{ formatDate(selectedBooking?.end_date) }}</p>
-            </div>
-          </div>
-          
-          <!-- Cost breakdown section -->
-          <div class="mt-4 pt-4 border-t border-gray-100">
-            <h4 class="font-medium mb-2">Cost Breakdown</h4>
-            <div class="space-y-2">
-              <div class="flex justify-between">
-                <p class="text-sm text-gray-600">Base price</p>
-                <p class="text-sm">€{{ typeof selectedBooking?.baseCost === 'number' ? selectedBooking.baseCost.toFixed(2) : parseFloat(selectedBooking?.baseCost).toFixed(2) }}</p>
-              </div>
-              <div class="flex justify-between">
-                <p class="text-sm text-gray-600">Service fee (10%)</p>
-                <p class="text-sm">€{{ typeof selectedBooking?.serviceFee === 'number' ? selectedBooking.serviceFee.toFixed(2) : parseFloat(selectedBooking?.serviceFee).toFixed(2) }}</p>
-              </div>
-              <div class="flex justify-between font-medium pt-2 border-t border-gray-100">
-                <p>Total</p>
-                <p>€{{ typeof selectedBooking?.totalCost === 'number' ? selectedBooking.totalCost.toFixed(2) : parseFloat(selectedBooking?.totalCost).toFixed(2) }}</p>
-              </div>
-            </div>
-          </div>
-            <!-- Cancel booking button removed from details view as requested -->
-          <!-- <div class="pt-4 border-t">
-            <button 
-              v-if="selectedBooking?.status === 'Confirmed'"
-              @click="openCancelModal(selectedBooking)"
-              class="w-full cancel-button"
-              :disabled="cancellingBooking === selectedBooking?.id"
-            >
-              {{ cancellingBooking === selectedBooking?.id ? 'Cancelling...' : 'Cancel Booking' }}
-            </button>
-          </div> -->
-        </div>
-      </div>
-    </div>
-
-    <!-- Review Modal -->
-    <div v-if="showReviewModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
-        <div class="flex justify-between items-start mb-4">
-          <h3 class="text-xl font-semibold">Leave a Review</h3>
-          <button @click="showReviewModal = false" class="text-gray-500 hover:text-gray-700">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        
-        <div v-if="reviewLoading" class="flex justify-center items-center py-10">
-          <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-green-700"></div>
-        </div>
-        
-        <div v-else-if="reviewError" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
-          {{ reviewError }}
-        </div>
-        
-        <div v-else-if="reviewSubmitted" class="text-center py-10">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-green-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-          </svg>
-          <h2 class="text-2xl font-semibold text-gray-800 mb-2">Thank You!</h2>
-          <p class="text-gray-600 mb-6">Your review has been submitted successfully.</p>
-          <button @click="closeReviewModal" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-400">
-            Close
-          </button>
-        </div>
-        
-        <div v-else>
-          <p class="text-gray-600 mb-6" v-if="selectedBookingForReview">
-            {{ selectedBookingForReview.spot?.name || 'Your Booking' }} &middot; {{ formatDate(selectedBookingForReview.start_date) }} - {{ formatDate(selectedBookingForReview.end_date) }}
-          </p>
-          
-          <div v-if="reviewExists && reviewData.rating > 0" class="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded mb-6">
-            You have already reviewed this booking. You can update your review below.
-          </div>
-          
-          <form @submit.prevent="submitReview" class="space-y-6">
-            <div>
-              <label class="block text-gray-700 text-sm font-medium mb-2">
-                How would you rate your overall experience?
-              </label>
-              <div class="flex items-center space-x-2 text-2xl">
-                <button 
-                  v-for="star in 5" 
-                  :key="star" 
-                  type="button"
-                  @click="reviewData.rating = star"
-                  class="focus:outline-none transition-colors"
-                  :class="{ 'text-yellow-400': star <= reviewData.rating, 'text-gray-300': star > reviewData.rating }"
-                >
-                  ★
-                </button>
-                <span class="ml-2 text-sm text-gray-500">{{ ratingText }}</span>
-              </div>
-            </div>
-            
-            <div>
-              <label for="comment" class="block text-gray-700 text-sm font-medium mb-2">
-                Share your experience (optional)
-              </label>
-              <textarea
-                id="comment"
-                v-model="reviewData.comment"
-                rows="5"
-                class="shadow-sm focus:ring-green-500 focus:border-green-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                placeholder="Tell others about your stay..."
-              ></textarea>
-            </div>
-            
-            <div class="pt-4">
-              <button
-                type="submit"
-                :disabled="!isReviewValid || reviewSubmitting"
-                class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-400 disabled:opacity-50"
-              >
-                {{ reviewSubmitting ? 'Submitting...' : (reviewExists ? 'Update Review' : 'Submit Review') }}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
-<script setup>
-import { ref, computed, onMounted, reactive } from 'vue'
-import { useRouter } from 'vue-router'
-import { useToast } from 'vue-toastification'
-import { useAuthStore } from '@/stores/auth'
-import axios from '@/axios'
-
-// Router and authentication utilities
-const router = useRouter()
-const toast = useToast()
-const authStore = useAuthStore()
-
-// User state
-const user = ref(null)
-const loading = ref(true)
-const error = ref(null)
-
-// Booking state
-const bookings = ref([])
-const loadingBookings = ref(false)
-const selectedBooking = ref(null)
-const showDetailsModal = ref(false)
-const cancellingBooking = ref(null)
-const showCancelModal = ref(false)
-
-// Password state
-const passwordData = reactive({
-  currentPassword: '',
-  newPassword: '',
-  confirmPassword: ''
-})
-const showCurrentPassword = ref(false)
-const showNewPassword = ref(false)
-const showConfirmPassword = ref(false)
-const changingPassword = ref(false)
-
-// Review state
-const showReviewModal = ref(false)
-const selectedBookingForReview = ref(null)
-const reviewExists = ref(false)
-const reviewLoading = ref(false)
-const reviewSubmitting = ref(false)
-const reviewSubmitted = ref(false)
-const reviewError = ref(null)
-const reviewData = reactive({
-  rating: 0,
-  comment: ''
-})
-
-// Tabs
-const activeTab = ref('upcoming')
-const tabs = [
-  { id: 'upcoming', label: 'Upcoming', icon: '📅' },
-  { id: 'previous', label: 'Previous', icon: '✓' },
-  { id: 'cancelled', label: 'Cancelled', icon: '❌' },
-  { id: 'password', label: 'Password', icon: '🔒' }
-]
-
-// Computed properties
-const upcomingBookings = computed(() => {
-  const filtered = bookings.value.filter(booking => {
-    return booking.status === 'Confirmed' && new Date(booking.end_date) >= new Date()
-  })
-  // Log the first booking to see its structure
-  if (filtered.length > 0) {
-    console.log('First upcoming booking data:', filtered[0])
-    console.log('Spot property:', filtered[0].spot)
-    console.log('camping_spot property:', filtered[0].camping_spot)
-  }
-  return filtered
-})
-
-const previousBookings = computed(() => {
-  return bookings.value.filter(booking => {
-    return booking.status === 'Completed' || (booking.status === 'Confirmed' && new Date(booking.end_date) < new Date())
-  })
-})
-
-const cancelledBookings = computed(() => {
-  return bookings.value.filter(booking => booking.status === 'Cancelled')
-})
-
-const totalBookings = computed(() => bookings.value.length)
-const upcomingBookingsCount = computed(() => upcomingBookings.value.length)
-const previousBookingsCount = computed(() => previousBookings.value.length)
-
-const ratingText = computed(() => {
-  const texts = [
-    'Select a rating',
-    'Poor',
-    'Fair',
-    'Good',
-    'Very Good',
-    'Excellent'
-  ]
-  return texts[reviewData.rating] || 'Select a rating'
-})
-
-const isReviewValid = computed(() => {
-  return reviewData.rating > 0
-})
-
-// Utility functions
-const formatDate = (dateString) => {
-  if (!dateString) return ''
-  
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', { 
-    month: 'short', 
-    day: 'numeric', 
-    year: 'numeric' 
-  })
-}
-
-const getStatusClass = (status) => {
-  if (!status) return ''
-  
-  switch (status.toLowerCase()) {
-    case 'confirmed': return 'status-confirmed'
-    case 'cancelled': return 'status-cancelled'
-    case 'completed': return 'status-completed'
-    case 'pending': return 'status-pending'
-    default: return ''
-  }
-}
-
-const getStatusText = (status) => {
-  if (!status) return 'Unknown'
-  
-  switch (status.toLowerCase()) {
-    case 'confirmed': return 'Confirmed'
-    case 'cancelled': return 'Cancelled'
-    case 'completed': return 'Completed'
-    case 'pending': return 'Pending'
-    default: return status
-  }
-}
-
-// Check if a booking has a valid review (rating > 0)
-const hasReview = (booking) => {
-  return booking.has_review === true
-}
-
-// Check if a booking is eligible for review (completed and past end date)
-const isReviewEligible = (booking) => {
-  // Must be a confirmed or completed booking
-  if (booking.status !== 'Confirmed' && booking.status !== 'Completed') {
-    return false
-  }
-  
-  // Must be in the past
-  const endDate = new Date(booking.end_date)
-  const now = new Date()
-  return endDate <= now
-}
-
-// Actions
-const loadUserData = async () => {
-  loading.value = true
-  error.value = null
-  
-  try {
-    if (!authStore.isLoggedIn) {
-      router.push('/auth')
-      return
-    }
-    
-    const token = await authStore.getAuthToken()
-    const response = await axios.get('/api/users/me', {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    })
-    
-    user.value = response.data
-    loadBookings()
-  } catch (err) {
-    console.error('Error loading user data:', err)
-    error.value = 'Failed to load your account information. Please try again.'
-    toast.error(error.value)
-  } finally {
-    loading.value = false
-  }
-}
-
-const loadBookings = async () => {
-  loadingBookings.value = true
-    try {
-    const token = await authStore.getAuthToken()
-    const response = await axios.get('/api/bookings/user', {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    })
-    
-    if (response.data && response.data.length > 0) {
-      console.log('DEBUG: First booking structure:', response.data[0])
-      console.log('DEBUG: spot property:', response.data[0].spot)
-      console.log('DEBUG: camping_spot property:', response.data[0].camping_spot)
-    }
-    bookings.value = response.data
-  } catch (err) {
-    console.error('Error loading bookings:', err)
-    toast.error('Failed to load your bookings. Please try again.')
-  } finally {
-    loadingBookings.value = false
-  }
-}
-
-const showBookingDetails = (booking) => {
-  selectedBooking.value = booking
-  showDetailsModal.value = true
-}
-
-const openCancelModal = (booking) => {
-  selectedBooking.value = booking
-  showCancelModal.value = true
-}
-
-const confirmCancelBooking = async () => {
-  if (!selectedBooking.value) return
-  
-  cancellingBooking.value = selectedBooking.value.id
-  
-  try {
-    const token = await authStore.getAuthToken()
-    await axios.patch(`/api/bookings/${selectedBooking.value.id}/cancel`, {}, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    })
-    
-    // Update booking status in the local state
-    const bookingIndex = bookings.value.findIndex(b => b.id === selectedBooking.value.id)
-    if (bookingIndex !== -1) {
-      bookings.value[bookingIndex].status = 'Cancelled'
-    }
-    
-    toast.success('Booking cancelled successfully')
-    showCancelModal.value = false
-    showDetailsModal.value = false
-  } catch (err) {
-    console.error('Error cancelling booking:', err)
-    toast.error('Failed to cancel booking. Please try again.')
-  } finally {
-    cancellingBooking.value = null
-  }
-}
-
-const togglePasswordVisibility = (field) => {
-  switch (field) {
-    case 'current':
-      showCurrentPassword.value = !showCurrentPassword.value
-      break
-    case 'new':
-      showNewPassword.value = !showNewPassword.value
-      break
-    case 'confirm':
-      showConfirmPassword.value = !showConfirmPassword.value
-      break
-  }
-}
-
-const changePassword = async () => {
-  if (passwordData.newPassword !== passwordData.confirmPassword) {
-    toast.error('New passwords do not match')
-    return
-  }
-  
-  changingPassword.value = true
-  
-  try {
-    const token = await authStore.getAuthToken()
-    const response = await axios.post('/api/users/change-password', {
-      current_password: passwordData.currentPassword,
-      new_password: passwordData.newPassword
-    }, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    })
-    
-    console.log('Password change response:', response.data)
-    toast.success('Password changed successfully')
-    
-    // Clear form
-    passwordData.currentPassword = ''
-    passwordData.newPassword = ''
-    passwordData.confirmPassword = ''
-    
-    // Go back to account overview
-    activeTab.value = 'upcoming'
-  } catch (err) {
-    console.error('Error changing password:', err)
-    const errorMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to change password. Please try again.'
-    toast.error(errorMsg)
-  } finally {
-    changingPassword.value = false
-  }
-}
-
-// Review functions
-const openReviewModal = async (booking) => {
-  // First check if the booking is eligible for review
-  if (!isReviewEligible(booking)) {
-    toast.error('This booking is not eligible for review. Only past bookings can be reviewed.')
-    return
-  }
-  
-  selectedBookingForReview.value = booking
-  showReviewModal.value = true
-  reviewLoading.value = true
-  reviewError.value = null
-  reviewSubmitted.value = false
-  
-  // Reset review form
-  reviewData.rating = 0
-  reviewData.comment = ''
-  reviewExists.value = false
-  
-  try {
-    // Check if a review already exists
-    const token = await authStore.getAuthToken()
-    console.log('Auth token type:', typeof token)
-    
-    // Ensure token is a string
-    if (token && typeof token === 'string') {
-      try {
-        const response = await axios.get(`/api/reviews/booking/${booking.id}`, {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        })
-        
-        if (response.data) {
-          // Pre-fill form with existing review data
-          reviewData.rating = response.data.rating || 0
-          reviewData.comment = response.data.comment || ''
-          reviewExists.value = true
-        }
-      } catch (err) {
-        // 404 error is expected if no review exists yet
-        if (err.response?.status !== 404) {
-          console.warn('Error checking for existing review:', err)
-        }
-      }
-    } else {
-      console.error('Invalid token format:', typeof token)
-    }
-  } catch (err) {
-    reviewError.value = 'Failed to load review information. Please try again.'
-    console.error('Error in openReviewModal:', err)
-  } finally {
-    reviewLoading.value = false
-  }
-}
-
-const submitReview = async () => {
-  if (!isReviewValid.value) {
-    toast.error('Please provide a valid rating before submitting')
-    return
-  }
-  
-  // Double check that the booking is eligible for review
-  if (!selectedBookingForReview.value || !isReviewEligible(selectedBookingForReview.value)) {
-    reviewError.value = 'This booking is not eligible for review'
-    toast.error(reviewError.value)
-    return
-  }
-  
-  reviewSubmitting.value = true
-  reviewError.value = null
-    try {
-    console.log('Submitting review for booking:', selectedBookingForReview.value.id)
-    const token = await authStore.getAuthToken(true) // Force token refresh for this important operation
-    console.log('submitReview token type:', typeof token)
-    
-    if (!token || typeof token !== 'string') {
-      throw new Error(`Invalid token format: ${typeof token}`)
-    }
-    
-    const bookingId = selectedBookingForReview.value.id
-    
-    const method = reviewExists.value ? 'PUT' : 'POST'
-    const endpoint = reviewExists.value 
-      ? `/api/reviews/booking/${bookingId}`
-      : `/api/reviews`
-    
-    console.log(`Review submission: Using ${method} request to ${endpoint}`)
-    
-    const reviewPayload = {
-      booking_id: parseInt(bookingId),
-      rating: reviewData.rating,
-      comment: reviewData.comment || null
-    }
-    
-    console.log('Review payload:', reviewPayload)
-    
-    const response = await axios({
-      method,
-      url: endpoint,
-      data: reviewPayload,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    
-    console.log('Review submission successful:', response.data)
-    
-    // Mark the booking as reviewed
-    const bookingIndex = bookings.value.findIndex(b => b.id === bookingId)
-    if (bookingIndex !== -1) {
-      bookings.value[bookingIndex].has_review = true
-    }
-    
-    toast.success('Your review has been submitted!')
-    reviewSubmitted.value = true
-    
-    // Close the modal after a short delay
-    setTimeout(() => {
-      showReviewModal.value = false
-    }, 1500)
-      } catch (err) {
-    console.error('Error submitting review:', err)
-    
-    // Detailed error logging
-    console.log('Error details:', {
-      status: err.response?.status,
-      statusText: err.response?.statusText,
-      data: err.response?.data,
-      message: err.message
-    })
-    
-    // User-friendly error message based on the error type
-    if (err.response?.status === 400) {
-      reviewError.value = err.response.data.error || 'Invalid review submission. Please check your input.'
-    } else if (err.response?.status === 401 || err.response?.status === 403) {
-      reviewError.value = 'Authentication error. Please log in again and retry.'
-      // Attempt to refresh auth
-      try {
-        await authStore.refreshToken()
-      } catch (refreshErr) {
-        console.error('Failed to refresh token:', refreshErr)
-      }
-    } else if (err.response?.status === 404) {
-      reviewError.value = 'The booking could not be found. Please refresh the page and try again.'
-    } else {
-      reviewError.value = err.response?.data?.error || err.message || 'Failed to submit review. Please try again.'
-    }
-    
-    toast.error(reviewError.value)
-  } finally {
-    reviewSubmitting.value = false
-  }
-}
-
-const closeReviewModal = () => {
-  showReviewModal.value = false
-  selectedBookingForReview.value = null
-  reviewSubmitted.value = false
-}
-
-// Initialize component
-onMounted(() => {
-  loadUserData()
-})
-</script>
-
-<style scoped>
-.account-view {
-  padding: 1.5rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-}
-
-.spinner {
-  width: 50px;
-  height: 50px;
-  border: 5px solid rgba(0, 128, 0, 0.1);
-  border-radius: 50%;
-  border-top-color: #FF5A5F;
-  animation: spin 1s linear infinite;
-  margin-bottom: 1rem;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.error {
-  background-color: #fef2f2;
-  color: #b91c1c;
-  padding: 1rem;
-  border: 1px solid #fecaca;
-  border-radius: 0.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.main-info-section {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-@media (max-width: 768px) {
-  .main-info-section {
-    grid-template-columns: 1fr;
-  }
-}
-
-.user-profile-card {
-  background-color: #ffffff;
-  border-radius: 0.75rem;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  padding: 1.5rem;
-}
-
-.profile-header {
-  display: flex;
-  align-items: center;
-  margin-bottom: 1.5rem;
-}
-
-.user-avatar {
-  position: relative;
-  margin-right: 1.25rem;
-}
-
-.avatar-circle {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;  background-color: #FF5A5F;
-  color: white;
-  font-size: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.online-status {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  background-color: #10B981;
-  border: 2px solid white;
-  border-radius: 50%;
-  bottom: 0;
-  right: 0;
-}
-
-.user-title h1 {
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin: 0 0 0.25rem 0;
-  color: #111827;
-}
-
-/* Account status badges removed as requested */
-
-.profile-details {
-  margin: 1rem 0 1.5rem 0;
-}
-
-.detail-item {
-  display: flex;
-  align-items: center;
-  margin-bottom: 0.75rem;
-}
-
-.detail-icon {
-  width: 36px;
-  height: 36px;
-  background-color: #F3F4F6;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 1rem;
-  color: #6B7280;
-}
-
-.detail-content {
-  display: flex;
-  flex-direction: column;
-}
-
-.label {
-  color: #6B7280;
-  font-size: 0.75rem;
-}
-
-.value {
-  color: #111827;
-  font-weight: 500;
-}
-
-.profile-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.action-button {
-  display: flex;
-  align-items: center;
-  background-color: #F9FAFB;
-  color: #111827;
-  padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
-  font-weight: 500;
-  border: 1px solid #E5E7EB;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.action-button:hover {
-  background-color: #F3F4F6;
-  border-color: #D1D5DB;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.action-button svg {
-  margin-right: 0.5rem;
-}
-
-.quick-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 1rem;
-}
-
-.stat-card {
-  background-color: #ffffff;
-  border-radius: 0.75rem;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  padding: 1.25rem;
-  text-align: center;
-  cursor: pointer;
-}
-
-.stat-icon {
-  display: flex;  justify-content: center;
-  margin-bottom: 0.75rem;
-  color: #FF5A5F;
-}
-
-.stat-value {
-  display: block;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 0.25rem;
-}
-
-.stat-label {
-  color: #6B7280;
-  font-size: 0.875rem;
-}
-
-.tabs-section {
-  background-color: #ffffff;
-  border-radius: 0.75rem;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-  margin-top: 2rem;
-}
-
-.tabs {
-  display: flex;
-  border-bottom: 1px solid #E5E7EB;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.tab-button {
-  padding: 0.75rem 1rem;
-  background-color: transparent;
-  border: none;
-  color: #6B7280;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-}
-
-.tab-button.active {  color: #FF5A5F;
-  border-bottom: 2px solid #FF5A5F;
-}
-
-.tab-icon {
-  margin-right: 0.5rem;
-}
-
-.tab-content {
-  padding: 1.5rem;
-}
-
-.section-header {
-  margin-bottom: 1.5rem;
-}
-
-.section-header h2 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #111827;
-  margin: 0 0 0.25rem 0;
-}
-
-.section-description {
-  color: #6B7280;
-  font-size: 0.875rem;
-}
-
-.no-bookings {
-  padding: 3rem 0;
-  text-align: center;
-  color: #6B7280;
-}
-
-.bookings-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 1rem;
-}
-
-.booking-card {
-  background-color: #ffffff;
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  border: 1px solid #E5E7EB;
-  overflow: hidden;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.booking-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.booking-info {
-  padding: 1rem;
-}
-
-.booking-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 0.5rem;
-}
-
-.booking-title {
-  font-size: 1rem;
-  font-weight: 600;
-  margin: 0;
-  color: #111827;
-}
-
-.booking-status {
-  padding: 0.25rem 0.5rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.status-confirmed {
-  background-color: #D1FAE5;
-  color: #065F46;
-}
-
-.status-cancelled {
-  background-color: #FEE2E2;
-  color: #B91C1C;
-}
-
-.status-completed {
-  background-color: #DBEAFE;
-  color: #1E40AF;
-}
-
-.status-pending {
-  background-color: #FEF3C7;
-  color: #92400E;
-}
-
-.booking-dates {
-  margin-bottom: 0.75rem;
-  color: #6B7280;
-  font-size: 0.875rem;
-}
-
-.date-value {
-  font-weight: 500;
-}
-
-.booking-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-.info-button, .cancel-button, .review-button {
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  border: none;
-  flex: 1;
-  transition: all 0.3s ease;
-}
-
-.info-button:hover, .cancel-button:hover, .review-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.info-button {
-  background-color: #F3F4F6;
-  color: #111827;
-}
-
-.cancel-button {
-  background-color: #FEE2E2;
-  color: #B91C1C;
-}
-
-.review-button {
-  background-color: #D1FAE5;
-  color: #065F46;
-}
-
-.has-review-badge {
-  display: flex;
-  align-items: center;
-  background-color: #F3F4F6;
-  color: #111827;
-  padding: 0.5rem 0.75rem;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-.review-icon {
-  color: #F59E0B;
-  margin-right: 0.25rem;
-}
-
-.password-form {
-  max-width: 500px;
-}
-
-.form-group {
-  margin-bottom: 1.5rem;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 500;
-  color: #374151;
-}
-
-.password-input-wrapper {
-  position: relative;
-}
-
-.password-input-wrapper input {
-  width: 100%;
-  padding: 0.5rem 1rem;
-  padding-right: 4rem;
-  border: 1px solid #D1D5DB;
-  border-radius: 0.375rem;
-  font-size: 1rem;
-}
-
-.password-toggle {
-  position: absolute;
-  right: 0.5rem;
-  top: 50%;
-  transform: translateY(-50%);
-  background: transparent;
-  border: none;
-  color: #6B7280;
-  font-size: 0.875rem;
-  cursor: pointer;
-}
-
-.save-button {  background-color: #FF5A5F;
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 0.375rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.save-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  background-color: #E74E53;
-}
-
-.save-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.booking-image {
-  height: 200px;
-  background-size: cover;
-  background-position: center;
-  position: relative;
-  border-radius: 0.375rem;
-  margin-bottom: 1rem;
-}
-
-.booking-image .booking-status {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-}
-
-/* Fix for modals */
-.fixed {
-  position: fixed;
-}
-
-.inset-0 {
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-}
-
-.bg-black {
-  background-color: rgba(0, 0, 0, 0.5);
-}
-
-.bg-opacity-50 {
-  background-color: rgba(0, 0, 0, 0.5);
-}
-
-.flex {
-  display: flex;
-}
-
-.items-center {
-  align-items: center;
-}
-
-.justify-center {
-  justify-content: center;
-}
-
-.z-50 {
-  z-index: 50;
-}
-
-.p-4 {
-  padding: 1rem;
-}
-
-.bg-white {
-  background-color: white;
-}
-
-.rounded-lg {
-  border-radius: 0.5rem;
-}
-
-.p-6 {
-  padding: 1.5rem;
-}
-
-.max-w-md {
-  max-width: 28rem;
-}
-
-.w-full {
-  width: 100%;
-}
-
-.mx-4 {
-  margin-left: 1rem;
-  margin-right: 1rem;
-}
-
-.shadow-xl {
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-}
-</style>
+<template>  <div class="account-view">    <div v-if="loading" class="loading">      <div class="spinner"></div>      <p>Loading account information...</p>    </div>    <div v-else-if="error" class="error">      <p>{{ error }}</p>      <button @click="loadUserData">Retry</button>    </div>    <div v-else class="account-content">      <!-- Main User Info Section -->      <div class="main-info-section">        <div class="user-profile-card">          <div class="profile-header">            <div class="user-avatar">              <div class="avatar-circle">                {{ user?.full_name?.charAt(0)?.toUpperCase() || 'U' }}              </div>              <div class="online-status"></div>            </div>            <div class="user-title">              <h1>{{ user?.full_name || 'User' }}</h1>              <div class="account-type-badge" :class="{ 'owner': user?.isowner }">                {{ user?.isowner ? 'Owner' : 'Guest' }}              </div>            </div>          </div>          <div class="profile-details">            <div class="detail-item">              <div class="detail-icon">                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>                  <polyline points="22,6 12,13 2,6"></polyline>                </svg>              </div>              <div class="detail-content">                <span class="label">Email</span>                <span class="value">{{ user?.email }}</span>              </div>            </div>            <div class="detail-item">              <div class="detail-icon">                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>                  <line x1="16" y1="2" x2="16" y2="6"></line>                  <line x1="8" y1="2" x2="8" y2="6"></line>                  <line x1="3" y1="10" x2="21" y2="10"></line>                </svg>              </div>              <div class="detail-content">                <span class="label">Member since</span>                <span class="value">{{ formatDate(user?.created_at) }}</span>              </div>            </div>          </div>          <div class="profile-actions">            <button class="action-button" @click="activeTab = 'password'">              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>              </svg>              Change Password            </button>            <button class="action-button" @click="activeTab = 'upcoming'">              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>                <line x1="16" y1="2" x2="16" y2="6"></line>                <line x1="8" y1="2" x2="8" y2="6"></line>                <line x1="3" y1="10" x2="21" y2="10"></line>              </svg>              View Bookings            </button>          </div>        </div>        <div class="quick-stats">          <div class="stat-card" @click="activeTab = 'upcoming'">            <div class="stat-icon">              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>                <polyline points="14 2 14 8 20 8"></polyline>                <line x1="16" y1="13" x2="8" y2="13"></line>                <line x1="16" y1="17" x2="8" y2="17"></line>                <polyline points="10 9 9 9 8 9"></polyline>              </svg>            </div>            <span class="stat-value">{{ totalBookings }}</span>            <span class="stat-label">Total Bookings</span>          </div>          <div class="stat-card" @click="activeTab = 'upcoming'">            <div class="stat-icon">              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">                <circle cx="12" cy="12" r="10"></circle>                <polyline points="12 6 12 12 16 14"></polyline>              </svg>            </div>            <span class="stat-value">{{ upcomingBookingsCount }}</span>            <span class="stat-label">Upcoming</span>          </div>          <div class="stat-card" @click="activeTab = 'previous'">            <div class="stat-icon">              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">                <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>              </svg>            </div>            <span class="stat-value">{{ previousBookingsCount }}</span>            <span class="stat-label">Previous</span>          </div>        </div>      </div>      <!-- Tabs Section -->      <div class="tabs-section">        <div class="tabs">          <button             v-for="tab in tabs"             :key="tab.id"            :class="['tab-button', { active: activeTab === tab.id }]"            @click="activeTab = tab.id"          >            <span class="tab-icon">{{ tab.icon }}</span>            <span class="tab-label">{{ tab.label }}</span>          </button>        </div>        <div class="tab-content">          <!-- Password Tab -->          <div v-if="activeTab === 'password'" class="section">            <div class="section-header">              <h2>Security Settings</h2>              <p class="section-description">Update your password to keep your account secure</p>            </div>            <form @submit.prevent="changePassword" class="password-form">              <div class="form-group">                <label for="currentPassword">Current Password</label>                <div class="password-input-wrapper">                  <input                    id="currentPassword"                     v-model="passwordData.currentPassword"                     :type="showCurrentPassword ? 'text' : 'password'"                    placeholder="Enter current password"                    required                  >                  <button type="button" @click="togglePasswordVisibility('current')" class="password-toggle">                    {{ showCurrentPassword ? 'Hide' : 'Show' }}                  </button>                </div>              </div>              <div class="form-group">                <label for="newPassword">New Password</label>                <div class="password-input-wrapper">                  <input                    id="newPassword"                     v-model="passwordData.newPassword"                     :type="showNewPassword ? 'text' : 'password'"                    placeholder="Enter new password"                    required                  >                  <button type="button" @click="togglePasswordVisibility('new')" class="password-toggle">                    {{ showNewPassword ? 'Hide' : 'Show' }}                  </button>                </div>              </div>              <div class="form-group">                <label for="confirmPassword">Confirm New Password</label>                <div class="password-input-wrapper">                  <input                    id="confirmPassword"                     v-model="passwordData.confirmPassword"                     :type="showConfirmPassword ? 'text' : 'password'"                    placeholder="Confirm new password"                    required                  >                  <button type="button" @click="togglePasswordVisibility('confirm')" class="password-toggle">                    {{ showConfirmPassword ? 'Hide' : 'Show' }}                  </button>                </div>              </div>              <button type="submit" :disabled="changingPassword" class="save-button">                {{ changingPassword ? 'Updating...' : 'Update Password' }}              </button>            </form>          </div>          <!-- Bookings Tabs -->          <div v-if="activeTab === 'upcoming'" class="section">            <div class="section-header">              <h2>Upcoming Bookings</h2>              <p class="section-description">Your future camping adventures</p>            </div>            <div v-if="loadingBookings" class="loading">              <div class="spinner"></div>              <p>Loading bookings...</p>            </div>            <div v-else-if="upcomingBookings.length === 0" class="no-bookings">              <p>No upcoming bookings found</p>            </div>            <div v-else class="bookings-grid">              <div v-for="booking in upcomingBookings" :key="booking.id" class="booking-card">                <div class="booking-info">                  <div class="booking-header">                    <h3 class="booking-title">{{ booking.spot?.name || booking.spot?.title || booking.camping_spot?.title || booking.camping_spot?.name || booking.campsite?.name || booking.campsite?.title || 'Camping Spot' }}</h3>                    <span class="booking-status" :class="getStatusClass(booking.status)">                      {{ getStatusText(booking.status) }}                    </span>                  </div>                  <div class="booking-dates">                    <span class="date-value">{{ formatDate(booking.start_date) }} - {{ formatDate(booking.end_date) }}</span>                  </div>                  <div class="booking-actions">                    <button                       class="info-button"                      @click="showBookingDetails(booking)"                    >                      More Info                    </button>                    <button                       v-if="booking.status === 'Confirmed'"                      @click="openCancelModal(booking)"                      class="cancel-button"                      :disabled="cancellingBooking === booking.id"                    >                      {{ cancellingBooking === booking.id ? 'Cancelling...' : 'Cancel Booking' }}                    </button>                  </div>                </div>              </div>            </div>          </div>          <div v-if="activeTab === 'previous'" class="section">            <div class="section-header">              <h2>Previous Bookings</h2>              <p class="section-description">Your past camping experiences</p>            </div>            <div v-if="loadingBookings" class="loading">              <div class="spinner"></div>              <p>Loading bookings...</p>            </div>            <div v-else-if="previousBookings.length === 0" class="no-bookings">              <p>No previous bookings found</p>            </div>            <div v-else class="bookings-grid">              <div v-for="booking in previousBookings" :key="booking.id" class="booking-card">                <div class="booking-info">                  <div class="booking-header">                    <h3 class="booking-title">{{ booking.spot?.name || booking.spot?.title || booking.camping_spot?.title || booking.camping_spot?.name || booking.campsite?.name || booking.campsite?.title || 'Camping Spot' }}</h3>                    <span class="booking-status" :class="getStatusClass(booking.status)">                      {{ getStatusText(booking.status) }}                    </span>                  </div>                  <div class="booking-dates">                    <span class="date-value">{{ formatDate(booking.start_date) }} - {{ formatDate(booking.end_date) }}</span>                  </div>                  <div class="booking-actions">                    <button                       class="info-button"                      @click="showBookingDetails(booking)"                    >                      More Info                    </button>                    <button                      v-if="isReviewEligible(booking) && !hasReview(booking)"                      class="review-button"                      @click="openReviewModal(booking)"                    >                      Leave Review                    </button>                    <div v-else-if="hasReview(booking)" class="has-review-badge">                      <span class="review-icon">★</span> Reviewed                    </div>                  </div>                </div>              </div>            </div>          </div>          <div v-if="activeTab === 'cancelled'" class="section">            <div class="section-header">              <h2>Cancelled Bookings</h2>              <p class="section-description">Your cancelled camping adventures</p>            </div>            <div v-if="loadingBookings" class="loading">              <div class="spinner"></div>              <p>Loading bookings...</p>            </div>            <div v-else-if="cancelledBookings.length === 0" class="no-bookings">              <p>No cancelled bookings found</p>            </div>            <div v-else class="bookings-grid">              <div v-for="booking in cancelledBookings" :key="booking.id" class="booking-card">                <div class="booking-info">                  <div class="booking-header">                    <h3 class="booking-title">{{ booking.spot?.name || booking.spot?.title || booking.camping_spot?.title || booking.camping_spot?.name || booking.campsite?.name || booking.campsite?.title || 'Camping Spot' }}</h3>                    <span class="booking-status" :class="getStatusClass(booking.status)">                      {{ getStatusText(booking.status) }}                    </span>                  </div>                  <div class="booking-dates">                    <span class="date-value">{{ formatDate(booking.start_date) }} - {{ formatDate(booking.end_date) }}</span>                  </div>                  <div class="booking-actions">                    <button                       class="info-button"                      @click="showBookingDetails(booking)"                    >                      More Info                    </button>                  </div>                </div>              </div>            </div>          </div>        </div>      </div>    </div>    <!-- Cancel Booking Modal -->    <div v-if="showCancelModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">      <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">        <h3 class="text-xl font-semibold mb-4 text-red-600">Cancel Booking</h3>        <div class="mb-6">          <p class="text-gray-700 mb-4">            Are you sure you want to cancel this booking?          </p>          <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">            <p class="font-bold mb-2">⚠️ Warning</p>            <p>This action cannot be undone and your payment will <span class="font-bold">not</span> be refunded.</p>          </div>        </div>        <div class="flex justify-end gap-4">          <button             @click="showCancelModal = false"            class="px-4 py-2 text-gray-600 hover:text-gray-800"          >            Keep Booking          </button>          <button             @click="confirmCancelBooking"            class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"          >            Yes, Cancel Booking          </button>        </div>      </div>    </div>    <!-- Booking Details Modal -->    <div v-if="showDetailsModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">      <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">        <div class="flex justify-between items-start mb-4">          <h3 class="text-xl font-semibold">{{ selectedBooking?.spot?.name || selectedBooking?.spot?.title || selectedBooking?.camping_spot?.title || 'Camping Spot' }}</h3>          <button @click="showDetailsModal = false" class="text-gray-500 hover:text-gray-700">            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />            </svg>          </button>        </div>        <div class="space-y-4">          <div class="booking-image" :style="{ backgroundImage: `url(${selectedBooking?.spot.images?.[0]?.image_url || '/placeholder.jpg'})` }">            <div class="booking-status" :class="getStatusClass(selectedBooking?.status)">              {{ getStatusText(selectedBooking?.status) }}            </div>          </div>          <div class="flex justify-between">            <div>              <p class="text-sm text-gray-500">Check-in</p>              <p class="font-medium">{{ formatDate(selectedBooking?.start_date) }}</p>            </div>            <div>              <p class="text-sm text-gray-500">Check-out</p>              <p class="font-medium">{{ formatDate(selectedBooking?.end_date) }}</p>            </div>          </div>          <!-- Cost breakdown section -->          <div class="mt-4 pt-4 border-t border-gray-100">            <h4 class="font-medium mb-2">Cost Breakdown</h4>            <div class="space-y-2">              <div class="flex justify-between">                <p class="text-sm text-gray-600">Base price</p>                <p class="text-sm">€{{ typeof selectedBooking?.baseCost === 'number' ? selectedBooking.baseCost.toFixed(2) : parseFloat(selectedBooking?.baseCost).toFixed(2) }}</p>              </div>              <div class="flex justify-between">                <p class="text-sm text-gray-600">Service fee (10%)</p>                <p class="text-sm">€{{ typeof selectedBooking?.serviceFee === 'number' ? selectedBooking.serviceFee.toFixed(2) : parseFloat(selectedBooking?.serviceFee).toFixed(2) }}</p>              </div>              <div class="flex justify-between font-medium pt-2 border-t border-gray-100">                <p>Total</p>                <p>€{{ typeof selectedBooking?.totalCost === 'number' ? selectedBooking.totalCost.toFixed(2) : parseFloat(selectedBooking?.totalCost).toFixed(2) }}</p>              </div>            </div>          </div>            <!-- Cancel booking button removed from details view as requested -->          <!-- <div class="pt-4 border-t">            <button               v-if="selectedBooking?.status === 'Confirmed'"              @click="openCancelModal(selectedBooking)"              class="w-full cancel-button"              :disabled="cancellingBooking === selectedBooking?.id"            >              {{ cancellingBooking === selectedBooking?.id ? 'Cancelling...' : 'Cancel Booking' }}            </button>          </div> -->        </div>      </div>    </div>    <!-- Review Modal -->    <div v-if="showReviewModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">      <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">        <div class="flex justify-between items-start mb-4">          <h3 class="text-xl font-semibold">Leave a Review</h3>          <button @click="showReviewModal = false" class="text-gray-500 hover:text-gray-700">            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />            </svg>          </button>        </div>        <div v-if="reviewLoading" class="flex justify-center items-center py-10">          <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-green-700"></div>        </div>        <div v-else-if="reviewError" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">          {{ reviewError }}        </div>        <div v-else-if="reviewSubmitted" class="text-center py-10">          <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-green-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />          </svg>          <h2 class="text-2xl font-semibold text-gray-800 mb-2">Thank You!</h2>          <p class="text-gray-600 mb-6">Your review has been submitted successfully.</p>          <button @click="closeReviewModal" class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-400">            Close          </button>        </div>        <div v-else>          <p class="text-gray-600 mb-6" v-if="selectedBookingForReview">            {{ selectedBookingForReview.spot?.name || 'Your Booking' }} &middot; {{ formatDate(selectedBookingForReview.start_date) }} - {{ formatDate(selectedBookingForReview.end_date) }}          </p>          <div v-if="reviewExists && reviewData.rating > 0" class="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded mb-6">            You have already reviewed this booking. You can update your review below.          </div>          <form @submit.prevent="submitReview" class="space-y-6">            <div>              <label class="block text-gray-700 text-sm font-medium mb-2">                How would you rate your overall experience?              </label>              <div class="flex items-center space-x-2 text-2xl">                <button                   v-for="star in 5"                   :key="star"                   type="button"                  @click="reviewData.rating = star"                  class="focus:outline-none transition-colors"                  :class="{ 'text-yellow-400': star <= reviewData.rating, 'text-gray-300': star > reviewData.rating }"                >                  ★                </button>                <span class="ml-2 text-sm text-gray-500">{{ ratingText }}</span>              </div>            </div>            <div>              <label for="comment" class="block text-gray-700 text-sm font-medium mb-2">                Share your experience (optional)              </label>              <textarea                id="comment"                v-model="reviewData.comment"                rows="5"                class="shadow-sm focus:ring-green-500 focus:border-green-500 block w-full sm:text-sm border-gray-300 rounded-md"                placeholder="Tell others about your stay..."              ></textarea>            </div>            <div class="pt-4">              <button                type="submit"                :disabled="!isReviewValid || reviewSubmitting"                class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-400 disabled:opacity-50"              >                {{ reviewSubmitting ? 'Submitting...' : (reviewExists ? 'Update Review' : 'Submit Review') }}              </button>            </div>          </form>        </div>      </div>    </div>  </div></template><script setup>import { ref, computed, onMounted, reactive } from 'vue'import { useRouter } from 'vue-router'import { useToast } from 'vue-toastification'import { useAuthStore } from '@/stores/auth'import axios from '@/axios'// Router and authentication utilitiesconst router = useRouter()const toast = useToast()const authStore = useAuthStore()// User stateconst user = ref(null)const loading = ref(true)const error = ref(null)// Booking stateconst bookings = ref([])const loadingBookings = ref(false)const selectedBooking = ref(null)const showDetailsModal = ref(false)const cancellingBooking = ref(null)const showCancelModal = ref(false)// Password stateconst passwordData = reactive({  currentPassword: '',  newPassword: '',  confirmPassword: ''})const showCurrentPassword = ref(false)const showNewPassword = ref(false)const showConfirmPassword = ref(false)const changingPassword = ref(false)// Review stateconst showReviewModal = ref(false)const selectedBookingForReview = ref(null)const reviewExists = ref(false)const reviewLoading = ref(false)const reviewSubmitting = ref(false)const reviewSubmitted = ref(false)const reviewError = ref(null)const reviewData = reactive({  rating: 0,  comment: ''})// Tabsconst activeTab = ref('upcoming')const tabs = [  { id: 'upcoming', label: 'Upcoming', icon: '📅' },  { id: 'previous', label: 'Previous', icon: '✓' },  { id: 'cancelled', label: 'Cancelled', icon: '❌' },  { id: 'password', label: 'Password', icon: '🔒' }]// Computed propertiesconst upcomingBookings = computed(() => {  const filtered = bookings.value.filter(booking => {    return booking.status === 'Confirmed' && new Date(booking.end_date) >= new Date()  })  // Log the first booking to see its structure  if (filtered.length > 0) {  }  return filtered})const previousBookings = computed(() => {  return bookings.value.filter(booking => {    return booking.status === 'Completed' || (booking.status === 'Confirmed' && new Date(booking.end_date) < new Date())  })})const cancelledBookings = computed(() => {  return bookings.value.filter(booking => booking.status === 'Cancelled')})const totalBookings = computed(() => bookings.value.length)const upcomingBookingsCount = computed(() => upcomingBookings.value.length)const previousBookingsCount = computed(() => previousBookings.value.length)const ratingText = computed(() => {  const texts = [    'Select a rating',    'Poor',    'Fair',    'Good',    'Very Good',    'Excellent'  ]  return texts[reviewData.rating] || 'Select a rating'})const isReviewValid = computed(() => {  return reviewData.rating > 0})// Utility functionsconst formatDate = (dateString) => {  if (!dateString) return ''  const date = new Date(dateString)  return date.toLocaleDateString('en-US', {     month: 'short',     day: 'numeric',     year: 'numeric'   })}const getStatusClass = (status) => {  if (!status) return ''  switch (status.toLowerCase()) {    case 'confirmed': return 'status-confirmed'    case 'cancelled': return 'status-cancelled'    case 'completed': return 'status-completed'    case 'pending': return 'status-pending'    default: return ''  }}const getStatusText = (status) => {  if (!status) return 'Unknown'  switch (status.toLowerCase()) {    case 'confirmed': return 'Confirmed'    case 'cancelled': return 'Cancelled'    case 'completed': return 'Completed'    case 'pending': return 'Pending'    default: return status  }}// Check if a booking has a valid review (rating > 0)const hasReview = (booking) => {  return booking.has_review === true}// Check if a booking is eligible for review (completed and past end date)const isReviewEligible = (booking) => {  // Must be a confirmed or completed booking  if (booking.status !== 'Confirmed' && booking.status !== 'Completed') {    return false  }  // Must be in the past  const endDate = new Date(booking.end_date)  const now = new Date()  return endDate <= now}// Actionsconst loadUserData = async () => {  loading.value = true  error.value = null  try {    if (!authStore.isLoggedIn) {      router.push('/auth')      return    }    const token = await authStore.getAuthToken()    const response = await axios.get('/api/users/me', {      headers: {        Authorization: `Bearer ${token}`      }    })    user.value = response.data    loadBookings()  } catch (err) {    console.error('Error loading user data:', err)    error.value = 'Failed to load your account information. Please try again.'    toast.error(error.value)  } finally {    loading.value = false  }}const loadBookings = async () => {  loadingBookings.value = true    try {    const token = await authStore.getAuthToken()    const response = await axios.get('/api/bookings/user', {      headers: {        Authorization: `Bearer ${token}`      }    })    if (response.data && response.data.length > 0) {    }    bookings.value = response.data  } catch (err) {    console.error('Error loading bookings:', err)    toast.error('Failed to load your bookings. Please try again.')  } finally {    loadingBookings.value = false  }}const showBookingDetails = (booking) => {  selectedBooking.value = booking  showDetailsModal.value = true}const openCancelModal = (booking) => {  selectedBooking.value = booking  showCancelModal.value = true}const confirmCancelBooking = async () => {  if (!selectedBooking.value) return  cancellingBooking.value = selectedBooking.value.id  try {    const token = await authStore.getAuthToken()    await axios.patch(`/api/bookings/${selectedBooking.value.id}/cancel`, {}, {      headers: {        Authorization: `Bearer ${token}`      }    })    // Update booking status in the local state    const bookingIndex = bookings.value.findIndex(b => b.id === selectedBooking.value.id)    if (bookingIndex !== -1) {      bookings.value[bookingIndex].status = 'Cancelled'    }    toast.success('Booking cancelled successfully')    showCancelModal.value = false    showDetailsModal.value = false  } catch (err) {    console.error('Error cancelling booking:', err)    toast.error('Failed to cancel booking. Please try again.')  } finally {    cancellingBooking.value = null  }}const togglePasswordVisibility = (field) => {  switch (field) {    case 'current':      showCurrentPassword.value = !showCurrentPassword.value      break    case 'new':      showNewPassword.value = !showNewPassword.value      break    case 'confirm':      showConfirmPassword.value = !showConfirmPassword.value      break  }}const changePassword = async () => {  if (passwordData.newPassword !== passwordData.confirmPassword) {    toast.error('New passwords do not match')    return  }  changingPassword.value = true  try {    const token = await authStore.getAuthToken()    const response = await axios.post('/api/users/change-password', {      current_password: passwordData.currentPassword,      new_password: passwordData.newPassword    }, {      headers: {        Authorization: `Bearer ${token}`      }    })    toast.success('Password changed successfully')    // Clear form    passwordData.currentPassword = ''    passwordData.newPassword = ''    passwordData.confirmPassword = ''    // Go back to account overview    activeTab.value = 'upcoming'  } catch (err) {    console.error('Error changing password:', err)    const errorMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to change password. Please try again.'    toast.error(errorMsg)  } finally {    changingPassword.value = false  }}// Review functionsconst openReviewModal = async (booking) => {  // First check if the booking is eligible for review  if (!isReviewEligible(booking)) {    toast.error('This booking is not eligible for review. Only past bookings can be reviewed.')    return  }  selectedBookingForReview.value = booking  showReviewModal.value = true  reviewLoading.value = true  reviewError.value = null  reviewSubmitted.value = false  // Reset review form  reviewData.rating = 0  reviewData.comment = ''  reviewExists.value = false  try {    // Check if a review already exists    const token = await authStore.getAuthToken()    // Ensure token is a string    if (token && typeof token === 'string') {      try {        const response = await axios.get(`/api/reviews/booking/${booking.id}`, {          headers: {            Authorization: `Bearer ${token}`          }        })        if (response.data) {          // Pre-fill form with existing review data          reviewData.rating = response.data.rating || 0          reviewData.comment = response.data.comment || ''          reviewExists.value = true        }      } catch (err) {        // 404 error is expected if no review exists yet        if (err.response?.status !== 404) {          console.warn('Error checking for existing review:', err)        }      }    } else {      console.error('Invalid token format:', typeof token)    }  } catch (err) {    reviewError.value = 'Failed to load review information. Please try again.'    console.error('Error in openReviewModal:', err)  } finally {    reviewLoading.value = false  }}const submitReview = async () => {  if (!isReviewValid.value) {    toast.error('Please provide a valid rating before submitting')    return  }  // Double check that the booking is eligible for review  if (!selectedBookingForReview.value || !isReviewEligible(selectedBookingForReview.value)) {    reviewError.value = 'This booking is not eligible for review'    toast.error(reviewError.value)    return  }  reviewSubmitting.value = true  reviewError.value = null    try {    const token = await authStore.getAuthToken(true) // Force token refresh for this important operation    if (!token || typeof token !== 'string') {      throw new Error(`Invalid token format: ${typeof token}`)    }    const bookingId = selectedBookingForReview.value.id    const method = reviewExists.value ? 'PUT' : 'POST'    const endpoint = reviewExists.value       ? `/api/reviews/booking/${bookingId}`      : `/api/reviews`    const reviewPayload = {      booking_id: parseInt(bookingId),      rating: reviewData.rating,      comment: reviewData.comment || null    }    const response = await axios({      method,      url: endpoint,      data: reviewPayload,      headers: {        'Content-Type': 'application/json',        'Authorization': `Bearer ${token}`      }    })    // Mark the booking as reviewed    const bookingIndex = bookings.value.findIndex(b => b.id === bookingId)    if (bookingIndex !== -1) {      bookings.value[bookingIndex].has_review = true    }    toast.success('Your review has been submitted!')    reviewSubmitted.value = true    // Close the modal after a short delay    setTimeout(() => {      showReviewModal.value = false    }, 1500)      } catch (err) {    console.error('Error submitting review:', err)    // Detailed error logging    // User-friendly error message based on the error type    if (err.response?.status === 400) {      reviewError.value = err.response.data.error || 'Invalid review submission. Please check your input.'    } else if (err.response?.status === 401 || err.response?.status === 403) {      reviewError.value = 'Authentication error. Please log in again and retry.'      // Attempt to refresh auth      try {        await authStore.refreshToken()      } catch (refreshErr) {        console.error('Failed to refresh token:', refreshErr)      }    } else if (err.response?.status === 404) {      reviewError.value = 'The booking could not be found. Please refresh the page and try again.'    } else {      reviewError.value = err.response?.data?.error || err.message || 'Failed to submit review. Please try again.'    }    toast.error(reviewError.value)  } finally {    reviewSubmitting.value = false  }}const closeReviewModal = () => {  showReviewModal.value = false  selectedBookingForReview.value = null  reviewSubmitted.value = false}// Initialize componentonMounted(() => {  loadUserData()})</script><style scoped>.account-view {  padding: 1.5rem;  max-width: 1200px;  margin: 0 auto;}.loading {  display: flex;  flex-direction: column;  align-items: center;  justify-content: center;  padding: 2rem;}.spinner {  width: 50px;  height: 50px;  border: 5px solid rgba(0, 128, 0, 0.1);  border-radius: 50%;  border-top-color: #FF5A5F;  animation: spin 1s linear infinite;  margin-bottom: 1rem;}@keyframes spin {  to { transform: rotate(360deg); }}.error {  background-color: #fef2f2;  color: #b91c1c;  padding: 1rem;  border: 1px solid #fecaca;  border-radius: 0.5rem;  margin-bottom: 1.5rem;}.main-info-section {  display: grid;  grid-template-columns: 2fr 1fr;  gap: 1.5rem;  margin-bottom: 2rem;}@media (max-width: 768px) {  .main-info-section {    grid-template-columns: 1fr;  }}.user-profile-card {  background-color: #ffffff;  border-radius: 0.75rem;  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);  padding: 1.5rem;}.profile-header {  display: flex;  align-items: center;  margin-bottom: 1.5rem;}.user-avatar {  position: relative;  margin-right: 1.25rem;}.avatar-circle {  width: 72px;  height: 72px;  border-radius: 50%;  background-color: #FF5A5F;  color: white;  font-size: 30px;  display: flex;  align-items: center;  justify-content: center;}.online-status {  position: absolute;  width: 14px;  height: 14px;  background-color: #10B981;  border: 2px solid white;  border-radius: 50%;  bottom: 0;  right: 0;}.user-title h1 {  font-size: 1.5rem;  font-weight: 600;  margin: 0 0 0.25rem 0;  color: #111827;}/* Account status badges removed as requested */.profile-details {  margin: 1rem 0 1.5rem 0;}.detail-item {  display: flex;  align-items: center;  margin-bottom: 0.75rem;}.detail-icon {  width: 36px;  height: 36px;  background-color: #F3F4F6;  border-radius: 50%;  display: flex;  align-items: center;  justify-content: center;  margin-right: 1rem;  color: #6B7280;}.detail-content {  display: flex;  flex-direction: column;}.label {  color: #6B7280;  font-size: 0.75rem;}.value {  color: #111827;  font-weight: 500;}.profile-actions {  display: flex;  flex-wrap: wrap;  gap: 0.5rem;}.action-button {  display: flex;  align-items: center;  background-color: #F9FAFB;  color: #111827;  padding: 0.5rem 1rem;  border-radius: 0.375rem;  font-weight: 500;  border: 1px solid #E5E7EB;  cursor: pointer;  transition: all 0.3s ease;}.action-button:hover {  background-color: #F3F4F6;  border-color: #D1D5DB;  transform: translateY(-2px);  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);}.action-button svg {  margin-right: 0.5rem;}.quick-stats {  display: grid;  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));  gap: 1rem;}.stat-card {  background-color: #ffffff;  border-radius: 0.75rem;  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);  padding: 1.25rem;  text-align: center;  cursor: pointer;}.stat-icon {  display: flex;  justify-content: center;  margin-bottom: 0.75rem;  color: #FF5A5F;}.stat-value {  display: block;  font-size: 1.5rem;  font-weight: 600;  color: #111827;  margin-bottom: 0.25rem;}.stat-label {  color: #6B7280;  font-size: 0.875rem;}.tabs-section {  background-color: #ffffff;  border-radius: 0.75rem;  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);  overflow: hidden;  margin-top: 2rem;}.tabs {  display: flex;  border-bottom: 1px solid #E5E7EB;  overflow-x: auto;  -webkit-overflow-scrolling: touch;}.tab-button {  padding: 0.75rem 1rem;  background-color: transparent;  border: none;  color: #6B7280;  font-weight: 500;  cursor: pointer;  white-space: nowrap;  transition: all 0.2s ease;  display: flex;  align-items: center;}.tab-button.active {  color: #FF5A5F;  border-bottom: 2px solid #FF5A5F;}.tab-icon {  margin-right: 0.5rem;}.tab-content {  padding: 1.5rem;}.section-header {  margin-bottom: 1.5rem;}.section-header h2 {  font-size: 1.25rem;  font-weight: 600;  color: #111827;  margin: 0 0 0.25rem 0;}.section-description {  color: #6B7280;  font-size: 0.875rem;}.no-bookings {  padding: 3rem 0;  text-align: center;  color: #6B7280;}.bookings-grid {  display: grid;  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));  gap: 1rem;}.booking-card {  background-color: #ffffff;  border-radius: 0.5rem;  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);  border: 1px solid #E5E7EB;  overflow: hidden;  transition: transform 0.2s ease, box-shadow 0.2s ease;}.booking-card:hover {  transform: translateY(-2px);  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);}.booking-info {  padding: 1rem;}.booking-header {  display: flex;  justify-content: space-between;  align-items: flex-start;  margin-bottom: 0.5rem;}.booking-title {  font-size: 1rem;  font-weight: 600;  margin: 0;  color: #111827;}.booking-status {  padding: 0.25rem 0.5rem;  border-radius: 9999px;  font-size: 0.75rem;  font-weight: 500;}.status-confirmed {  background-color: #D1FAE5;  color: #065F46;}.status-cancelled {  background-color: #FEE2E2;  color: #B91C1C;}.status-completed {  background-color: #DBEAFE;  color: #1E40AF;}.status-pending {  background-color: #FEF3C7;  color: #92400E;}.booking-dates {  margin-bottom: 0.75rem;  color: #6B7280;  font-size: 0.875rem;}.date-value {  font-weight: 500;}.booking-actions {  display: flex;  flex-wrap: wrap;  gap: 0.5rem;  margin-top: 1rem;}.info-button, .cancel-button, .review-button {  padding: 0.5rem 0.75rem;  border-radius: 0.375rem;  font-size: 0.875rem;  font-weight: 500;  cursor: pointer;  border: none;  flex: 1;  transition: all 0.3s ease;}.info-button:hover, .cancel-button:hover, .review-button:hover {  transform: translateY(-2px);  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);}.info-button {  background-color: #F3F4F6;  color: #111827;}.cancel-button {  background-color: #FEE2E2;  color: #B91C1C;}.review-button {  background-color: #D1FAE5;  color: #065F46;}.has-review-badge {  display: flex;  align-items: center;  background-color: #F3F4F6;  color: #111827;  padding: 0.5rem 0.75rem;  border-radius: 0.375rem;  font-size: 0.875rem;  font-weight: 500;}.review-icon {  color: #F59E0B;  margin-right: 0.25rem;}.password-form {  max-width: 500px;}.form-group {  margin-bottom: 1.5rem;}.form-group label {  display: block;  margin-bottom: 0.5rem;  font-weight: 500;  color: #374151;}.password-input-wrapper {  position: relative;}.password-input-wrapper input {  width: 100%;  padding: 0.5rem 1rem;  padding-right: 4rem;  border: 1px solid #D1D5DB;  border-radius: 0.375rem;  font-size: 1rem;}.password-toggle {  position: absolute;  right: 0.5rem;  top: 50%;  transform: translateY(-50%);  background: transparent;  border: none;  color: #6B7280;  font-size: 0.875rem;  cursor: pointer;}.save-button {  background-color: #FF5A5F;  color: white;  border: none;  padding: 0.75rem 1.5rem;  border-radius: 0.375rem;  font-weight: 500;  cursor: pointer;  transition: all 0.3s ease;}.save-button:hover:not(:disabled) {  transform: translateY(-2px);  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);  background-color: #E74E53;}.save-button:disabled {  opacity: 0.5;  cursor: not-allowed;}.booking-image {  height: 200px;  background-size: cover;  background-position: center;  position: relative;  border-radius: 0.375rem;  margin-bottom: 1rem;}.booking-image .booking-status {  position: absolute;  top: 1rem;  right: 1rem;}/* Fix for modals */.fixed {  position: fixed;}.inset-0 {  top: 0;  right: 0;  bottom: 0;  left: 0;}.bg-black {  background-color: rgba(0, 0, 0, 0.5);}.bg-opacity-50 {  background-color: rgba(0, 0, 0, 0.5);}.flex {  display: flex;}.items-center {  align-items: center;}.justify-center {  justify-content: center;}.z-50 {  z-index: 50;}.p-4 {  padding: 1rem;}.bg-white {  background-color: white;}.rounded-lg {  border-radius: 0.5rem;}.p-6 {  padding: 1.5rem;}.max-w-md {  max-width: 28rem;}.w-full {  width: 100%;}.mx-4 {  margin-left: 1rem;  margin-right: 1rem;}.shadow-xl {  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);}</style>

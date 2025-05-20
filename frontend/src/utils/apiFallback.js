@@ -1,128 +1,1 @@
-import axios from '@/axios';
-
-/**
- * Fetches data with fallback from API to regular endpoint
- * 
- * @param {string|Object} endpoint - The endpoint to fetch from (without /api prefix) or an options object
- * @param {Object} [options] - Options for the request
- * @returns {Promise<any>} The response data
- */
-export async function fetchWithFallback(endpoint, options = {}) {
-  // Handle case where endpoint is passed as an object with paths
-  if (typeof endpoint === 'object' && endpoint.paths) {
-    return fetchWithPathFallback(endpoint.paths, {
-      ...endpoint,
-      ...options
-    });
-  }
-
-  const {
-    params = {},
-    headers = {},
-    method = 'get',
-    data = null,
-  } = options;
-
-  // Always include Accept header for JSON
-  const requestHeaders = {
-    'Accept': 'application/json',
-    ...headers
-  };
-
-  // Ensure endpoint is a string
-  const endpointStr = typeof endpoint === 'string' ? endpoint : '';
-  
-  // Standardize the endpoint format
-  const normalizedEndpoint = endpointStr.startsWith('/') ? endpointStr : `/${endpointStr}`;
-
-  try {
-    // Try the API endpoint first (with /api prefix)
-    console.log(`Trying API endpoint: /api${normalizedEndpoint}`);
-    const apiResponse = await axios({
-      method,
-      url: `/api${normalizedEndpoint}`,
-      params,
-      headers: requestHeaders,
-      data,
-    });
-
-    console.log(`Successfully fetched from /api${normalizedEndpoint}`);
-    return apiResponse.data;
-  } catch (apiError) {
-    // If API endpoint failed, try the regular endpoint
-    console.warn(`API endpoint failed, trying regular endpoint: ${normalizedEndpoint}`, apiError.message);
-
-    try {
-      const regularResponse = await axios({
-        method,
-        url: normalizedEndpoint,
-        params,
-        headers: requestHeaders,
-        data,
-        // Avoid infinite redirects
-        maxRedirects: 0,
-      });
-
-      // Check if we got HTML instead of JSON
-      if (typeof regularResponse.data === 'string' && regularResponse.data.includes('<!DOCTYPE html>')) {
-        throw new Error('Server returned HTML instead of JSON');
-      }
-
-      console.log(`Successfully fetched from ${normalizedEndpoint}`);
-      return regularResponse.data;
-    } catch (regularError) {
-      console.error('Both API and regular endpoints failed:', regularError.message);
-      throw regularError;
-    }
-  }
-}
-
-/**
- * Fetches data with multiple path fallbacks
- * 
- * @param {string[]} paths - Array of paths to try in order
- * @param {Object} options - Request options
- * @returns {Promise<any>} The response data
- */
-async function fetchWithPathFallback(paths, options = {}) {
-  if (!Array.isArray(paths) || paths.length === 0) {
-    throw new Error('At least one path must be provided');
-  }
-
-  const {
-    params = {},
-    headers = {},
-    method = 'get',
-    data = null,
-  } = options;
-
-  // Always include Accept header for JSON
-  const requestHeaders = {
-    'Accept': 'application/json',
-    ...headers
-  };
-
-  let lastError;
-  
-  for (const path of paths) {
-    try {
-      console.log(`Trying endpoint: ${path}`);
-      const response = await axios({
-        method,
-        url: path,
-        params,
-        headers: requestHeaders,
-        data,
-      });
-      
-      console.log(`Successfully fetched from ${path}`);
-      return response.data;
-    } catch (error) {
-      console.warn(`Failed to fetch from ${path}:`, error.message);
-      lastError = error;
-    }
-  }
-  
-  // If we've exhausted all paths, throw the last error
-  throw lastError;
-}
+import axios from '@/axios';/** * Fetches data with fallback from API to regular endpoint *  * @param {string|Object} endpoint - The endpoint to fetch from (without /api prefix) or an options object * @param {Object} [options] - Options for the request * @returns {Promise<any>} The response data */export async function fetchWithFallback(endpoint, options = {}) {  // Handle case where endpoint is passed as an object with paths  if (typeof endpoint === 'object' && endpoint.paths) {    return fetchWithPathFallback(endpoint.paths, {      ...endpoint,      ...options    });  }  const {    params = {},    headers = {},    method = 'get',    data = null,  } = options;  // Always include Accept header for JSON  const requestHeaders = {    'Accept': 'application/json',    ...headers  };  // Ensure endpoint is a string  const endpointStr = typeof endpoint === 'string' ? endpoint : '';  // Standardize the endpoint format  const normalizedEndpoint = endpointStr.startsWith('/') ? endpointStr : `/${endpointStr}`;  try {    // Try the API endpoint first (with /api prefix)    const apiResponse = await axios({      method,      url: `/api${normalizedEndpoint}`,      params,      headers: requestHeaders,      data,    });    return apiResponse.data;  } catch (apiError) {    // If API endpoint failed, try the regular endpoint    console.warn(`API endpoint failed, trying regular endpoint: ${normalizedEndpoint}`, apiError.message);    try {      const regularResponse = await axios({        method,        url: normalizedEndpoint,        params,        headers: requestHeaders,        data,        // Avoid infinite redirects        maxRedirects: 0,      });      // Check if we got HTML instead of JSON      if (typeof regularResponse.data === 'string' && regularResponse.data.includes('<!DOCTYPE html>')) {        throw new Error('Server returned HTML instead of JSON');      }      return regularResponse.data;    } catch (regularError) {      console.error('Both API and regular endpoints failed:', regularError.message);      throw regularError;    }  }}/** * Fetches data with multiple path fallbacks *  * @param {string[]} paths - Array of paths to try in order * @param {Object} options - Request options * @returns {Promise<any>} The response data */async function fetchWithPathFallback(paths, options = {}) {  if (!Array.isArray(paths) || paths.length === 0) {    throw new Error('At least one path must be provided');  }  const {    params = {},    headers = {},    method = 'get',    data = null,  } = options;  // Always include Accept header for JSON  const requestHeaders = {    'Accept': 'application/json',    ...headers  };  let lastError;  for (const path of paths) {    try {      const response = await axios({        method,        url: path,        params,        headers: requestHeaders,        data,      });      return response.data;    } catch (error) {      console.warn(`Failed to fetch from ${path}:`, error.message);      lastError = error;    }  }  // If we've exhausted all paths, throw the last error  throw lastError;}

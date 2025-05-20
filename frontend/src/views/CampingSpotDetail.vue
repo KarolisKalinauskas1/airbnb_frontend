@@ -20,7 +20,6 @@
       </div>
     </div>
   </div>
-
   <!-- Only show the spot details content if not user's own spot -->
   <div v-if="!isOwnSpot">
     <div class="min-h-screen bg-gray-50">
@@ -38,7 +37,6 @@
         >
           <span class="text-xl">←</span> Back to Campers
         </button>
-
         <!-- Header Section -->
         <div class="mb-8 flex flex-col md:flex-row md:justify-between md:items-start gap-4">
           <div>
@@ -62,7 +60,6 @@
             View on Map
           </button>
         </div>
-
         <!-- Image Gallery Layout -->
         <div class="relative mb-10">
           <!-- Main Large Image -->
@@ -89,7 +86,6 @@
               class="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white/90 text-gray-800 w-10 h-10 rounded-full flex items-center justify-center cursor-pointer shadow-lg transition-transform duration-200 hover:scale-110"
             >❯</button>
           </div>
-          
           <!-- Thumbnail Strip - Only show if there are images -->
           <div v-if="spot.images && spot.images.length > 0" class="flex gap-2 overflow-x-auto pb-2">
             <div v-for="(image, index) in spot.images.slice(0, 4)" 
@@ -111,7 +107,6 @@
             </div>
           </div>
         </div>
-
         <!-- Main Content with Improved Layout -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <!-- Left Column: Details -->
@@ -146,13 +141,11 @@
                 </div>
               </div>
             </div>
-
             <!-- Description -->
             <div class="prose max-w-none space-y-6 border-t border-b py-10">
               <h2 class="text-2xl font-semibold">About this spot</h2>
               <p class="text-gray-700 text-lg leading-relaxed whitespace-pre-line">{{ spot.description }}</p>
             </div>
-
             <!-- Amenities with Better Spacing -->
             <div class="space-y-6 py-6">
               <h2 class="text-2xl font-semibold">What this place offers</h2>
@@ -167,7 +160,6 @@
                 </div>
               </div>
             </div>
-
             <!-- Availability Calendar Section -->              <div class="border-t pt-10 mt-10">
               <h2 class="text-2xl font-semibold mb-6">Availability Calendar</h2>
               <div class="grid grid-cols-1 gap-8">
@@ -183,12 +175,10 @@
                 <!-- Price suggestion widget removed for security and user-friendliness -->
               </div>
             </div>
-
             <!-- Location Section -->
             <div class="mt-12 space-y-6">
               <section class="bg-white p-6 rounded-xl shadow-sm">
                 <h3 class="text-xl font-bold mb-4">Location</h3>
-                
                 <div v-if="mapError" class="text-center py-10 bg-gray-50 rounded-lg">
                   <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77-1.333.192 3 1.732 3z" />
@@ -209,7 +199,6 @@
               </section>
             </div>
           </div>
-
           <!-- Right Column: Booking Card -->
           <div class="lg:col-span-1">
             <div class="sticky top-8">
@@ -224,7 +213,6 @@
                     <span>{{ averageRating }} ({{ spot.reviews?.length || 0 }})</span>
                   </div>
                 </div>
-                
                 <!-- Owner's own spot warning - show instead of booking controls -->
                 <div v-if="isOwnSpot" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 my-4">
                   <div class="flex items-start">
@@ -242,7 +230,6 @@
                     </div>
                   </div>
                 </div>
-                
                 <!-- Only show booking elements if not owner's own spot -->
                 <div v-else class="space-y-4">
                   <DateRangeSelector
@@ -251,7 +238,6 @@
                     @dateChange="calculateTotal"
                     class="date-range-selector w-full"
                   />
-                  
                   <div class="mt-4">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Guests</label>
                     <select 
@@ -261,7 +247,6 @@
                       <option v-for="n in spot.max_guests" :key="n" :value="n">{{ n }} {{ n === 1 ? 'guest' : 'guests' }}</option>
                     </select>
                   </div>
-                  
                   <!-- Use the new CheckoutSummary component when dates are selected -->
                   <CheckoutSummary 
                     v-if="nights > 0 && spot"
@@ -269,13 +254,11 @@
                     :nights="nights"
                     :serviceFeePercent="10"
                   />
-                  
                   <!-- Add a warning if dates overlap with blocked dates -->
                   <div v-if="hasBlockedDates" class="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
                     <p class="font-medium">These dates are unavailable for booking.</p>
                     <p>Please select different dates.</p>
                   </div>
-
                   <!-- Show booking button based on user type -->
                   <button 
                     v-if="!hasBlockedDates && dates.startDate && dates.endDate"
@@ -283,7 +266,6 @@
                     class="w-full bg-gradient-to-r from-rose-500 to-red-600 text-white py-4 rounded-xl font-semibold hover:from-rose-600 hover:to-red-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"                  >
                     Reserve now
                   </button>
-
                   <!-- Show a disabled state when there are no dates selected -->
                   <button 
                     v-else-if="!hasBlockedDates && (!dates.startDate || !dates.endDate)" 
@@ -298,7 +280,6 @@
           </div>
         </div>
       </div>
-
       <!-- Owner Warning -->
       <div v-if="isOwner && !isOwnSpot" class="bg-yellow-50 border border-yellow-200 p-4 mb-6 rounded-lg">
         <div class="flex items-center">
@@ -311,7 +292,6 @@
           </div>
         </div>
       </div>
-
       <!-- Database connection error message -->
       <div v-if="dbConnectionError" class="max-w-3xl mx-auto my-20 p-8 bg-red-50 border border-red-200 rounded-lg text-center">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto mb-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -326,7 +306,6 @@
           Try Again
         </button>
       </div>
-
       <!-- Map Modal -->
       <div v-if="showMap" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
         <div class="bg-white rounded-lg w-full max-w-4xl p-4">
@@ -354,7 +333,6 @@
           </div>
         </div>
       </div>
-
       <!-- Image Gallery Modal -->
       <div v-if="showGallery && spot.images && spot.images.length > 0" class="fixed inset-0 bg-black bg-opacity-90 z-[9999] flex items-center justify-center">
         <button @click="closeGallery" 
@@ -376,7 +354,6 @@
     </div>
   </div>
 </template>
-
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -386,14 +363,11 @@ import { useAuthStore } from '@/stores/auth'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 import OpenStreetLocationMap from '@/components/OpenStreetLocationMap.vue'
 import AvailabilityCalendar from '@/components/AvailabilityCalendar.vue'
-import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue'
 import CheckoutSummary from '@/components/CheckoutSummary.vue'
-
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 const authStore = useAuthStore()
-
 const spot = ref(null)
 const loading = ref(true)
 const error = ref(null)
@@ -409,104 +383,70 @@ const showRetryButton = ref(false)
 const hasCheckedAvailability = ref(false)
 const availabilityLoading = ref(false)
 const availabilityError = ref(null)
-
 // Track if there are any blocking dates for the selected period
 const hasBlockedDates = ref(false)
-
 // Compute the number of nights
 const nights = computed(() => {
   if (!dates.value.startDate || !dates.value.endDate) return 0
-  
   const start = new Date(dates.value.startDate)
   const end = new Date(dates.value.endDate)
   return Math.round((end - start) / (1000 * 60 * 60 * 24))
 })
-
 // Calculate base price and total price with service fees
 const basePrice = computed(() => {
   if (!spot.value) return 0
   return spot.value.price_per_night * nights.value
 })
-
 const serviceFee = computed(() => {
   return basePrice.value * 0.10 // 10% service fee
 })
-
 const totalPrice = computed(() => {
   return basePrice.value + serviceFee.value
 })
-
 // Check if user is the owner of THIS specific spot
 const isOwnSpot = computed(() => {
   if (!authStore.publicUser || !spot.value) return false;
   const isOwner = authStore.publicUser.user_id === spot.value.owner_id;
-  
   // Debug logs to help identify ownership issues
   if (isOwner) {
-    console.log('User is the owner of this spot:', 
-      { userId: authStore.publicUser.user_id, spotOwnerId: spot.value.owner_id });
   }
-  
   return isOwner;
 });
-
 // Check if user is an owner generally
 const isOwner = computed(() => {
   const isOwnerAccount = authStore.publicUser?.isowner === 1;
-  
   // Debug log
   if (isOwnerAccount) {
-    console.log('User has an owner account type');
   }
-  
   return isOwnerAccount;
 });
-
 // Determine if the user can book the spot
-const canBook = computed(() => {
-  return authStore.isAuthenticated && 
-         !isOwnSpot.value &&
-         dates.value.startDate && 
-         dates.value.endDate && 
-         !hasBlockedDates.value;
-});
-
-// Calculate review statistics
+// Used for UI rendering conditions
 const averageRating = computed(() => {
   if (!spot.value || !spot.value.reviews || spot.value.reviews.length === 0) return 'No ratings'
-  
   const total = spot.value.reviews.reduce((acc, review) => acc + review.rating, 0)
   const average = total / spot.value.reviews.length
   return average.toFixed(1)
 })
-
 // Next image in the gallery
 const nextImage = () => {
   if (!spot.value?.images?.length) return
   activeImageIndex.value = (activeImageIndex.value + 1) % spot.value.images.length
 }
-
 // Previous image in the gallery
 const prevImage = () => {
   if (!spot.value?.images?.length) return
   activeImageIndex.value = (activeImageIndex.value - 1 + spot.value.images.length) % spot.value.images.length
 }
-
 // Open the image gallery
 const openGallery = () => {
   showGallery.value = true
 }
-
 // Close the image gallery
 const closeGallery = () => {
   showGallery.value = false
 }
-
-// Go back to campers list
-const goBackToCampers = () => {
-  router.push('/campers')
-}
-
+// Gallery is opened from template directly via @click="showGallery = true"
 // Save dates and guests to URL and sessionStorage for persistence
 const persistDatesToUrl = (startDate, endDate, guestCount) => {
   // Update URL query parameters
@@ -518,7 +458,6 @@ const persistDatesToUrl = (startDate, endDate, guestCount) => {
       g: guestCount
     }
   });
-  
   // Also save to sessionStorage for cross-page persistence
   sessionStorage.setItem('campersViewDates', JSON.stringify({
     startDate,
@@ -526,7 +465,6 @@ const persistDatesToUrl = (startDate, endDate, guestCount) => {
     timestamp: new Date().getTime()
   }));
 }
-
 // Open map safely
 const openMap = () => {
   if (!spot.value || !spot.value.location || 
@@ -535,38 +473,30 @@ const openMap = () => {
     toast.error("Location information is not available for this camping spot")
     return
   }
-  
   // Convert coordinates to numbers and validate
   const lat = Number(spot.value.location.latitute)
   const lng = Number(spot.value.location.longtitute)
-  
   if (isNaN(lat) || isNaN(lng)) {
     mapError.value = true
     toast.error("Invalid location coordinates for this camping spot")
     return
   }
-  
   showMap.value = true
 }
-
 // Close map
 const closeMap = () => {
   showMap.value = false
 }
-
 // Add this for the retry button
 const retryLoading = () => {
   loadSpotDetails()
 }
-
 // Check availability of the selected dates
 const checkAvailability = async () => {
   if (!dates.value.startDate || !dates.value.endDate || !spot.value) return
-  
   availabilityLoading.value = true
   hasBlockedDates.value = false
   availabilityError.value = null
-  
   try {
     // First try with the API endpoint
     try {
@@ -579,10 +509,8 @@ const checkAvailability = async () => {
         bypassThrottle: true,
         timeout: 15000 // Longer timeout for availability check
       })
-      
       // Check if dates are available
       hasBlockedDates.value = data.hasBlockedDates
-      
       if (hasBlockedDates.value) {
         availabilityError.value = 'Selected dates are not available for booking'
       }
@@ -597,37 +525,30 @@ const checkAvailability = async () => {
           bypassThrottle: true,
           timeout: 15000
         })
-        
         // Check if dates are available
         hasBlockedDates.value = data.hasBlockedDates
-        
         if (hasBlockedDates.value) {
           availabilityError.value = 'Selected dates are not available for booking'
         }
       } else {
         // Handle rate limiting specifically
         console.warn('Availability check rate limited:', apiError)
-        
         // Don't set hasBlockedDates to true just because of rate limiting
         // Instead, set a more appropriate error
         availabilityError.value = 'Unable to check availability right now. Please try again shortly.'
-        
         // Return without setting hasCheckedAvailability to true
         availabilityLoading.value = false
         return
       }
     }
-    
     hasCheckedAvailability.value = true
   } catch (error) {
     console.error('Failed to check availability:', error)
-    
     // Check for database connection errors
     if (error.response?.status === 503 || 
         error.response?.data?.code === 'P1001' || 
         error.response?.data?.code === 'DB_CONNECTION_ERROR' ||
         (error.response?.data?.error && error.response.data.error.includes('database'))) {
-      
       availabilityError.value = 'Database is currently unavailable. Unable to check availability.'
     } else if (error.code === 'ECONNABORTED') {
       availabilityError.value = 'Request timed out. Please try again.'
@@ -638,38 +559,30 @@ const checkAvailability = async () => {
     availabilityLoading.value = false
   }
 }
-
 // Handle blocked dates from calendar component
 const handleBlockedDates = (dates) => {
   blockedDates.value = dates
   checkDateOverlap()
 }
-
 // Check if selected dates overlap with blocked dates
 const checkDateOverlap = () => {
   if (!dates.value.startDate || !dates.value.endDate || blockedDates.value.length === 0) {
     hasBlockedDates.value = false
     return
   }
-  
   const start = new Date(dates.value.startDate)
   const end = new Date(dates.value.endDate)
-  
   start.setHours(0, 0, 0, 0)
   end.setHours(0, 0, 0, 0)
-  
   hasBlockedDates.value = blockedDates.value.some(block => {
     const blockStart = new Date(block.start_date)
     const blockEnd = new Date(block.end_date)
-    
     blockStart.setHours(0, 0, 0, 0)
     blockEnd.setHours(0, 0, 0, 0)
-    
     // Check if ranges overlap
     return (start <= blockEnd && end >= blockStart)
   })
 }
-
 // Watch for changes to dates and guests to persist them and check availability
 watch([() => dates.value.startDate, () => dates.value.endDate], 
   ([newStartDate, newEndDate]) => {
@@ -679,79 +592,59 @@ watch([() => dates.value.startDate, () => dates.value.endDate],
     }
   }
 )
-
 // Watch for changes to guests to persist them
 watch(() => guests.value, (newGuests) => {
   if (dates.value.startDate && dates.value.endDate) {
     persistDatesToUrl(dates.value.startDate, dates.value.endDate, newGuests)
   }
 })
-
 // Handle the booking process
 const handleBookNow = async () => {
-  console.log('handleBookNow called');
-  
   // Force an immediate recheck of ownership to add an additional safety layer
   if (authStore.publicUser && spot.value) {
     // Do a direct comparison rather than relying on computed property
     const isCurrentUserTheOwner = authStore.publicUser.user_id === spot.value.owner_id;
-    
     if (isCurrentUserTheOwner) {
-      console.log('SAFETY CHECK: User is trying to book their own spot:', 
-        { userId: authStore.publicUser.user_id, spotOwnerId: spot.value.owner_id });
       toast.error("You cannot book your own camping spot");
-      
       // Force an immediate redirect to dashboard
       router.push('/dashboard/spots');
       return; // Critical - stop execution here
     }
   }
-  
   // First check if user is trying to book their own spot
   if (isOwnSpot.value) {
-    console.log('User is trying to book their own spot');
     toast.error("You cannot book your own camping spot");
-    
     // Add a delay before redirecting to ensure the toast is seen
     setTimeout(() => {
       router.push('/dashboard/spots');
     }, 2000);
-    
     // Important: Return immediately to prevent any further booking logic from executing
     return;
   }
   // Check if user is an owner and this is their own spot - we already handled this case above
   // Commented out the general owner restriction - owners can now book other spots
   // if (isOwner.value) {
-  //   console.log('User is an owner trying to book a spot');
+  //   
   //   toast.error("Owner accounts cannot book spots. Please use a renter account.");
   //   return;
   // }
-
   // Validate date selection
   if (!dates.value.startDate || !dates.value.endDate) {
-    console.log('No dates selected');
     toast.warning('Please select check-in and check-out dates');
     return;
   }
-
   // Validate guest count
   if (guests.value < 1) {
-    console.log('Invalid guest count');
     toast.warning('Please specify at least 1 guest');
     return;
   }
-  
   // Check if dates overlap with blocked dates
   if (hasBlockedDates.value) {
-    console.log('Selected dates are blocked');
     toast.error('Selected dates are not available for booking');
     return;
   }
-
   // Check if user is logged in
   if (!authStore.isAuthenticated) {
-    console.log('User not logged in, redirecting to login');
     // Save booking details for after login
     const bookingDetails = {
       spotId: spot.value.camping_spot_id,
@@ -760,10 +653,8 @@ const handleBookNow = async () => {
       guests: guests.value,
       fromCampers: true
     };
-    
     // Store in sessionStorage for after login
     sessionStorage.setItem('pendingBooking', JSON.stringify(bookingDetails));
-    
     // Redirect to login with return URL
     router.push({
       path: '/auth',
@@ -777,17 +668,14 @@ const handleBookNow = async () => {
     });
     return;
   }
-
   // Ensure we have the user information
   if (!authStore.publicUser) {
-    console.log('Fetching user information');
     try {
       // Try to get the current session first
       const session = await authStore.getSupabaseSession();
       if (!session) {
         throw new Error('No active session');
       }
-
       // Make a request to get the public user info
       const response = await axios.get('/api/users/me');
       if (response.data) {
@@ -801,94 +689,63 @@ const handleBookNow = async () => {
       return;
     }
   }
-
   // Double check that we have the user information
   if (!authStore.publicUser?.user_id) {
     console.error('User information not available');
     toast.error('Unable to process booking. Please try again.');
     return;
   }
-  
-  console.log('Starting booking process');
   loading.value = true;
-  
   try {
-    console.log('Checking availability');
     // Double-check availability before proceeding
     await checkAvailability();
-    
     if (hasBlockedDates.value) {
-      console.log('Dates no longer available');
       toast.error('Sorry, these dates are no longer available');
       loading.value = false;
       return;
     }
-    
+    // Calculate base price and service fee
+    const baseAmount = basePrice.value;
+  loading.value = true;
+  try {
+    // Double-check availability before proceeding
+    await checkAvailability();
+    if (hasBlockedDates.value) {
+      toast.error('Sorry, these dates are no longer available');
+      loading.value = false;
+      return;
+    }
     // Calculate base price and service fee
     const baseAmount = basePrice.value;
     const serviceFeeAmount = serviceFee.value;
     const totalAmount = totalPrice.value;
     
-    console.log('Creating checkout session with data:', {
-      camper_id: spot.value.camping_spot_id,
-      user_id: authStore.publicUser.user_id,
-      start_date: dates.value.startDate,
-      end_date: dates.value.endDate,
-      number_of_guests: guests.value,
-      cost: baseAmount.toFixed(2),
-      service_fee: serviceFeeAmount.toFixed(2),
-      total: totalAmount.toFixed(2),
-      spot_name: spot.value.title,
-      spot_image: spot.value.images?.[0]?.image_url
-    });
-    
     // Prepare checkout session
-    const { data: sessionResponse } = await axios.post('/api/bookings/create-checkout-session', {
-      camper_id: spot.value.camping_spot_id,
-      user_id: authStore.publicUser.user_id,
-      start_date: dates.value.startDate,
-      end_date: dates.value.endDate,
-      number_of_guests: guests.value,
-      cost: baseAmount.toFixed(2),
-      service_fee: serviceFeeAmount.toFixed(2),
-      total: totalAmount.toFixed(2),
-      spot_name: spot.value.title,
-      spot_image: spot.value.images?.[0]?.image_url
     });
-    
-    console.log('Stripe session response:', sessionResponse);
-    
     if (!sessionResponse || !sessionResponse.url) {
       console.error('Invalid session response:', sessionResponse);
       throw new Error('Invalid response from server');
     }
-    
     // FINAL SAFETY CHECK: One last verification before redirecting to Stripe
     // This is our last chance to prevent an owner from booking their own spot
     if (authStore.publicUser && spot.value) {
       const currentUserId = parseInt(authStore.publicUser.user_id);
       const spotOwnerId = parseInt(spot.value.owner_id);
-      
       if (currentUserId === spotOwnerId) {
         console.error('CRITICAL SAFETY BLOCK: Prevented owner from booking their own spot');
         loading.value = false;
         toast.error("You cannot book your own camping spot");
-        
         // Force immediate redirect to dashboard instead of Stripe
         router.push('/dashboard/spots');
         return; // Exit without redirecting to Stripe
       }
     }
-    
     toast.success('Redirecting to payment...');
-    
     // Redirect to Stripe Checkout
-    console.log('Redirecting to:', sessionResponse.url);
     window.location.href = sessionResponse.url;
   } catch (error) {
     console.error('Booking Error:', error);
     loading.value = false;
-    
     if (error.response?.status === 401) {
       // Auth token expired or invalid
       toast.error('Your session has expired. Please log in again to continue.');
@@ -918,13 +775,11 @@ const handleBookNow = async () => {
     loading.value = false;
   }
 };
-
 // Handle price update (for owner)
 const handlePriceUpdate = (newPrice) => {
   if (!spot.value) return
   spot.value.price_per_night = newPrice
 }
-
 // Improved error handling for loading camping spot details
 const loadSpotDetails = async () => {
   const spotId = route.params.id
@@ -933,39 +788,26 @@ const loadSpotDetails = async () => {
     router.push('/campers')
     return
   }
-  
-  console.log('Loading camping spot details for ID:', spotId)
-  
   loading.value = true
   error.value = null
   dbConnectionError.value = false
-  mapError.value = false
-  showRetryButton.value = false
-  
-  try {
-    const response = await axios.get(`/api/camping-spots/${spotId}`, {
-      params: {
+// Price updates handled elsewhere
         startDate: dates.value.startDate || route.query.start,
         endDate: dates.value.endDate || route.query.end
       }
     })
-    
     if (!response || !response.data) {
       throw new Error('No data received from server')
     }
-    
     spot.value = response.data
-    
     // Make sure images is always an array
     if (!spot.value.images) {
       spot.value.images = []
     }
-    
     // Make sure amenities is always an array
     if (!spot.value.camping_spot_amenities) {
       spot.value.camping_spot_amenities = []
     }
-    
     // Make sure location exists
     if (!spot.value.location) {
       spot.value.location = {
@@ -973,7 +815,6 @@ const loadSpotDetails = async () => {
         country: { name: 'Unknown' }
       }
     }
-    
     // First check URL parameters for date information
     if (route.query.start) {
       dates.value.startDate = route.query.start
@@ -984,7 +825,6 @@ const loadSpotDetails = async () => {
     if (route.query.g) {
       guests.value = parseInt(route.query.g) || 1
     }
-    
     // If URL doesn't have dates, check session storage
     if (!dates.value.startDate || !dates.value.endDate) {
       const savedDates = sessionStorage.getItem('campersDates')
@@ -994,7 +834,6 @@ const loadSpotDetails = async () => {
           if (parsed.startDate && parsed.endDate) {
             dates.value.startDate = parsed.startDate
             dates.value.endDate = parsed.endDate
-            
             // Persist the dates to URL
             persistDatesToUrl(dates.value.startDate, dates.value.endDate, guests.value)
           }
@@ -1003,18 +842,13 @@ const loadSpotDetails = async () => {
         }
       }
     }
-    
-    console.log('Loaded camping spot:', spot.value)
-    
     // Check availability if dates are set
     if (dates.value.startDate && dates.value.endDate) {
       checkAvailability()
     }
-    
   } catch (error) {
     console.error('Failed to load camping spot:', error)
     error.value = error.message || 'Failed to load camping spot details'
-    
     // Check for database connection errors
     if (error.response?.status === 503 || 
         error.response?.data?.code === 'P1001' || 
@@ -1022,13 +856,11 @@ const loadSpotDetails = async () => {
         (error.response?.data?.error && error.response.data.error.includes('database'))) {
       dbConnectionError.value = true
     }
-    
     showRetryButton.value = true
   } finally {
     loading.value = false
   }
 }
-
 // After adding @dateChange="calculateTotal", implement the function:
 const calculateTotal = () => {
   // Ensure dates are stored in sessionStorage
@@ -1037,70 +869,54 @@ const calculateTotal = () => {
     checkAvailability()
   }
 }
-
 onMounted(async () => {
   // First, check if user is already authenticated with public user info
   if (authStore.isLoggedIn && authStore.publicUser) {
-    console.log('User already logged in with public info:', authStore.publicUser);
   } 
   // Otherwise, fetch public user info if logged in
   else if (authStore.isLoggedIn) {
     try {
-      console.log('Fetching public user info...');
       await authStore.fetchPublicUser(authStore.user.id, true);
-      console.log('Fetched public user info:', authStore.publicUser);
     } catch (error) {
       console.error('Error fetching user info:', error);
     }
   }
-
   // Now load the spot details
   await loadSpotDetails();
-  
   // We'll let the computed property and UI handle the owner check without automatic redirect
 });
 </script>
-
 <style scoped>
 .shadow-lg {
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
-
 /* Enhanced spacing utilities */
 .space-y-12 > * + * {
   margin-top: 3rem;
 }
-
 .space-y-10 > * + * {
   margin-top: 2.5rem;
 }
-
 .space-y-8 > * + * {
   margin-top: 2rem;
 }
-
 .space-y-6 > * + * {
   margin-top: 1.5rem;
 }
-
 .space-y-4 > * + * {
   margin-top: 1rem;
 }
-
 .space-y-2 > * + * {
   margin-top: 0.5rem;
 }
-
 /* Improved DateRangePicker styling */
 .date-range-selector {
   padding: 10px 0;
   width: 100%;
 }
-
 :deep(.dp__main) {
   width: 100%;
 }
-
 /* Make DateRangePicker wider */
 :deep(.dp__input) {
   padding: 10px 14px !important;
@@ -1110,53 +926,43 @@ onMounted(async () => {
   line-height: 1.5;
   min-width: 320px;
 }
-
 /* Make DateRangePicker appear above all other elements */
 :deep(.dp__input_wrap) {
   width: 100%;
 }
-
 :deep(.dp__overlay) {
   z-index: 9998 !important;
 }
-
 /* Make sure buttons are more clickable */
 .light-text {
   color: white;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
-
 /* Transition for hover effects */
 .transition-colors {
   transition: background-color 0.3s ease, border-color 0.15s ease;
 }
-
 .transition-opacity {
   transition: opacity 0.3s ease;
 }
-
 /* Navigation arrow styles */
 .absolute {
   z-index: 10;
 }
-
 /* Added CSS for the gallery navigation buttons */
 .gallery-nav-button {
   font-size: 36px;
   color: white;
   transition: opacity 0.2s ease;
 }
-
 /* Enhanced button styles */
 button {
   outline: none !important;
 }
-
 button:focus {
   outline: none !important;
   box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
 }
-
 /* Gradient animation for main booking button */
 @keyframes gradient-shift {
   0% {
@@ -1169,7 +975,6 @@ button:focus {
     background-position: 0% 50%;
   }
 }
-
 .from-rose-500.to-red-600:hover {
   background-size: 200% 200%;
   animation: gradient-shift 3s ease infinite;

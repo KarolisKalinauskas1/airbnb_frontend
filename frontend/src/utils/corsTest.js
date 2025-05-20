@@ -1,40 +1,1 @@
-import axios from '@/axios';
-
-export const testCorsSetup = async () => {
-  console.log('Testing CORS setup...');
-  
-  try {
-    // Test the connection with credentials
-    const response = await axios.get('/cors-test', { 
-      withCredentials: true 
-    });
-    
-    console.log('CORS Test Response:', response.data);
-    return { 
-      success: true, 
-      message: 'CORS test passed successfully', 
-      data: response.data 
-    };
-  } catch (error) {
-    console.error('CORS Test Error:', error);
-    
-    // Provide detailed diagnostics
-    const diagnostics = {
-      errorCode: error.code,
-      response: error.response,
-      message: error.message,
-      config: {
-        url: error.config?.url,
-        withCredentials: error.config?.withCredentials,
-        headers: error.config?.headers
-      }
-    };
-    
-    return { 
-      success: false, 
-      message: 'CORS test failed', 
-      error: error.message,
-      diagnostics
-    };
-  }
-};
+import axios from '@/axios';export const testCorsSetup = async () => {  try {    // Test the connection with credentials    const response = await axios.get('/cors-test', {       withCredentials: true     });    return {       success: true,       message: 'CORS test passed successfully',       data: response.data     };  } catch (error) {    console.error('CORS Test Error:', error);    // Provide detailed diagnostics    const diagnostics = {      errorCode: error.code,      response: error.response,      message: error.message,      config: {        url: error.config?.url,        withCredentials: error.config?.withCredentials,        headers: error.config?.headers      }    };    return {       success: false,       message: 'CORS test failed',       error: error.message,      diagnostics    };  }};

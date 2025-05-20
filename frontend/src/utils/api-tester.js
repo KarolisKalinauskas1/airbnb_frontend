@@ -1,67 +1,1 @@
-import axios from '@/axios';
-
-/**
- * Tests API connectivity and content negotiation
- * @returns {Promise<Object>} Test results
- */
-export async function testApiConnectivity() {
-  console.log('Testing API connectivity...');
-  const results = {
-    success: false,
-    tests: {},
-    error: null
-  };
-  
-  try {
-    // Test 1: Basic health check
-    try {
-      const healthResponse = await axios.get('/api/diagnostics/health');
-      results.tests.health = {
-        success: true,
-        data: healthResponse.data
-      };
-    } catch (error) {
-      results.tests.health = {
-        success: false,
-        error: error.message
-      };
-    }
-    
-    // Test 2: Content negotiation
-    try {
-      const contentResponse = await axios.get('/api/diagnostics/content-test');
-      results.tests.content = {
-        success: true,
-        data: contentResponse.data
-      };
-    } catch (error) {
-      results.tests.content = {
-        success: false,
-        error: error.message
-      };
-    }
-    
-    // Test 3: CORS configuration
-    try {
-      const corsResponse = await axios.get('/api/diagnostics/cors-test');
-      results.tests.cors = {
-        success: true,
-        data: corsResponse.data
-      };
-    } catch (error) {
-      results.tests.cors = {
-        success: false,
-        error: error.message
-      };
-    }
-    
-    // Overall success if all tests passed
-    results.success = Object.values(results.tests).every(test => test.success);
-    
-  } catch (error) {
-    results.error = error.message;
-  }
-  
-  console.log('API test results:', results);
-  return results;
-}
+import axios from '@/axios';/** * Tests API connectivity and content negotiation * @returns {Promise<Object>} Test results */export async function testApiConnectivity() {  const results = {    success: false,    tests: {},    error: null  };  try {    // Test 1: Basic health check    try {      const healthResponse = await axios.get('/api/diagnostics/health');      results.tests.health = {        success: true,        data: healthResponse.data      };    } catch (error) {      results.tests.health = {        success: false,        error: error.message      };    }    // Test 2: Content negotiation    try {      const contentResponse = await axios.get('/api/diagnostics/content-test');      results.tests.content = {        success: true,        data: contentResponse.data      };    } catch (error) {      results.tests.content = {        success: false,        error: error.message      };    }    // Test 3: CORS configuration    try {      const corsResponse = await axios.get('/api/diagnostics/cors-test');      results.tests.cors = {        success: true,        data: corsResponse.data      };    } catch (error) {      results.tests.cors = {        success: false,        error: error.message      };    }    // Overall success if all tests passed    results.success = Object.values(results.tests).every(test => test.success);  } catch (error) {    results.error = error.message;  }  return results;}

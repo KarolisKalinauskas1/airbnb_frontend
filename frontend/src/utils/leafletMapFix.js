@@ -1,82 +1,1 @@
-/**
- * A collection of utility functions to fix common Leaflet map issues
- */
-
-/**
- * Fix common issues with Leaflet maps
- * @param {Object} map - The Leaflet map instance
- */
-export function fixLeafletMap(map) {
-  if (!map) return;
-  
-  // Ensure dragging is enabled
-  if (map.dragging) map.dragging.enable();
-  
-  // Fix sizing issue that sometimes happens
-  setTimeout(() => {
-    map.invalidateSize();
-  }, 100);
-  
-  // Fix for iOS touch issues
-  if (map.tap) map.tap.enable();
-  
-  // Improve rendering on mobile
-  map._onResize();
-}
-
-/**
- * Enhance markers with better styles and functionality
- * @param {Array} markers - Array of Leaflet markers
- */
-export function enhanceMarkers(markers) {
-  if (!markers || !markers.length) return;
-  
-  markers.forEach(marker => {
-    const icon = marker.getIcon();
-    if (icon && icon.options) {
-      // Apply custom styling if needed
-      marker.setZIndexOffset(1000);
-    }
-  });
-}
-
-/**
- * Helper function to load Leaflet dynamically
- * @returns {Promise} Promise resolving when Leaflet is loaded
- */
-export async function loadLeaflet() {
-  // Check if Leaflet is already available
-  if (window.L) {
-    return window.L;
-  }
-
-  console.log('Dynamically loading Leaflet...');
-  
-  // Load CSS
-  const mapStyles = document.createElement('link');
-  mapStyles.rel = 'stylesheet';
-  mapStyles.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-  mapStyles.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
-  mapStyles.crossOrigin = '';
-  document.head.appendChild(mapStyles);
-  
-  // Load JS
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-    script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
-    script.crossOrigin = '';
-    
-    script.onload = () => {
-      console.log('Leaflet loaded successfully');
-      resolve(window.L);
-    };
-    
-    script.onerror = (e) => {
-      console.error('Failed to load Leaflet script:', e);
-      reject(new Error('Failed to load Leaflet script'));
-    };
-    
-    document.head.appendChild(script);
-  });
-}
+/** * A collection of utility functions to fix common Leaflet map issues *//** * Fix common issues with Leaflet maps * @param {Object} map - The Leaflet map instance */export function fixLeafletMap(map) {  if (!map) return;  // Ensure dragging is enabled  if (map.dragging) map.dragging.enable();  // Fix sizing issue that sometimes happens  setTimeout(() => {    map.invalidateSize();  }, 100);  // Fix for iOS touch issues  if (map.tap) map.tap.enable();  // Improve rendering on mobile  map._onResize();}/** * Enhance markers with better styles and functionality * @param {Array} markers - Array of Leaflet markers */export function enhanceMarkers(markers) {  if (!markers || !markers.length) return;  markers.forEach(marker => {    const icon = marker.getIcon();    if (icon && icon.options) {      // Apply custom styling if needed      marker.setZIndexOffset(1000);    }  });}/** * Helper function to load Leaflet dynamically * @returns {Promise} Promise resolving when Leaflet is loaded */export async function loadLeaflet() {  // Check if Leaflet is already available  if (window.L) {    return window.L;  }  // Load CSS  const mapStyles = document.createElement('link');  mapStyles.rel = 'stylesheet';  mapStyles.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';  mapStyles.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';  mapStyles.crossOrigin = '';  document.head.appendChild(mapStyles);  // Load JS  return new Promise((resolve, reject) => {    const script = document.createElement('script');    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';    script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';    script.crossOrigin = '';    script.onload = () => {      resolve(window.L);    };    script.onerror = (e) => {      console.error('Failed to load Leaflet script:', e);      reject(new Error('Failed to load Leaflet script'));    };    document.head.appendChild(script);  });}

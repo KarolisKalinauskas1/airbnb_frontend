@@ -1,298 +1,1 @@
-<template>
-  <div class="date-range-container">
-    <div class="grid grid-cols-2 gap-3">
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Check-in</label>
-        <input 
-          type="date" 
-          class="date-input w-full border border-gray-300 rounded-md shadow-sm px-2 py-1.5 focus:outline-none focus:ring-red-500 focus:border-red-500"
-          :min="today" 
-          :value="localStartDate"
-          :disabled="checkingAvailability"
-          @change="handleStartDateChange($event)"
-        />
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Check-out</label>
-        <input 
-          type="date" 
-          class="date-input w-full border border-gray-300 rounded-md shadow-sm px-2 py-1.5 focus:outline-none focus:ring-red-500 focus:border-red-500"
-          :min="minEndDate" 
-          :value="localEndDate"
-          :disabled="checkingAvailability"
-          @change="handleEndDateChange($event)"
-        />
-      </div>
-    </div>
-    
-    <!-- Loading indicator while checking availability -->
-    <div v-if="checkingAvailability" class="mt-2 text-sm text-blue-600 flex items-center">
-      <div class="mr-2 h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-      Checking availability...
-    </div>
-    
-    <!-- Error display -->
-    <div v-if="validationError && !checkingAvailability" class="mt-2 text-sm text-red-600">
-      {{ validationError }}
-    </div>
-    
-    <!-- Display selected dates for clarity -->
-    <div v-if="localStartDate && localEndDate && !validationError && !checkingAvailability" class="mt-2 text-sm text-gray-600">
-      Selected: {{ formatDate(localStartDate) }} to {{ formatDate(localEndDate) }} 
-      <span v-if="calculateNights > 0">({{ calculateNights }} nights)</span>
-    </div>
-  </div>
-</template>
-
-<script setup>
-import { ref, computed, watch, onMounted } from 'vue'
-import { useToast } from 'vue-toastification'
-import { useRoute } from 'vue-router'
-import axios from '@/axios'
-
-const props = defineProps({
-  startDate: String,
-  endDate: String,
-  campingSpotId: {
-    type: [String, Number],
-    default: null
-  },
-  disabled: Boolean
-})
-
-const emit = defineEmits(['update:startDate', 'update:endDate', 'dateChange'])
-const route = useRoute()
-const toast = useToast()
-
-const localStartDate = ref(props.startDate || '')
-const localEndDate = ref(props.endDate || '')
-const validationError = ref('')
-const checkingAvailability = ref(false)
-const unavailableDates = ref([])
-
-// Calculate today's date for min attribute
-const today = computed(() => {
-  const date = new Date()
-  return date.toISOString().split('T')[0]
-})
-
-// Calculate minimum end date based on start date
-const minEndDate = computed(() => {
-  if (!localStartDate.value) return today.value
-  
-  const startDate = new Date(localStartDate.value)
-  const nextDay = new Date(startDate)
-  nextDay.setDate(startDate.getDate() + 1)
-  return nextDay.toISOString().split('T')[0]
-})
-
-// Calculate number of nights
-const calculateNights = computed(() => {
-  if (!localStartDate.value || !localEndDate.value) return 0
-  
-  const start = new Date(localStartDate.value)
-  const end = new Date(localEndDate.value)
-  
-  start.setHours(0, 0, 0, 0)
-  end.setHours(0, 0, 0, 0)
-  
-  const diffTime = Math.abs(end - start)
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-})
-
-// Load unavailable dates if we have a camping spot ID
-const loadUnavailableDates = async () => {
-  // Only try to load if we have a camping spot ID
-  if (!props.campingSpotId) {
-    // If we're on a camping spot detail page, get the ID from the route
-    const id = route.params.id
-    if (!id) return
-    
-    try {
-      const response = await axios.get(`/api/camping-spots/${id}/availability`, {
-        params: {
-          startDate: new Date().toISOString().split('T')[0],
-          endDate: new Date(Date.now() + (90 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0] // 90 days from now
-        }
-      })
-      
-      unavailableDates.value = response.data.bookings || []
-    } catch (err) {
-      console.error('Failed to load availability data:', err)
-    }
-  }
-}
-
-// Check if selected dates clash with unavailable dates
-const checkDatesAvailability = async (start, end) => {
-  // Skip if we don't have dates to check or camping spot ID
-  if (!start || !end) return true
-  
-  const spotId = props.campingSpotId || route.params.id
-  if (!spotId) return true
-  
-  // Start checking
-  checkingAvailability.value = true
-  validationError.value = ''
-  
-  try {
-    // Convert to date objects
-    const startDate = new Date(start)
-    const endDate = new Date(end)
-    
-    startDate.setHours(0, 0, 0, 0)
-    endDate.setHours(0, 0, 0, 0)
-    
-    const response = await axios.get(`/api/camping-spots/${spotId}/availability`, {
-      params: {
-        startDate: start,
-        endDate: end
-      }
-    })
-      const bookings = response.data.bookings || []
-    
-    // Filter the bookings to only include those that should block the date range
-    // Exclude cancelled bookings (status_id = 3) as they don't block availability
-    const blockingBookings = bookings.filter(booking => booking.status_id !== 3)
-    
-    // If we have non-cancelled bookings in this range, it means the dates are unavailable
-    if (blockingBookings.length > 0) {
-      validationError.value = 'These dates are not available for booking'
-      return false
-    }
-    
-    // If there are cancelled bookings, we can show them but still allow booking
-    const cancelledBookings = bookings.filter(booking => booking.status_id === 3)
-    if (cancelledBookings.length > 0) {
-      console.log('Note: There are cancelled bookings in this date range', cancelledBookings)
-      // We don't need to block the booking, just informational
-    }
-    
-    return true
-  } catch (err) {
-    console.error('Failed to check availability:', err)
-    validationError.value = 'Error checking availability'
-    return false
-  } finally {
-    checkingAvailability.value = false
-  }
-}
-
-const formatDate = (dateString) => {
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric'
-  })
-}
-
-const handleStartDateChange = async (event) => {
-  const newStartDate = event.target.value;
-  
-  // Only update if the date changed
-  if (newStartDate === localStartDate.value) return
-  
-  localStartDate.value = newStartDate
-  emit('update:startDate', newStartDate)
-  
-  // If we have an end date, verify the range is valid
-  if (localEndDate.value) {
-    const startDate = new Date(newStartDate)
-    const endDate = new Date(localEndDate.value)
-    
-    if (startDate >= endDate) {
-      // If start date is greater than or equal to end date, update end date
-      const newEndDate = new Date(startDate)
-      newEndDate.setDate(startDate.getDate() + 1)
-      localEndDate.value = newEndDate.toISOString().split('T')[0]
-      emit('update:endDate', localEndDate.value)
-    }
-    
-    // Check availability of the new date range
-    await checkDatesAvailability(localStartDate.value, localEndDate.value)
-    
-    // Emit date change event after validation
-    emit('dateChange', { startDate: localStartDate.value, endDate: localEndDate.value })
-  }
-}
-
-const handleEndDateChange = async (event) => {
-  const newEndDate = event.target.value
-  
-  // Only update if the date changed
-  if (newEndDate === localEndDate.value) return
-  
-  localEndDate.value = newEndDate
-  emit('update:endDate', newEndDate)
-  
-  // If we have a start date, check availability
-  if (localStartDate.value) {
-    await checkDatesAvailability(localStartDate.value, newEndDate)
-    
-    // Emit date change event after validation
-    emit('dateChange', { startDate: localStartDate.value, endDate: localEndDate.value })
-  }
-}
-
-// Watch for prop changes
-watch(() => props.startDate, (newVal) => {
-  if (newVal !== localStartDate.value) {
-    localStartDate.value = newVal
-  }
-})
-
-watch(() => props.endDate, (newVal) => {
-  if (newVal !== localEndDate.value) {
-    localEndDate.value = newVal
-  }
-})
-
-onMounted(() => {
-  // Load unavailable dates on mount
-  loadUnavailableDates()
-  
-  // Check if we have dates from URL or props
-  if (route.query.start && !localStartDate.value) {
-    localStartDate.value = route.query.start
-    emit('update:startDate', route.query.start)
-  }
-  
-  if (route.query.end && !localEndDate.value) {
-    localEndDate.value = route.query.end
-    emit('update:endDate', route.query.end)
-  }
-  
-  // If we have both dates, check availability
-  if (localStartDate.value && localEndDate.value) {
-    checkDatesAvailability(localStartDate.value, localEndDate.value)
-  }
-})
-</script>
-
-<style scoped>
-.date-range-container {
-  width: 100%;
-}
-
-.date-input {
-  box-sizing: border-box;
-  width: 100%;
-  line-height: normal;
-  height: auto;
-}
-
-.date-input:disabled {
-  background-color: #f3f4f6;
-  cursor: not-allowed;
-}
-
-/* Ensure date inputs display properly */
-input[type="date"] {
-  appearance: textfield;
-  -webkit-appearance: textfield;
-  -moz-appearance: textfield;
-  box-sizing: border-box;
-  padding: 0.375rem 0.75rem;
-  width: 100%;
-}
-</style>
+<template>  <div class="date-range-container">    <div class="grid grid-cols-2 gap-3">      <div>        <label class="block text-sm font-medium text-gray-700 mb-1">Check-in</label>        <input           type="date"           class="date-input w-full border border-gray-300 rounded-md shadow-sm px-2 py-1.5 focus:outline-none focus:ring-red-500 focus:border-red-500"          :min="today"           :value="localStartDate"          :disabled="checkingAvailability"          @change="handleStartDateChange($event)"        />      </div>      <div>        <label class="block text-sm font-medium text-gray-700 mb-1">Check-out</label>        <input           type="date"           class="date-input w-full border border-gray-300 rounded-md shadow-sm px-2 py-1.5 focus:outline-none focus:ring-red-500 focus:border-red-500"          :min="minEndDate"           :value="localEndDate"          :disabled="checkingAvailability"          @change="handleEndDateChange($event)"        />      </div>    </div>    <!-- Loading indicator while checking availability -->    <div v-if="checkingAvailability" class="mt-2 text-sm text-blue-600 flex items-center">      <div class="mr-2 h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>      Checking availability...    </div>    <!-- Error display -->    <div v-if="validationError && !checkingAvailability" class="mt-2 text-sm text-red-600">      {{ validationError }}    </div>    <!-- Display selected dates for clarity -->    <div v-if="localStartDate && localEndDate && !validationError && !checkingAvailability" class="mt-2 text-sm text-gray-600">      Selected: {{ formatDate(localStartDate) }} to {{ formatDate(localEndDate) }}       <span v-if="calculateNights > 0">({{ calculateNights }} nights)</span>    </div>  </div></template><script setup>import { ref, computed, watch, onMounted } from 'vue'import { useToast } from 'vue-toastification'import { useRoute } from 'vue-router'import axios from '@/axios'const props = defineProps({  startDate: String,  endDate: String,  campingSpotId: {    type: [String, Number],    default: null  },  disabled: Boolean})const emit = defineEmits(['update:startDate', 'update:endDate', 'dateChange'])const route = useRoute()const toast = useToast()const localStartDate = ref(props.startDate || '')const localEndDate = ref(props.endDate || '')const validationError = ref('')const checkingAvailability = ref(false)const unavailableDates = ref([])// Calculate today's date for min attributeconst today = computed(() => {  const date = new Date()  return date.toISOString().split('T')[0]})// Calculate minimum end date based on start dateconst minEndDate = computed(() => {  if (!localStartDate.value) return today.value  const startDate = new Date(localStartDate.value)  const nextDay = new Date(startDate)  nextDay.setDate(startDate.getDate() + 1)  return nextDay.toISOString().split('T')[0]})// Calculate number of nightsconst calculateNights = computed(() => {  if (!localStartDate.value || !localEndDate.value) return 0  const start = new Date(localStartDate.value)  const end = new Date(localEndDate.value)  start.setHours(0, 0, 0, 0)  end.setHours(0, 0, 0, 0)  const diffTime = Math.abs(end - start)  return Math.ceil(diffTime / (1000 * 60 * 60 * 24))})// Load unavailable dates if we have a camping spot IDconst loadUnavailableDates = async () => {  // Only try to load if we have a camping spot ID  if (!props.campingSpotId) {    // If we're on a camping spot detail page, get the ID from the route    const id = route.params.id    if (!id) return    try {      const response = await axios.get(`/api/camping-spots/${id}/availability`, {        params: {          startDate: new Date().toISOString().split('T')[0],          endDate: new Date(Date.now() + (90 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0] // 90 days from now        }      })      unavailableDates.value = response.data.bookings || []    } catch (err) {      console.error('Failed to load availability data:', err)    }  }}// Check if selected dates clash with unavailable datesconst checkDatesAvailability = async (start, end) => {  // Skip if we don't have dates to check or camping spot ID  if (!start || !end) return true  const spotId = props.campingSpotId || route.params.id  if (!spotId) return true  // Start checking  checkingAvailability.value = true  validationError.value = ''  try {    // Convert to date objects    const startDate = new Date(start)    const endDate = new Date(end)    startDate.setHours(0, 0, 0, 0)    endDate.setHours(0, 0, 0, 0)    const response = await axios.get(`/api/camping-spots/${spotId}/availability`, {      params: {        startDate: start,        endDate: end      }    })      const bookings = response.data.bookings || []    // Filter the bookings to only include those that should block the date range    // Exclude cancelled bookings (status_id = 3) as they don't block availability    const blockingBookings = bookings.filter(booking => booking.status_id !== 3)    // If we have non-cancelled bookings in this range, it means the dates are unavailable    if (blockingBookings.length > 0) {      validationError.value = 'These dates are not available for booking'      return false    }    // If there are cancelled bookings, we can show them but still allow booking    const cancelledBookings = bookings.filter(booking => booking.status_id === 3)    if (cancelledBookings.length > 0) {      // We don't need to block the booking, just informational    }    return true  } catch (err) {    console.error('Failed to check availability:', err)    validationError.value = 'Error checking availability'    return false  } finally {    checkingAvailability.value = false  }}const formatDate = (dateString) => {  const date = new Date(dateString)  return date.toLocaleDateString('en-US', {    month: 'short',    day: 'numeric'  })}const handleStartDateChange = async (event) => {  const newStartDate = event.target.value;  // Only update if the date changed  if (newStartDate === localStartDate.value) return  localStartDate.value = newStartDate  emit('update:startDate', newStartDate)  // If we have an end date, verify the range is valid  if (localEndDate.value) {    const startDate = new Date(newStartDate)    const endDate = new Date(localEndDate.value)    if (startDate >= endDate) {      // If start date is greater than or equal to end date, update end date      const newEndDate = new Date(startDate)      newEndDate.setDate(startDate.getDate() + 1)      localEndDate.value = newEndDate.toISOString().split('T')[0]      emit('update:endDate', localEndDate.value)    }    // Check availability of the new date range    await checkDatesAvailability(localStartDate.value, localEndDate.value)    // Emit date change event after validation    emit('dateChange', { startDate: localStartDate.value, endDate: localEndDate.value })  }}const handleEndDateChange = async (event) => {  const newEndDate = event.target.value  // Only update if the date changed  if (newEndDate === localEndDate.value) return  localEndDate.value = newEndDate  emit('update:endDate', newEndDate)  // If we have a start date, check availability  if (localStartDate.value) {    await checkDatesAvailability(localStartDate.value, newEndDate)    // Emit date change event after validation    emit('dateChange', { startDate: localStartDate.value, endDate: localEndDate.value })  }}// Watch for prop changeswatch(() => props.startDate, (newVal) => {  if (newVal !== localStartDate.value) {    localStartDate.value = newVal  }})watch(() => props.endDate, (newVal) => {  if (newVal !== localEndDate.value) {    localEndDate.value = newVal  }})onMounted(() => {  // Load unavailable dates on mount  loadUnavailableDates()  // Check if we have dates from URL or props  if (route.query.start && !localStartDate.value) {    localStartDate.value = route.query.start    emit('update:startDate', route.query.start)  }  if (route.query.end && !localEndDate.value) {    localEndDate.value = route.query.end    emit('update:endDate', route.query.end)  }  // If we have both dates, check availability  if (localStartDate.value && localEndDate.value) {    checkDatesAvailability(localStartDate.value, localEndDate.value)  }})</script><style scoped>.date-range-container {  width: 100%;}.date-input {  box-sizing: border-box;  width: 100%;  line-height: normal;  height: auto;}.date-input:disabled {  background-color: #f3f4f6;  cursor: not-allowed;}/* Ensure date inputs display properly */input[type="date"] {  appearance: textfield;  -webkit-appearance: textfield;  -moz-appearance: textfield;  box-sizing: border-box;  padding: 0.375rem 0.75rem;  width: 100%;}</style>

@@ -1,233 +1,1 @@
-<template>
-  <div class="map-container">
-    <div ref="mapContainer" class="h-full w-full"></div>
-    <div v-if="error" class="absolute inset-0 bg-gray-100 flex items-center justify-center">
-      <div class="text-center p-4">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
-        <p class="text-lg font-medium">Map cannot be displayed</p>
-        <p class="text-sm text-gray-600">{{ errorMessage }}</p>
-      </div>
-    </div>
-  </div>
-</template>
-
-<script setup>
-import { ref, onMounted, watch } from 'vue'
-import { getGeoapifyApiKey, loadMapLibreGL, validateGeoapifyApiKey } from '@/utils/mapUtils'
-
-const props = defineProps({
-  latitude: {
-    type: Number,
-    required: true
-  },
-  longitude: {
-    type: Number,
-    required: true
-  },
-  spotTitle: {
-    type: String,
-    default: 'Camping Spot'
-  }
-})
-
-const emit = defineEmits(['map-error'])
-
-const mapContainer = ref(null)
-const map = ref(null)
-const marker = ref(null)
-const error = ref(false)
-const errorMessage = ref('Location information is not available.')
-let mapScript = null
-let markerElement = null
-
-// Function to initialize the map
-const initMap = () => {
-  if (!props.latitude || !props.longitude || isNaN(props.latitude) || isNaN(props.longitude)) {
-    error.value = true
-    errorMessage.value = 'Invalid location coordinates provided.'
-    emit('map-error')
-    return
-  }
-  
-  try {
-    // Get API key from utilities
-    const apiKey = getGeoapifyApiKey()
-    
-    if (!apiKey) {
-      error.value = true
-      errorMessage.value = 'Map API key is missing or invalid'
-      emit('map-error')
-      return
-    }
-
-    // Log the API key (first few characters only for debugging)
-    console.log(`Using API key: ${apiKey.substring(0, 5)}...`);
-    
-    // Use vector tiles API with clean URL construction
-    const mapStyleUrl = `https://maps.geoapify.com/v1/styles/osm-carto/style.json?apiKey=${apiKey}`;
-    
-    const mapOptions = {
-      container: mapContainer.value,
-      style: mapStyleUrl,
-      center: [props.longitude, props.latitude],
-      zoom: 13
-    }
-    
-    // Initialize map
-    map.value = new maplibregl.Map(mapOptions)
-    
-    // Add navigation controls
-    map.value.addControl(new maplibregl.NavigationControl())
-    
-    // Wait for map to load before adding marker
-    map.value.on('load', () => {
-      // Create marker element
-      const el = document.createElement('div')
-      el.className = 'location-marker'
-      markerElement = el
-      
-      // Create marker
-      marker.value = new maplibregl.Marker(el)
-        .setLngLat([props.longitude, props.latitude])
-        .addTo(map.value)
-      
-      // Create popup with spot title
-      const popup = new maplibregl.Popup({ offset: 25 })
-        .setHTML(`<div class="marker-popup"><strong>${props.spotTitle}</strong></div>`)
-      
-      // Add popup to marker
-      marker.value.setPopup(popup)
-      
-      // Open the popup by default
-      popup.addTo(map.value)
-    })
-    
-    // Add error handling for the map
-    map.value.on('error', (e) => {
-      console.error('Map error:', e);
-      if (e.error && e.error.message && e.error.message.includes('API key')) {
-        error.value = true;
-        errorMessage.value = 'Invalid API key. Please check your Geoapify API key.';
-        emit('map-error');
-      } else {
-        error.value = true;
-        errorMessage.value = 'Map loading error: ' + (e.error?.message || 'Unknown error');
-        emit('map-error');
-      }
-    });
-    
-  } catch (err) {
-    console.error('Map initialization error:', err)
-    error.value = true
-    errorMessage.value = 'Failed to load the map. Please try again later.'
-    emit('map-error')
-  }
-}
-
-// Load MapLibre GL JS (open-source fork that works with Geoapify)
-const loadMapLibrary = async () => {
-  try {
-    if (window.maplibregl) {
-      return window.maplibregl;
-    }
-    
-    // Try validating the API key first (if possible)
-    const isValid = await validateGeoapifyApiKey();
-    if (!isValid) {
-      throw new Error('Invalid Geoapify API key');
-    }
-    
-    // Load CSS
-    const mapStyles = document.createElement('link')
-    mapStyles.rel = 'stylesheet'
-    mapStyles.href = 'https://cdn.jsdelivr.net/npm/maplibre-gl@3.3.1/dist/maplibre-gl.css'
-    document.head.appendChild(mapStyles)
-    
-    // Load JS
-    const script = document.createElement('script')
-    script.src = 'https://cdn.jsdelivr.net/npm/maplibre-gl@3.3.1/dist/maplibre-gl.js'
-    script.defer = true
-    script.async = true
-    
-    const result = await new Promise((resolve, reject) => {
-      script.onload = () => {
-        console.log('MapLibre loaded successfully');
-        resolve(window.maplibregl);
-      }
-      
-      script.onerror = (e) => {
-        console.error('Failed to load MapLibre script:', e);
-        reject(new Error('Failed to load MapLibre GL JS'));
-      }
-      
-      document.head.appendChild(script);
-      mapScript = script;
-    });
-    
-    return result;
-  } catch (error) {
-    console.error('Error loading map library:', error);
-    throw error;
-  }
-}
-
-// Watch for changes in coordinates
-watch([() => props.latitude, () => props.longitude], ([newLat, newLng]) => {
-  if (map.value && marker.value && !isNaN(newLat) && !isNaN(newLng)) {
-    // Update marker position and map center
-    map.value.setCenter([newLng, newLat])
-    marker.value.setLngLat([newLng, newLat])
-    error.value = false
-  } else if ((!newLat || !newLng || isNaN(newLat) || isNaN(newLng)) && !error.value) {
-    error.value = true
-    errorMessage.value = 'Invalid location coordinates provided.'
-    emit('map-error')
-  }
-})
-
-// Load map on component mount
-onMounted(async () => {
-  try {
-    console.log('Loading map library...');
-    await loadMapLibrary()
-    console.log('Library loaded, initializing map...');
-    initMap()
-  } catch (err) {
-    console.error('Failed to load map library:', err)
-    error.value = true
-    errorMessage.value = 'Failed to load map. Please check your API key and internet connection.'
-    emit('map-error')
-  }
-})
-</script>
-
-<style scoped>
-.map-container {
-  position: relative;
-  min-height: 300px;
-  width: 100%;
-  height: 100%;
-}
-
-.location-marker {
-  width: 30px;
-  height: 30px;
-  background-color: #e11d48;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 16px;
-  font-weight: bold;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-}
-
-.marker-popup {
-  padding: 5px;
-  text-align: center;
-}
-</style>
+<template>  <div class="map-container">    <div ref="mapContainer" class="h-full w-full"></div>    <div v-if="error" class="absolute inset-0 bg-gray-100 flex items-center justify-center">      <div class="text-center p-4">        <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />        </svg>        <p class="text-lg font-medium">Map cannot be displayed</p>        <p class="text-sm text-gray-600">{{ errorMessage }}</p>      </div>    </div>  </div></template><script setup>import { ref, onMounted, watch } from 'vue'import { getGeoapifyApiKey, loadMapLibreGL, validateGeoapifyApiKey } from '@/utils/mapUtils'const props = defineProps({  latitude: {    type: Number,    required: true  },  longitude: {    type: Number,    required: true  },  spotTitle: {    type: String,    default: 'Camping Spot'  }})const emit = defineEmits(['map-error'])const mapContainer = ref(null)const map = ref(null)const marker = ref(null)const error = ref(false)const errorMessage = ref('Location information is not available.')let mapScript = nulllet markerElement = null// Function to initialize the mapconst initMap = () => {  if (!props.latitude || !props.longitude || isNaN(props.latitude) || isNaN(props.longitude)) {    error.value = true    errorMessage.value = 'Invalid location coordinates provided.'    emit('map-error')    return  }  try {    // Get API key from utilities    const apiKey = getGeoapifyApiKey()    if (!apiKey) {      error.value = true      errorMessage.value = 'Map API key is missing or invalid'      emit('map-error')      return    }    // Log the API key (first few characters only for debugging)    }...`);    // Use vector tiles API with clean URL construction    const mapStyleUrl = `https://maps.geoapify.com/v1/styles/osm-carto/style.json?apiKey=${apiKey}`;    const mapOptions = {      container: mapContainer.value,      style: mapStyleUrl,      center: [props.longitude, props.latitude],      zoom: 13    }    // Initialize map    map.value = new maplibregl.Map(mapOptions)    // Add navigation controls    map.value.addControl(new maplibregl.NavigationControl())    // Wait for map to load before adding marker    map.value.on('load', () => {      // Create marker element      const el = document.createElement('div')      el.className = 'location-marker'      markerElement = el      // Create marker      marker.value = new maplibregl.Marker(el)        .setLngLat([props.longitude, props.latitude])        .addTo(map.value)      // Create popup with spot title      const popup = new maplibregl.Popup({ offset: 25 })        .setHTML(`<div class="marker-popup"><strong>${props.spotTitle}</strong></div>`)      // Add popup to marker      marker.value.setPopup(popup)      // Open the popup by default      popup.addTo(map.value)    })    // Add error handling for the map    map.value.on('error', (e) => {      console.error('Map error:', e);      if (e.error && e.error.message && e.error.message.includes('API key')) {        error.value = true;        errorMessage.value = 'Invalid API key. Please check your Geoapify API key.';        emit('map-error');      } else {        error.value = true;        errorMessage.value = 'Map loading error: ' + (e.error?.message || 'Unknown error');        emit('map-error');      }    });  } catch (err) {    console.error('Map initialization error:', err)    error.value = true    errorMessage.value = 'Failed to load the map. Please try again later.'    emit('map-error')  }}// Load MapLibre GL JS (open-source fork that works with Geoapify)const loadMapLibrary = async () => {  try {    if (window.maplibregl) {      return window.maplibregl;    }    // Try validating the API key first (if possible)    const isValid = await validateGeoapifyApiKey();    if (!isValid) {      throw new Error('Invalid Geoapify API key');    }    // Load CSS    const mapStyles = document.createElement('link')    mapStyles.rel = 'stylesheet'    mapStyles.href = 'https://cdn.jsdelivr.net/npm/maplibre-gl@3.3.1/dist/maplibre-gl.css'    document.head.appendChild(mapStyles)    // Load JS    const script = document.createElement('script')    script.src = 'https://cdn.jsdelivr.net/npm/maplibre-gl@3.3.1/dist/maplibre-gl.js'    script.defer = true    script.async = true    const result = await new Promise((resolve, reject) => {      script.onload = () => {        resolve(window.maplibregl);      }      script.onerror = (e) => {        console.error('Failed to load MapLibre script:', e);        reject(new Error('Failed to load MapLibre GL JS'));      }      document.head.appendChild(script);      mapScript = script;    });    return result;  } catch (error) {    console.error('Error loading map library:', error);    throw error;  }}// Watch for changes in coordinateswatch([() => props.latitude, () => props.longitude], ([newLat, newLng]) => {  if (map.value && marker.value && !isNaN(newLat) && !isNaN(newLng)) {    // Update marker position and map center    map.value.setCenter([newLng, newLat])    marker.value.setLngLat([newLng, newLat])    error.value = false  } else if ((!newLat || !newLng || isNaN(newLat) || isNaN(newLng)) && !error.value) {    error.value = true    errorMessage.value = 'Invalid location coordinates provided.'    emit('map-error')  }})// Load map on component mountonMounted(async () => {  try {    await loadMapLibrary()    initMap()  } catch (err) {    console.error('Failed to load map library:', err)    error.value = true    errorMessage.value = 'Failed to load map. Please check your API key and internet connection.'    emit('map-error')  }})</script><style scoped>.map-container {  position: relative;  min-height: 300px;  width: 100%;  height: 100%;}.location-marker {  width: 30px;  height: 30px;  background-color: #e11d48;  border-radius: 50%;  cursor: pointer;  display: flex;  align-items: center;  justify-content: center;  color: white;  font-size: 16px;  font-weight: bold;  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);}.marker-popup {  padding: 5px;  text-align: center;}</style>

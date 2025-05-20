@@ -14,15 +14,12 @@
           </svg>
         </div>
       </div>
-
       <h2 class="mt-6 text-center text-2xl font-extrabold text-gray-900">
         {{ pageTitle }}
       </h2>
-      
       <p class="mt-2 text-center text-sm text-gray-600">
         {{ statusMessage }}
       </p>
-      
       <div class="mt-6">
         <button 
           @click="navigateToHome" 
@@ -34,78 +31,54 @@
     </div>
   </div>
 </template>
-
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { supabase } from '@/lib/supabase';
 import axios from '@/axios';
-
 const router = useRouter();
 const authStore = useAuthStore();
-
 const loading = ref(true);
 const success = ref(false);
 const pageTitle = ref('Processing your login...');
 const statusMessage = ref('Please wait while we set up your account.');
-
 // Simple function to go home - no need to check anything else
 const navigateToHome = () => {
   router.push('/');
 };
-
 onMounted(async () => {
   try {
-    console.log('Starting social auth processing with Supabase...');
-    
     // Get the session from Supabase which should have been updated after OAuth redirect
     const { data, error } = await supabase.auth.getSession();
-    
     if (error) {
       console.error('Error retrieving Supabase session:', error);
       throw error;
     }
-    
     const session = data?.session;
-    
     if (!session) {
       console.error('No session found after Supabase OAuth flow');
       throw new Error('No session found. Authentication failed.');
     }
-    
-    console.log('Successfully retrieved Supabase session');
-    
     // Use the user data from Supabase session
-    const { user } = session;
-    
-    // Log the user structure to debug
-    console.log('User data from Supabase:', JSON.stringify(user, null, 2));
-    
+    const { user } = session;    // Log the user structure to debug
+    console.log("User data:", user);
     // Make sure we have the user email
     if (!user || !user.email) {
       console.error('Missing user email in session data:', user);
-      
       // Check if we can find the email elsewhere in the user object
       const email = user?.identities?.[0]?.identity_data?.email || 
                     user?.app_metadata?.email ||
                     user?.user_metadata?.email;
-                    
       if (email) {
-        console.log('Found email in alternative location:', email);
         // We found an email, so we can proceed
         user.email = email;
       } else {
         throw new Error('Could not find email in user data. Authentication failed.');
       }
     }
-    
-    console.log('User authenticated with Supabase:', user.email);
-    
     // Now sync this with our backend for our own JWT and user record
     try {
-      console.log('Synchronizing with backend API');
-      
       const backendResponse = await axios.post('/api/auth/oauth/google/supabase-callback', {
         supabase_id: user.id,
         email: user.email,
@@ -115,23 +88,17 @@ onMounted(async () => {
                   user.identities?.[0]?.identity_data?.name,
         avatar_url: user.user_metadata?.avatar_url || user.identities?.[0]?.identity_data?.avatar_url
       });
-      
       const backendData = backendResponse.data;
-      console.log('Backend sync successful');
-      
       // Store our own JWT for API access
       localStorage.setItem('token', backendData.token);
       localStorage.setItem('user_id', backendData.user.user_id);
       localStorage.setItem('user_email', user.email);
-      
       // Initialize auth store with the new token
       await authStore.initAuth({ forceRefresh: true });
-      
       // Automatically redirect to home page after a short delay
       success.value = true;
       pageTitle.value = 'Login Successful!';
       statusMessage.value = 'You have been successfully logged in with Google. Redirecting...';
-      
       // Redirect to home page after a short delay
       setTimeout(() => {
         router.push('/');
@@ -145,7 +112,6 @@ onMounted(async () => {
     success.value = false;
     pageTitle.value = 'Authentication Failed';
     statusMessage.value = `We encountered an issue while signing you in: ${error.message}. Please try again.`;
-    
     // If we're logged in with Supabase but our backend sync failed,
     // we should sign out of Supabase to prevent a state mismatch
     try {

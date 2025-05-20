@@ -7,62 +7,67 @@ import { getTokenFromStorage } from '@/utils/persistentAuth';
  */
 export function configureAxiosInterceptors() {
   // Request interceptor
-  axios.interceptors.request.use(async config => {
-    // Set sensible timeouts based on request type
-    if (!config.timeout) {
-      if (config.url.includes('/ping')) {
-        config.timeout = 3000; // 3 seconds for ping
-      } else if (config.url.includes('/auth/')) {
-        config.timeout = 5000; // 5 seconds for auth endpoints
-      } else {
-        config.timeout = 10000; // 10 seconds for everything else
-      }
-    }
-
-    // Check if this is a public route (GET requests only)
-    const isPublicRoute = config.method.toLowerCase() === 'get' && (
-      config.url.includes('/api/camping-spots') || 
-      config.url.includes('/api/locations') || 
-      config.url.includes('/api/countries') || 
-      config.url.includes('/api/amenities')
-    );
-
-    // Only add auth token for non-public routes
-    if (!isPublicRoute) {
-      const authStore = useAuthStore();      try {
-        // Force refresh token for PUT requests
-        const forceRefresh = config.method.toLowerCase() === 'put';
-        const token = await authStore.getAuthToken(forceRefresh);
-        if (token && typeof token === 'string') {
-          config.headers.Authorization = `Bearer ${token}`;
-          console.log('Interceptor: Setting auth header:', `Bearer ${token.substring(0, 10)}...`); // Log partial token for debugging
+  axios.interceptors.request.use(
+    async (config) => {
+      // Set sensible timeouts based on request type
+      if (!config.timeout) {
+        if (config.url.includes('/ping')) {
+          config.timeout = 3000; // 3 seconds for ping
+        } else if (config.url.includes('/auth/')) {
+          config.timeout = 5000; // 5 seconds for auth endpoints
         } else {
-          console.error('Interceptor: Invalid token format:', typeof token);
-        }
-      } catch (error) {
-        console.error('Error getting auth token:', error);
-        // Only redirect to login for non-public routes
-        if (!isPublicRoute) {
-          window.location.href = '/login';
-          return Promise.reject(error);
+          config.timeout = 10000; // 10 seconds for everything else
         }
       }
+
+      // Check if this is a public route (GET requests only)
+      const isPublicRoute = config.method.toLowerCase() === 'get' && (
+        config.url.includes('/api/camping-spots') || 
+        config.url.includes('/api/locations') || 
+        config.url.includes('/api/countries') || 
+        config.url.includes('/api/amenities')
+      );
+
+      // Only add auth token for non-public routes
+      if (!isPublicRoute) {
+        const authStore = useAuthStore();
+        
+        try {
+          // Force refresh token for PUT requests
+          const forceRefresh = config.method.toLowerCase() === 'put';
+          const token = await authStore.getAuthToken(forceRefresh);
+          
+          if (token && typeof token === 'string') {
+            config.headers.Authorization = `Bearer ${token}`;
+            console.log(`Token: ${token.substring(0, 5)}...`); // Log partial token for debugging
+          } else {
+            console.error('Interceptor: Invalid token format:', typeof token);
+          }
+        } catch (error) {
+          console.error('Error getting auth token:', error);
+          // Only redirect to login for non-public routes
+          if (!isPublicRoute) {
+            window.location.href = '/login';
+            return Promise.reject(error);
+          }
+        }
+      }
+
+      // Add request identifier to help track duplicates
+      config.requestId = Math.random().toString(36).substring(7);
+      return config;
+    }, 
+    (error) => {
+      return Promise.reject(error);
     }
-
-    // Add request identifier to help track duplicates
-    config.requestId = Math.random().toString(36).substring(7);
-    
-    return config;
-  }, error => {
-    return Promise.reject(error);
-  });
-
+  );
+  
   // Response interceptor
   axios.interceptors.response.use(
-    response => response,
-    async error => {
+    (response) => response,
+    async (error) => {
       const originalRequest = error.config;
-      
+
       // Don't retry if:
       // 1. No config (canceled requests)
       // 2. Already retried
@@ -76,16 +81,18 @@ export function configureAxiosInterceptors() {
         try {
           // Mark request as retried
           originalRequest._retry = true;
-            // Try to refresh the token
+          
+          // Try to refresh the token
           const authStore = useAuthStore();
           const success = await authStore.refreshToken();
           
           if (success) {
             // Get the new token
-            const token = await authStore.getAuthToken(); // Fixed: needs to be awaited
+            const token = await authStore.getAuthToken();
+            
             if (token && typeof token === 'string') {
               originalRequest.headers.Authorization = `Bearer ${token}`;
-              console.log('Interceptor: Refreshed auth header:', `Bearer ${token.substring(0, 10)}...`); // Log partial token for debugging
+              console.log(`Refreshed token: ${token.substring(0, 5)}...`); // Log partial token for debugging
               // Retry the original request
               return axios(originalRequest);
             } else {
@@ -106,21 +113,19 @@ export function configureAxiosInterceptors() {
 
       // Handle timeout errors better
       if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-        console.log(`Request to ${originalRequest?.url} timed out`);
         error.isTimeout = true;
       }
-      
+
       // Catch network errors when offline
       if (!navigator.onLine) {
-        console.log('Device is offline, failing request gracefully');
         error.isOffline = true;
       }
-      
+
       // Don't console.error canceled requests as they're often intentional
       if (error.code !== 'ERR_CANCELED' && error.name !== 'CanceledError') {
         console.error('Request error:', error.message, 'URL:', originalRequest?.url);
       }
-      
+
       return Promise.reject(error);
     }
   );

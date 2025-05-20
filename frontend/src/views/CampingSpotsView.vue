@@ -13,7 +13,6 @@ import AvailabilityCalendar from '@/components/AvailabilityCalendar.vue'
 import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New Spot
       </button>
     </div>
-
     <!-- Spots List -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <template v-for="spot in spots" :key="spot.id">
@@ -35,7 +34,6 @@ import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New S
               </div>
             </div>
           </div>
-
           <div class="space-y-2">
             <div class="flex justify-between items-start">
               <div>
@@ -59,7 +57,6 @@ import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New S
                 </button>
               </div>
             </div>
-
             <!-- Amenities Tags -->
             <div class="flex flex-wrap gap-1 mt-2">
               <span 
@@ -70,9 +67,7 @@ import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New S
                 {{ amenity }}
               </span>
             </div>
-
             <p class="text-sm text-black line-clamp-2 mt-2">{{ spot.description }}</p>
-            
             <div class="text-xs text-black mt-2">
               Added: {{ new Date(spot.created_at).toLocaleDateString() }}
             </div>
@@ -80,7 +75,6 @@ import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New S
         </div>
       </template>
     </div>
-
     <!-- Add/Edit Modal -->
     <div v-if="showAddModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center overflow-y-auto pt-20 pb-10 z-50">
       <div class="bg-white p-6 rounded-lg w-full max-w-2xl my-10 mx-4 shadow-xl relative">
@@ -91,7 +85,6 @@ import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New S
         >
           <span class="text-gray-600 hover:text-red-600 transition-colors">&times;</span>
         </button>
-        
         <h2 class="text-xl font-semibold mb-4">{{ editingSpot ? 'Edit' : 'Add' }} Camping Spot</h2>
         <form @submit.prevent="handleSubmit" class="space-y-4 max-h-[70vh] overflow-y-auto pr-4">
           <!-- Basic Information -->
@@ -128,7 +121,6 @@ import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New S
               >
             </div>
           </div>
-
           <!-- Description -->
           <div>
             <label class="block text-sm font-medium text-black-700">Description *</label>
@@ -141,7 +133,6 @@ import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New S
               placeholder="Describe your camping spot"
             ></textarea>
           </div>
-
           <div>
             <label class="block text-sm font-medium text-black-700">Max Guests *</label>
             <input 
@@ -153,7 +144,6 @@ import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New S
               class="mt-1 w-full px-3 py-2 border rounded-md text-black-900 bg-white"
             >
           </div>
-
           <!-- Amenities -->
           <div>
             <label class="block text-sm font-medium text-black-700 mb-2">Amenities</label>
@@ -171,7 +161,6 @@ import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New S
               </div>
             </div>
           </div>
-
           <!-- Address Information -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -211,7 +200,6 @@ import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New S
               </span>
             </div>
           </div>
-
           <!-- Image Upload -->
           <div>
             <label class="block text-sm font-medium text-black-700 mb-2">Images</label>
@@ -233,7 +221,6 @@ import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New S
                 </div>
               </div>
             </div>
-
             <!-- New Images -->
             <div class="flex flex-wrap gap-4 mb-4">
               <div v-for="(image, index) in form.images" 
@@ -249,7 +236,6 @@ import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New S
                 >×</button>
               </div>
             </div>
-
             <!-- File Input -->
             <input 
               type="file" 
@@ -259,11 +245,9 @@ import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New S
               class="block w-full text-sm text-black-900 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100"
             >
           </div>
-
           <!-- Add availability management section before the submit button -->
           <div v-if="editingSpot" class="border-t pt-4">
             <h3 class="text-lg font-semibold mb-3">Manage Availability</h3>
-            
             <div class="grid grid-cols-1 gap-4">
               <div>
                 <AvailabilityCalendar 
@@ -285,7 +269,6 @@ import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New S
               </div>
             </div>
           </div>
-
           <!-- Submit Buttons -->
           <div class="flex justify-end space-x-3">
             <button 
@@ -307,7 +290,6 @@ import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue' New S
     </div>
   </DashboardLayout>
 </template>
-
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import DashboardLayout from '@/components/DashboardLayout.vue'
@@ -317,19 +299,16 @@ import { useAuthStore } from '@/stores/auth'
 // Import new components
 import AvailabilityCalendar from '@/components/AvailabilityCalendar.vue'
 import PriceSuggestionWidget from '@/components/PriceSuggestionWidget.vue'
-
 const authStore = useAuthStore()
 const availableAmenities = ref([])
 const countries = ref([])
 const spots = ref([])
 const showAddModal = ref(false)
 const editingSpot = ref(null)
-
 // Determine if the current user is an owner or admin
 const isOwner = computed(() => {
   return authStore.fullUser?.user_type === 'owner' || authStore.fullUser?.user_type === 'admin'
 })
-
 const form = reactive({
   title: '',
   description: '',
@@ -343,7 +322,6 @@ const form = reactive({
   amenities: [], // This will now store amenity IDs instead of names
   images: []
 })
-
 const validationErrors = reactive({
   title: '',
   description: '',
@@ -354,13 +332,11 @@ const validationErrors = reactive({
   postal_code: '',
   country: ''
 })
-
 const closeModal = () => {
   showAddModal.value = false
   editingSpot.value = null
   resetForm()
 }
-
 const resetForm = () => {
   Object.assign(form, {
     title: '',
@@ -376,7 +352,6 @@ const resetForm = () => {
     images: []
   })
 }
-
 const getImageUrl = (image) => {
   if (!image) return '';
   if (image instanceof File) {
@@ -385,14 +360,12 @@ const getImageUrl = (image) => {
   if (typeof image === 'string') return image;
   return image.image_url; // Handle Cloudinary URLs
 }
-
 const handleImageUpload = (event) => {
   const files = Array.from(event.target.files || []);
   if (files.length > 0) {
     form.images.push(...files);
   }
 }
-
 const removeImage = (index) => {
   if (index >= 0 && index < form.images.length) {
     // If it's a blob URL, revoke it to free memory
@@ -403,10 +376,8 @@ const removeImage = (index) => {
     form.images.splice(index, 1);
   }
 }
-
 const removeExistingImage = async (imageId) => {
   if (!editingSpot.value) return;
-  
   if (confirm('Are you sure you want to delete this image?')) {
     try {
       await axios.delete(`/camping-spots/images/${imageId}`);
@@ -417,16 +388,13 @@ const removeExistingImage = async (imageId) => {
     }
   }
 };
-
 const editSpot = (spot) => {
-  console.log('Editing spot:', spot);
   editingSpot.value = spot;
   form.title = spot.title;
   form.description = spot.description;
   form.price = spot.price_per_night;
   form.max_guests = spot.max_guests;
   form.amenities = spot.camping_spot_amenities?.map(a => a.amenity_id) || [];
-  
   // Correctly populate location fields
   if (spot.location) {
     form.address_line1 = spot.location.address_line1;
@@ -435,19 +403,15 @@ const editSpot = (spot) => {
     form.postal_code = spot.location.postal_code;
     form.country = spot.location.country_id;
   }
-  
   // Clear form images but keep reference to existing ones
   form.images = [];
   showAddModal.value = true;
 };
-
 const deleteSpot = async (id) => {
   if (!confirm('Are you sure you want to delete this spot?')) return
-  
   try {
     await axios.delete(`/camping-spots/${id}`)
     spots.value = spots.value.filter(spot => spot.id !== id)
-    
     // Refresh dashboard data after deletion
     const dashboardStore = useDashboardStore()
     await dashboardStore.fetchDashboardData()
@@ -456,59 +420,43 @@ const deleteSpot = async (id) => {
     alert('Failed to delete spot')
   }
 }
-
 const validateForm = () => {
-  console.log('Validating form with data:', form);
   let isValid = true;
-  
   // Reset errors
   Object.keys(validationErrors).forEach(key => validationErrors[key] = '');
-
   // Validate each field
   if (!form.title?.trim()) {
     validationErrors.title = 'Title is required';
     isValid = false;
   }
-
   if (!form.description?.trim()) {
     validationErrors.description = 'Description is required';
     isValid = false;
   }
-
   if (!form.price || Number(form.price) <= 0) {
     validationErrors.price = 'Price must be greater than 0';
     isValid = false;
   }
-
   if (!form.max_guests || Number(form.max_guests) <= 0) {
     validationErrors.max_guests = 'Must be greater than 0';
     isValid = false;
   }
-
   if (!form.address_line1?.trim()) {
     validationErrors.address_line1 = 'Address is required';
     isValid = false;
   }
-
   if (!form.city?.trim()) {
     validationErrors.city = 'City is required';
     isValid = false;
   }
-
   if (!form.postal_code?.trim()) {
     validationErrors.postal_code = 'Postal code is required';
     isValid = false;
   }
-
   if (!form.country) {
     validationErrors.country = 'Country is required';
-    console.log('Country validation failed:', form.country);
     isValid = false;
   }
-
-  console.log('Validation errors:', validationErrors);
-  console.log('Form is valid:', isValid);
-
   // If not valid, scroll to first error
   if (!isValid) {
     const firstError = Object.keys(validationErrors).find(key => validationErrors[key]);
@@ -520,22 +468,15 @@ const validateForm = () => {
       }
     }
   }
-
   return isValid;
 }
-
-const authStore = useAuthStore()
 const dashboardStore = useDashboardStore()
-
 const handleSubmit = async () => {
-  console.log('Form submission started');
   try {
     if (!validateForm()) {
       return;
     }
-
     const formData = new FormData();
-    
     const location = {
       address_line1: form.address_line1,
       address_line2: form.address_line2 || '',
@@ -543,11 +484,9 @@ const handleSubmit = async () => {
       country_id: parseInt(form.country),
       postal_code: form.postal_code
     };
-
     if (editingSpot.value?.location?.location_id) {
       location.location_id = editingSpot.value.location.location_id;
     }
-
     // Prepare basic data
     const requestData = {
       title: form.title,
@@ -558,17 +497,14 @@ const handleSubmit = async () => {
       location: location,
       amenities: form.amenities.map(id => parseInt(id))
     };
-
     // Include existing images if editing
     if (editingSpot.value) {
       requestData.existing_images = editingSpot.value.images.map(img => img.image_id);
     }
-
     // Append form data
     Object.entries(requestData).forEach(([key, value]) => {
       formData.append(key, typeof value === 'object' ? JSON.stringify(value) : value);
     });
-
     // Append new images
     if (form.images.length > 0) {
       form.images.forEach(image => {
@@ -577,11 +513,9 @@ const handleSubmit = async () => {
         }
       });
     }
-
     const response = editingSpot.value
       ? await axios.put(`/camping-spots/${editingSpot.value.camping_spot_id}`, formData)
       : await axios.post('/camping-spots', formData);
-
     if (response.data) {
       await loadSpots(); // Refresh the spots list
       await dashboardStore.fetchDashboardData();
@@ -594,7 +528,6 @@ const handleSubmit = async () => {
     alert(error.response?.data?.error || 'Failed to save spot');
   }
 }
-
 // Clean up blob URLs when component is unmounted
 onUnmounted(() => {
   form.images.forEach(image => {
@@ -603,27 +536,22 @@ onUnmounted(() => {
     }
   });
 });
-
 const fetchAmenities = async () => {
   try {
     const { data } = await axios.get('/camping-spots/amenities')
-    console.log('Loaded amenities:', data)
     availableAmenities.value = data
   } catch (error) {
     console.error('Failed to fetch amenities:', error)
   }
 }
-
 const fetchCountries = async () => {
   try {
     const { data } = await axios.get('/camping-spots/countries')
-    console.log('Loaded countries:', data)
     countries.value = data
   } catch (error) {
     console.error('Failed to fetch countries:', error)
   }
 }
-
 // Load spots on mount
 onMounted(async () => {
   try {
@@ -636,7 +564,6 @@ onMounted(async () => {
     console.error('Error during initialization:', error)
   }
 })
-
 const loadSpots = async () => {
   loading.value = true
   try {
@@ -651,79 +578,63 @@ const loadSpots = async () => {
   }
 }
 </script>
-
 <style scoped>
 /* Remove double scrollbar */
 .overflow-y-auto {
   scrollbar-width: thin;  /* For Firefox */
   scrollbar-color: rgba(0,0,0,0.3) transparent;  /* For Firefox */
 }
-
 .overflow-y-auto::-webkit-scrollbar {
   width: 6px;
 }
-
 .overflow-y-auto::-webkit-scrollbar-track {
   background: transparent;
 }
-
 .overflow-y-auto::-webkit-scrollbar-thumb {
   background-color: rgba(0,0,0,0.3);
   border-radius: 3px;
 }
-
 /* Add validation animations */
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   25% { transform: translateX(-5px); }
   75% { transform: translateX(5px); }
 }
-
 .border-red-500 {
   animation: shake 0.4s ease-in-out;
 }
-
 /* Add styles for proper modal positioning */
 .py-10 {
   padding-top: 2.5rem;
   padding-bottom: 2.5rem;
 }
-
 .my-16 {
   margin-top: 4rem;
   margin-bottom: 4rem;
 }
-
 .z-50 {
   z-index: 50;
 }
-
 .items-start {
   align-items: flex-start;
 }
-
 /* Add styles for proper modal positioning */
 .pt-20 {
   padding-top: 5rem; /* Ensure it's below the navbar */
 }
-
 .pb-10 {
   padding-bottom: 2.5rem;
 }
-
 .my-10 {
   margin-top: 2.5rem;
   margin-bottom: 2.5rem;
 }
-
 .z-50 {
   z-index: 50;
 }
-
 .items-start {
   align-items: flex-start;
 }
-
 /* Animation for close button hover */
 @keyframes pulse {
   0% {
@@ -736,7 +647,6 @@ const loadSpots = async () => {
     transform: scale(1);
   }
 }
-
 button.absolute:hover {
   animation: pulse 1s infinite;
 }

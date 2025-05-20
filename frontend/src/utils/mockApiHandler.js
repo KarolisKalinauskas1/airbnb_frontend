@@ -1,15 +1,1 @@
-/**
- * Mock API handlers for local development and testing
- * DISABLED - All data must be real and from actual backend
- */
-
-// Exporting empty function to avoid breaking imports
-export function setupMockInterceptors() {
-  // Intentionally disabled - using real data only
-  console.log('Mock API handlers are completely disabled - using real data only');
-  return;
-}
-
-export default {
-  setupMockInterceptors
-};
+/** * Mock API handlers for local development and testing * DISABLED - All data must be real and from actual backend */// Exporting empty function to avoid breaking importsexport function setupMockInterceptors() {  // Intentionally disabled - using real data only  return;}export default {  setupMockInterceptors};

@@ -1,409 +1,1 @@
-<template>
-  <div class="min-h-screen bg-gray-50 py-12">
-    <div class="max-w-4xl mx-auto px-4">
-      <!-- Loading State -->
-      <div v-if="loading" class="flex justify-center items-center h-64">
-        <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-red-500"></div>
-      </div>
-      
-      <!-- Error State -->
-      <div v-else-if="error" class="max-w-lg mx-auto bg-white rounded-xl shadow-lg p-8 text-center">
-        <div class="w-16 h-16 bg-red-100 rounded-full mx-auto flex items-center justify-center">
-          <svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <h2 class="text-2xl font-semibold text-gray-800 mt-6">{{ error }}</h2>
-        <p class="mt-3 text-gray-600">
-          There was a problem retrieving your booking information. 
-        </p>
-        <div class="mt-8">
-          <router-link to="/" class="inline-block px-6 py-3 bg-gradient-to-r from-rose-500 to-red-600 text-white rounded-lg hover:from-rose-600 hover:to-red-700 transition-all shadow-md hover:shadow-lg">
-            Return to Home
-          </router-link>
-        </div>
-      </div>
-      
-      <!-- Success State: Booking Details -->
-      <div v-else-if="booking" class="bg-white rounded-xl shadow-lg overflow-hidden mx-auto">
-        <!-- Banner with status -->
-        <div class="bg-gradient-to-r from-rose-500 to-red-600 text-white p-6">
-          <div class="max-w-3xl mx-auto flex items-center justify-between">
-            <h1 class="text-2xl font-bold">Booking Confirmed</h1>
-            <span :class="statusClass" class="px-3 py-1 rounded-full text-sm font-medium">
-              {{ getStatusLabel }}
-            </span>
-          </div>
-        </div>
-        
-        <div class="max-w-3xl mx-auto p-8">
-          <!-- Booking Summary -->
-          <div class="mb-8">
-            <div class="flex items-center justify-between mb-6">
-              <h2 class="text-xl font-semibold">Your trip to {{ booking.camping_spot?.location?.city }}</h2>
-              <span class="text-sm text-gray-500">Booking #{{ booking.booking_id }}</span>
-            </div>
-            
-            <!-- Camping Spot Info -->
-            <div class="flex gap-6 mb-8">
-              <div class="w-32 h-32 flex-shrink-0 rounded-lg overflow-hidden">
-                <img 
-                  v-if="booking.camping_spot?.images?.[0]"
-                  :src="booking.camping_spot.images[0].image_url"
-                  :alt="booking.camping_spot.title"
-                  class="w-full h-full object-cover"
-                />
-                <div v-else class="w-full h-full bg-gray-200 flex items-center justify-center">
-                  <span class="text-gray-400">No image</span>
-                </div>
-              </div>
-              
-              <div>
-                <h3 class="text-lg font-semibold mb-1">{{ booking.camping_spot?.title }}</h3>
-                <p class="text-gray-600 mb-2">{{ booking.camping_spot?.location?.city }}, {{ booking.camping_spot?.location?.country?.name }}</p>
-                <div class="flex items-center text-sm text-gray-500">
-                  <span class="inline-block mr-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </span>
-                  {{ formatDateRange(booking.start_date, booking.end_date) }}
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Details Grid -->
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 border-t border-b border-gray-100 py-8">
-            <div>
-              <h3 class="text-sm text-gray-500 mb-1">Check-in</h3>
-              <p class="font-medium">{{ formatDate(booking.start_date) }}</p>
-            </div>
-            <div>
-              <h3 class="text-sm text-gray-500 mb-1">Check-out</h3>
-              <p class="font-medium">{{ formatDate(booking.end_date) }}</p>
-            </div>
-            <div>
-              <h3 class="text-sm text-gray-500 mb-1">Guests</h3>
-              <p class="font-medium">{{ booking.number_of_guests }} {{ booking.number_of_guests === 1 ? 'guest' : 'guests' }}</p>
-            </div>
-          </div>
-          
-          <!-- Payment Details -->
-          <div class="mb-10">
-            <h3 class="text-lg font-medium mb-4 border-b pb-2">Payment details</h3>
-            <div class="bg-gray-50 rounded-lg p-4">
-              <!-- Base price calculation -->
-              <div class="flex justify-between mb-2">
-                <span class="text-gray-600">
-                  €{{ formatPrice(basePrice) }} × {{ calculateNights() }} nights
-                </span>
-                <span>€{{ formatPrice(basePrice * calculateNights()) }}</span>
-              </div>
-              <div class="flex justify-between mb-4 pb-4 border-b border-gray-200">
-                <span class="text-gray-600">Service fee</span>
-                <span>€{{ formatPrice(serviceFee) }}</span>
-              </div>
-              <div class="flex justify-between font-semibold text-lg">
-                <span>Total</span>
-                <span>€{{ formatPrice(totalPaid) }}</span>
-              </div>
-              <div class="mt-2 flex justify-end">
-                <span :class="{
-                  'text-green-600': booking.status_id === 2 || booking.status_id === 4,
-                  'text-amber-600': booking.status_id === 3,
-                  'text-sm font-medium': true
-                }">
-                  {{ booking.status_id === 3 ? 'Cancelled' : 'Paid' }}
-                </span>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Help Section -->
-          <div class="bg-gray-50 rounded-lg p-4 mb-8">
-            <h3 class="text-lg font-medium mb-2">Need help?</h3>
-            <p class="text-gray-600 text-sm mb-4">
-              For any questions about your booking, please contact our support team.
-            </p>
-            <button class="text-red-500 font-medium hover:text-red-700 transition-colors">
-              Contact Support
-            </button>
-          </div>
-          
-          <!-- Actions -->
-          <div class="flex flex-wrap justify-end gap-4">
-            <button
-              v-if="canCancel"
-              @click="showCancelModal = true"
-              class="px-6 py-2 border border-red-500 text-red-500 rounded-lg hover:bg-red-50 transition-colors"
-            >
-              Cancel Booking
-            </button>
-            <router-link
-              :to="{ path: '/account', query: { tab: 'bookings', id: booking.booking_id }}"
-              class="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              View All Bookings
-            </router-link>
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Cancel Confirmation Modal -->
-    <div v-if="showCancelModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
-        <h3 class="text-xl font-semibold mb-4 text-red-600">Cancel Booking</h3>
-        <div class="mb-6">
-          <p class="text-gray-700 mb-4">
-            Are you sure you want to cancel this booking?
-          </p>
-          <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
-            <p class="font-bold mb-2">⚠️ Warning</p>
-            <p>This action cannot be undone and your payment will <span class="font-bold">not</span> be refunded.</p>
-          </div>
-        </div>
-        <div class="flex justify-end gap-4">
-          <button 
-            @click="showCancelModal = false"
-            class="px-4 py-2 text-gray-600 hover:text-gray-800"
-          >
-            Keep Booking
-          </button>
-          <button 
-            @click="cancelBooking"
-            class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
-          >
-            Yes, Cancel Booking
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
-<script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import axios from '@/axios'
-import { useToast } from 'vue-toastification'
-import { useAuthStore } from '@/stores/auth'
-import { normalizeBooking, formatDate, formatDateRange, formatPrice } from '@/utils/bookingUtils'
-
-const route = useRoute()
-const router = useRouter()
-const toast = useToast()
-const authStore = useAuthStore()
-
-const booking = ref(null)
-const loading = ref(true)
-const error = ref(null)
-const showCancelModal = ref(false)
-
-// Improved status handling
-const getStatusLabel = computed(() => {
-  if (!booking.value) return ''
-  
-  const statusMap = {
-    1: 'Pending',
-    2: 'Confirmed',
-    3: 'Cancelled',
-    4: 'Completed',
-    5: 'Unavailable'
-  }
-  
-  return statusMap[booking.value.status_id] || 'Unknown'
-})
-
-// Status class for the badge
-const statusClass = computed(() => {
-  if (!booking.value) return ''
-  
-  const classMap = {
-    1: 'bg-yellow-100 text-yellow-800', // Pending
-    2: 'bg-green-100 text-green-800',   // Confirmed
-    3: 'bg-red-100 text-red-800',       // Cancelled
-    4: 'bg-blue-100 text-blue-800',     // Completed
-    5: 'bg-gray-100 text-gray-800'      // Unavailable
-  }
-  
-  return classMap[booking.value.status_id] || 'bg-gray-100 text-gray-800'
-})
-
-// Check if booking can be cancelled
-const canCancel = computed(() => {
-  if (!booking.value) return false
-  
-  // Only confirmed bookings can be cancelled
-  if (booking.value.status_id !== 2) return false
-  
-  // Check if more than 48 hours before check-in
-  const today = new Date()
-  const startDate = new Date(booking.value.start_date)
-  const hoursDiff = (startDate - today) / (1000 * 60 * 60)
-  
-  return hoursDiff > 48 // Can cancel if more than 48 hours before check-in
-})
-
-// Calculate the number of nights
-const calculateNights = () => {
-  if (!booking.value?.start_date || !booking.value?.end_date) return 0
-  const start = new Date(booking.value.start_date)
-  const end = new Date(booking.value.end_date)
-  start.setHours(0, 0, 0, 0)
-  end.setHours(0, 0, 0, 0)
-  return Math.ceil((end - start) / (1000 * 60 * 60 * 24))
-}
-
-// Properly calculate the total paid amount
-const totalPaid = computed(() => {
-  if (!booking.value) return 0;
-  
-  // Use the transaction amount if available
-  if (booking.value.transaction && booking.value.transaction.length > 0) {
-    return parseFloat(booking.value.transaction[0].amount);
-  }
-  
-  // Fall back to booking cost plus estimated service fee
-  return parseFloat(booking.value.cost) * 1.1;
-});
-
-// Calculate base price (actual booking cost without fees)
-const basePrice = computed(() => {
-  if (!booking.value) return 0;
-  
-  // Use the actual recorded booking cost
-  return parseFloat(booking.value.cost);
-});
-
-// Calculate service fee (difference between total and base)
-const serviceFee = computed(() => {
-  return totalPaid.value - basePrice.value;
-});
-
-const confirmCancel = () => {
-  showCancelModal.value = true
-}
-
-const cancelBooking = async () => {
-  try {
-    const { data } = await axios.post(`/api/bookings/${booking.value.booking_id}/cancel`)
-    
-    // Update booking with cancelled status
-    booking.value = data
-    
-    // Update user info to reflect changes
-    await authStore.fetchFullUserInfo(true)
-    
-    toast.success('Booking cancelled successfully')
-    showCancelModal.value = false
-  } catch (err) {
-    console.error('Failed to cancel booking:', err)
-    toast.error(err.response?.data?.error || 'Failed to cancel booking. Please try again later.')
-  }
-}
-
-onMounted(async () => {
-  try {
-    loading.value = true;
-    error.value = null;
-    
-    console.log('BookingDetailsView mounted with params:', route.params);
-    console.log('BookingDetailsView mounted with query:', route.query);
-    
-    let response;
-    
-    // Check if we have a session_id from Stripe redirect
-    if (route.query.session_id) {
-      console.log('Fetching booking from session_id:', route.query.session_id);
-      
-      try {
-        response = await axios.get(`/api/bookings/stripe-success`, {
-          params: { session_id: route.query.session_id }
-        });
-      } catch (e) {
-        console.error('Failed to fetch with API prefix, trying without:', e);
-        response = await axios.get(`/bookings/stripe-success`, {
-          params: { session_id: route.query.session_id }
-        });
-      }
-      
-      // If we got a successful response with booking data
-      if (response.data && response.data.booking_id) {
-        // Normalize the booking data
-        booking.value = normalizeBooking(response.data);
-        
-        // Update URL to normal booking view to avoid refresh issues
-        router.replace({
-          path: `/booking/${response.data.booking_id}`,
-          query: { session_id: route.query.session_id } // Keep session ID for reference
-        }, { replace: true });
-        
-        // Force a fresh data fetch from the server to ensure we get the latest status
-        await authStore.fetchFullUserInfo(true);
-        
-        toast.success('Booking confirmed successfully!');
-      } else {
-        throw new Error('Invalid booking data received');
-      }
-    } else if (route.params.id) {
-      // Normal booking details view with ID
-      console.log('Fetching booking with ID:', route.params.id);
-      try {
-        // Add cache-busting parameter to ensure we get fresh data
-        response = await axios.get(`/api/bookings/${route.params.id}?t=${Date.now()}`);
-        booking.value = normalizeBooking(response.data);
-      } catch (err) {
-        if (err.response?.status === 403) {
-          error.value = "You don't have permission to view this booking";
-          // Redirect to account page after a short delay
-          setTimeout(() => {
-            router.push('/account');
-            toast.error("You don't have permission to view this booking");
-          }, 2000);
-        } else {
-          throw err;
-        }
-      }
-    } else {
-      throw new Error('No booking ID or session ID provided');
-    }
-  } catch (err) {
-    console.error('Failed to load booking details:', err);
-    error.value = err.message || 'Failed to load booking details';
-  } finally {
-    loading.value = false;
-  }
-});
-</script>
-
-<style scoped>
-/* Add hover effects to buttons */
-button, a {
-  transform: translateY(0);
-  transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s, color 0.2s;
-}
-
-button:hover, a:hover {
-  transform: translateY(-1px);
-}
-
-/* Animated shadow effect on hover for main sections */
-.bg-white {
-  transition: box-shadow 0.3s ease;
-}
-
-.bg-white:hover {
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
-}
-
-/* Custom styles for the status indicator */
-.rounded-full {
-  height: 24px;
-  min-width: 90px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-</style>
+<template>  <div class="min-h-screen bg-gray-50 py-12">    <div class="max-w-4xl mx-auto px-4">      <!-- Loading State -->      <div v-if="loading" class="flex justify-center items-center h-64">        <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-red-500"></div>      </div>      <!-- Error State -->      <div v-else-if="error" class="max-w-lg mx-auto bg-white rounded-xl shadow-lg p-8 text-center">        <div class="w-16 h-16 bg-red-100 rounded-full mx-auto flex items-center justify-center">          <svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />          </svg>        </div>        <h2 class="text-2xl font-semibold text-gray-800 mt-6">{{ error }}</h2>        <p class="mt-3 text-gray-600">          There was a problem retrieving your booking information.         </p>        <div class="mt-8">          <router-link to="/" class="inline-block px-6 py-3 bg-gradient-to-r from-rose-500 to-red-600 text-white rounded-lg hover:from-rose-600 hover:to-red-700 transition-all shadow-md hover:shadow-lg">            Return to Home          </router-link>        </div>      </div>      <!-- Success State: Booking Details -->      <div v-else-if="booking" class="bg-white rounded-xl shadow-lg overflow-hidden mx-auto">        <!-- Banner with status -->        <div class="bg-gradient-to-r from-rose-500 to-red-600 text-white p-6">          <div class="max-w-3xl mx-auto flex items-center justify-between">            <h1 class="text-2xl font-bold">Booking Confirmed</h1>            <span :class="statusClass" class="px-3 py-1 rounded-full text-sm font-medium">              {{ getStatusLabel }}            </span>          </div>        </div>        <div class="max-w-3xl mx-auto p-8">          <!-- Booking Summary -->          <div class="mb-8">            <div class="flex items-center justify-between mb-6">              <h2 class="text-xl font-semibold">Your trip to {{ booking.camping_spot?.location?.city }}</h2>              <span class="text-sm text-gray-500">Booking #{{ booking.booking_id }}</span>            </div>            <!-- Camping Spot Info -->            <div class="flex gap-6 mb-8">              <div class="w-32 h-32 flex-shrink-0 rounded-lg overflow-hidden">                <img                   v-if="booking.camping_spot?.images?.[0]"                  :src="booking.camping_spot.images[0].image_url"                  :alt="booking.camping_spot.title"                  class="w-full h-full object-cover"                />                <div v-else class="w-full h-full bg-gray-200 flex items-center justify-center">                  <span class="text-gray-400">No image</span>                </div>              </div>              <div>                <h3 class="text-lg font-semibold mb-1">{{ booking.camping_spot?.title }}</h3>                <p class="text-gray-600 mb-2">{{ booking.camping_spot?.location?.city }}, {{ booking.camping_spot?.location?.country?.name }}</p>                <div class="flex items-center text-sm text-gray-500">                  <span class="inline-block mr-2">                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />                    </svg>                  </span>                  {{ formatDateRange(booking.start_date, booking.end_date) }}                </div>              </div>            </div>          </div>          <!-- Details Grid -->          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 border-t border-b border-gray-100 py-8">            <div>              <h3 class="text-sm text-gray-500 mb-1">Check-in</h3>              <p class="font-medium">{{ formatDate(booking.start_date) }}</p>            </div>            <div>              <h3 class="text-sm text-gray-500 mb-1">Check-out</h3>              <p class="font-medium">{{ formatDate(booking.end_date) }}</p>            </div>            <div>              <h3 class="text-sm text-gray-500 mb-1">Guests</h3>              <p class="font-medium">{{ booking.number_of_guests }} {{ booking.number_of_guests === 1 ? 'guest' : 'guests' }}</p>            </div>          </div>          <!-- Payment Details -->          <div class="mb-10">            <h3 class="text-lg font-medium mb-4 border-b pb-2">Payment details</h3>            <div class="bg-gray-50 rounded-lg p-4">              <!-- Base price calculation -->              <div class="flex justify-between mb-2">                <span class="text-gray-600">                  €{{ formatPrice(basePrice) }} × {{ calculateNights() }} nights                </span>                <span>€{{ formatPrice(basePrice * calculateNights()) }}</span>              </div>              <div class="flex justify-between mb-4 pb-4 border-b border-gray-200">                <span class="text-gray-600">Service fee</span>                <span>€{{ formatPrice(serviceFee) }}</span>              </div>              <div class="flex justify-between font-semibold text-lg">                <span>Total</span>                <span>€{{ formatPrice(totalPaid) }}</span>              </div>              <div class="mt-2 flex justify-end">                <span :class="{                  'text-green-600': booking.status_id === 2 || booking.status_id === 4,                  'text-amber-600': booking.status_id === 3,                  'text-sm font-medium': true                }">                  {{ booking.status_id === 3 ? 'Cancelled' : 'Paid' }}                </span>              </div>            </div>          </div>          <!-- Help Section -->          <div class="bg-gray-50 rounded-lg p-4 mb-8">            <h3 class="text-lg font-medium mb-2">Need help?</h3>            <p class="text-gray-600 text-sm mb-4">              For any questions about your booking, please contact our support team.            </p>            <button class="text-red-500 font-medium hover:text-red-700 transition-colors">              Contact Support            </button>          </div>          <!-- Actions -->          <div class="flex flex-wrap justify-end gap-4">            <button              v-if="canCancel"              @click="showCancelModal = true"              class="px-6 py-2 border border-red-500 text-red-500 rounded-lg hover:bg-red-50 transition-colors"            >              Cancel Booking            </button>            <router-link              :to="{ path: '/account', query: { tab: 'bookings', id: booking.booking_id }}"              class="px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"            >              View All Bookings            </router-link>          </div>        </div>      </div>    </div>    <!-- Cancel Confirmation Modal -->    <div v-if="showCancelModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">      <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">        <h3 class="text-xl font-semibold mb-4 text-red-600">Cancel Booking</h3>        <div class="mb-6">          <p class="text-gray-700 mb-4">            Are you sure you want to cancel this booking?          </p>          <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">            <p class="font-bold mb-2">⚠️ Warning</p>            <p>This action cannot be undone and your payment will <span class="font-bold">not</span> be refunded.</p>          </div>        </div>        <div class="flex justify-end gap-4">          <button             @click="showCancelModal = false"            class="px-4 py-2 text-gray-600 hover:text-gray-800"          >            Keep Booking          </button>          <button             @click="cancelBooking"            class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"          >            Yes, Cancel Booking          </button>        </div>      </div>    </div>  </div></template><script setup>import { ref, computed, onMounted } from 'vue'import { useRoute, useRouter } from 'vue-router'import axios from '@/axios'import { useToast } from 'vue-toastification'import { useAuthStore } from '@/stores/auth'import { normalizeBooking, formatDate, formatDateRange, formatPrice } from '@/utils/bookingUtils'const route = useRoute()const router = useRouter()const toast = useToast()const authStore = useAuthStore()const booking = ref(null)const loading = ref(true)const error = ref(null)const showCancelModal = ref(false)// Improved status handlingconst getStatusLabel = computed(() => {  if (!booking.value) return ''  const statusMap = {    1: 'Pending',    2: 'Confirmed',    3: 'Cancelled',    4: 'Completed',    5: 'Unavailable'  }  return statusMap[booking.value.status_id] || 'Unknown'})// Status class for the badgeconst statusClass = computed(() => {  if (!booking.value) return ''  const classMap = {    1: 'bg-yellow-100 text-yellow-800', // Pending    2: 'bg-green-100 text-green-800',   // Confirmed    3: 'bg-red-100 text-red-800',       // Cancelled    4: 'bg-blue-100 text-blue-800',     // Completed    5: 'bg-gray-100 text-gray-800'      // Unavailable  }  return classMap[booking.value.status_id] || 'bg-gray-100 text-gray-800'})// Check if booking can be cancelledconst canCancel = computed(() => {  if (!booking.value) return false  // Only confirmed bookings can be cancelled  if (booking.value.status_id !== 2) return false  // Check if more than 48 hours before check-in  const today = new Date()  const startDate = new Date(booking.value.start_date)  const hoursDiff = (startDate - today) / (1000 * 60 * 60)  return hoursDiff > 48 // Can cancel if more than 48 hours before check-in})// Calculate the number of nightsconst calculateNights = () => {  if (!booking.value?.start_date || !booking.value?.end_date) return 0  const start = new Date(booking.value.start_date)  const end = new Date(booking.value.end_date)  start.setHours(0, 0, 0, 0)  end.setHours(0, 0, 0, 0)  return Math.ceil((end - start) / (1000 * 60 * 60 * 24))}// Properly calculate the total paid amountconst totalPaid = computed(() => {  if (!booking.value) return 0;  // Use the transaction amount if available  if (booking.value.transaction && booking.value.transaction.length > 0) {    return parseFloat(booking.value.transaction[0].amount);  }  // Fall back to booking cost plus estimated service fee  return parseFloat(booking.value.cost) * 1.1;});// Calculate base price (actual booking cost without fees)const basePrice = computed(() => {  if (!booking.value) return 0;  // Use the actual recorded booking cost  return parseFloat(booking.value.cost);});// Calculate service fee (difference between total and base)const serviceFee = computed(() => {  return totalPaid.value - basePrice.value;});const confirmCancel = () => {  showCancelModal.value = true}const cancelBooking = async () => {  try {    const { data } = await axios.post(`/api/bookings/${booking.value.booking_id}/cancel`)    // Update booking with cancelled status    booking.value = data    // Update user info to reflect changes    await authStore.fetchFullUserInfo(true)    toast.success('Booking cancelled successfully')    showCancelModal.value = false  } catch (err) {    console.error('Failed to cancel booking:', err)    toast.error(err.response?.data?.error || 'Failed to cancel booking. Please try again later.')  }}onMounted(async () => {  try {    loading.value = true;    error.value = null;    let response;    // Check if we have a session_id from Stripe redirect    if (route.query.session_id) {      try {        response = await axios.get(`/api/bookings/stripe-success`, {          params: { session_id: route.query.session_id }        });      } catch (e) {        console.error('Failed to fetch with API prefix, trying without:', e);        response = await axios.get(`/bookings/stripe-success`, {          params: { session_id: route.query.session_id }        });      }      // If we got a successful response with booking data      if (response.data && response.data.booking_id) {        // Normalize the booking data        booking.value = normalizeBooking(response.data);        // Update URL to normal booking view to avoid refresh issues        router.replace({          path: `/booking/${response.data.booking_id}`,          query: { session_id: route.query.session_id } // Keep session ID for reference        }, { replace: true });        // Force a fresh data fetch from the server to ensure we get the latest status        await authStore.fetchFullUserInfo(true);        toast.success('Booking confirmed successfully!');      } else {        throw new Error('Invalid booking data received');      }    } else if (route.params.id) {      // Normal booking details view with ID      try {        // Add cache-busting parameter to ensure we get fresh data        response = await axios.get(`/api/bookings/${route.params.id}?t=${Date.now()}`);        booking.value = normalizeBooking(response.data);      } catch (err) {        if (err.response?.status === 403) {          error.value = "You don't have permission to view this booking";          // Redirect to account page after a short delay          setTimeout(() => {            router.push('/account');            toast.error("You don't have permission to view this booking");          }, 2000);        } else {          throw err;        }      }    } else {      throw new Error('No booking ID or session ID provided');    }  } catch (err) {    console.error('Failed to load booking details:', err);    error.value = err.message || 'Failed to load booking details';  } finally {    loading.value = false;  }});</script><style scoped>/* Add hover effects to buttons */button, a {  transform: translateY(0);  transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s, color 0.2s;}button:hover, a:hover {  transform: translateY(-1px);}/* Animated shadow effect on hover for main sections */.bg-white {  transition: box-shadow 0.3s ease;}.bg-white:hover {  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);}/* Custom styles for the status indicator */.rounded-full {  height: 24px;  min-width: 90px;  display: inline-flex;  align-items: center;  justify-content: center;}</style>

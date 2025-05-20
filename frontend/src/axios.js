@@ -1,6 +1,5 @@
 import axios from 'axios';
 import { useAuthStore } from '@/stores/auth';
-
 // Create axios instance with optimized configuration
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
@@ -11,20 +10,13 @@ const apiClient = axios.create({
     'Accept': 'application/json'
   }
 });
-
 // Debug logging for all requests
 apiClient.interceptors.request.use(
   async (config) => {
-    console.log('=== AXIOS REQUEST ===');
-    console.log('URL:', config.baseURL + config.url);
-    console.log('Method:', config.method);
-    console.log('Headers:', config.headers);
-
     // Don't log sensitive data like passwords
     const safeData = { ...config.data };
     if (safeData.password) safeData.password = '[REDACTED]';
-
-    console.log('Data:', safeData);    // Check if this is a public route (GET requests only)
+        // Check if this is a public route (GET requests only)
     const isPublicRoute = config.method.toLowerCase() === 'get' && (
       config.url.includes('/api/camping-spots') || 
       config.url.includes('/api/locations') || 
@@ -39,7 +31,7 @@ apiClient.interceptors.request.use(
         const token = await authStore.getAuthToken();
         if (token && typeof token === 'string') {
           config.headers.Authorization = `Bearer ${token}`;
-          console.log('Setting auth header:', `Bearer ${token.substring(0, 10)}...`); // Log partial token for debugging
+          console.log(`Token added: ${token.substring(0, 5)}...`); // Log partial token for debugging
         } else {
           console.error('Invalid token format:', typeof token);
         }
@@ -59,13 +51,9 @@ apiClient.interceptors.request.use(
     return Promise.reject(error);
   }
 );
-
 // Debug logging for all responses
 apiClient.interceptors.response.use(
   (response) => {
-    console.log('=== AXIOS RESPONSE ===');
-    console.log('Status:', response.status);
-    console.log('Data:', response.data);
     return response;
   },
   async (error) => {
@@ -82,21 +70,17 @@ apiClient.interceptors.response.use(
       // Something happened in setting up the request
       console.error('Error setting up request:', error.message);
     }
-
     const originalRequest = error.config;
-    
     // If the error is 401 and we haven't retried yet
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
         try {
-        const authStore = useAuthStore();
-        // Try to refresh the token
+        const authStore = useAuthStore();        // Try to refresh the token
         const newToken = await authStore.getAuthToken(true); // force refresh
-        
         if (newToken && typeof newToken === 'string') {
           // Update the authorization header
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
-          console.log('Refreshed auth header:', `Bearer ${newToken.substring(0, 10)}...`); // Log partial token for debugging
+          console.log(`Refreshed token: ${newToken.substring(0, 5)}...`); // Log partial token for debugging
           // Retry the original request
           return apiClient(originalRequest);
         }
@@ -107,10 +91,8 @@ apiClient.interceptors.response.use(
         return Promise.reject(refreshError);
       }
     }
-    
     // Return the error
     return Promise.reject(error);
   }
 );
-
 export default apiClient;

@@ -1,7 +1,6 @@
 /**
  * Helper utility to fix user data issues
  */
-
 /**
  * Fix isowner field to ensure it's a number not a string
  * @param {Object} userData - The user data from the API
@@ -9,10 +8,8 @@
  */
 export const fixUserData = (userData) => {
   if (!userData) return userData;
-  
   // Create a copy to avoid mutating the original
   const fixedData = { ...userData };
-  
   // Fix isowner field
   if (fixedData.isowner !== undefined) {
     if (typeof fixedData.isowner === 'string') {
@@ -23,10 +20,8 @@ export const fixUserData = (userData) => {
       fixedData.isowner = fixedData.isowner ? 1 : 0;
     }
   }
-  
   return fixedData;
 };
-
 /**
  * Apply the fix to user data automatically in localStorage
  */
@@ -37,10 +32,9 @@ export const applyUserDataFix = () => {
     if (userDataStr) {
       const userData = JSON.parse(userDataStr);
       const fixedData = fixUserData(userData);
-      
       // Only update if there was a change
       if (JSON.stringify(userData) !== JSON.stringify(fixedData)) {
-        console.log('Fixed user data in localStorage (isowner type)');
+        console.log('Fixed user data structure');
         localStorage.setItem('userData', JSON.stringify(fixedData));
       }
     }
