@@ -5,14 +5,14 @@ FROM node:18-alpine AS builder
 WORKDIR /app
 
 # Copy package files first for better layer caching
-COPY airbnb_frontend/frontend/package*.json ./
+COPY frontend/package*.json ./
 
 # Install dependencies with clean cache
 RUN npm ci --no-audit --prefer-offline && \
     npm cache clean --force
 
 # Copy the rest of the application
-COPY airbnb_frontend/frontend/ .
+COPY frontend/ .
 
 # Set environment variable for production build
 ENV NODE_ENV=production
@@ -31,7 +31,7 @@ FROM nginx:1.25.3-alpine
 RUN rm /etc/nginx/conf.d/default.conf
 
 # Copy nginx config
-COPY airbnb_frontend/nginx.conf /etc/nginx/conf.d/
+COPY nginx.conf /etc/nginx/conf.d/
 
 # Copy built assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
@@ -48,7 +48,7 @@ USER nginx
 
 # Health check with more lenient settings
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
-    CMD wget --no-verbose --tries=3 --spider http://localhost/ || exit 1
+    CMD wget --no-verbose --tries=3 --spider http://localhost/health || exit 1
 
 # Expose port 80
 EXPOSE 80
