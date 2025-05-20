@@ -7,8 +7,8 @@
         Checking API connection...
       </div>
       <div v-else>
-        <div :class="apiStatus.connected ? ''text-green-600'' : ''text-red-600''">
-          API {{ apiStatus.connected ? ''is connected'' : ''is not connected'' }}
+        <div :class="apiStatus.connected ? 'text-green-600' : 'text-red-600'">
+          API {{ apiStatus.connected ? 'is connected' : 'is not connected' }}
         </div>
         <div v-if="apiStatus.error" class="text-red-600 mt-2">
           Error: {{ apiStatus.error }}
@@ -32,9 +32,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from ''vue'';
-import { useAuthStore } from ''@/stores/auth'';
-import axios from ''@/axios'';
+import { ref, onMounted } from 'vue';
+import { useAuthStore } from '@/stores/auth';
+import axios from '@/axios';
 
 const authStore = useAuthStore();
 
@@ -50,12 +50,12 @@ async function checkApiConnection() {
   apiStatus.value.loading = true;
   apiStatus.value.error = null;
   try {
-    const response = await axios.get(''/'', { timeout: 5000 });
+    const response = await axios.get('/', { timeout: 5000 });
     apiStatus.value.connected = true;
   } catch (error) {
     apiStatus.value.connected = false;
     apiStatus.value.error = error.message;
-    console.error(''API connection error:'', error);
+    console.error('API connection error:', error);
   } finally {
     apiStatus.value.loading = false;
   }

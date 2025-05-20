@@ -706,22 +706,23 @@ const handleBookNow = async () => {
     }
     // Calculate base price and service fee
     const baseAmount = basePrice.value;
-  loading.value = true;
-  try {
-    // Double-check availability before proceeding
-    await checkAvailability();
-    if (hasBlockedDates.value) {
-      toast.error('Sorry, these dates are no longer available');
-      loading.value = false;
-      return;
-    }
-    // Calculate base price and service fee
-    const baseAmount = basePrice.value;
     const serviceFeeAmount = serviceFee.value;
     const totalAmount = totalPrice.value;
     
-    // Prepare checkout session
-    });
+    // Prepare checkout session data
+    const sessionData = {
+      spotId: spot.value.camping_spot_id,
+      startDate: dates.value.startDate,
+      endDate: dates.value.endDate,
+      guests: guests.value,
+      baseAmount: baseAmount,
+      serviceFee: serviceFeeAmount,
+      totalAmount: totalAmount
+    };
+    
+    // Create checkout session
+    const sessionResponse = await axios.post('/api/checkout/create-session', sessionData);
+    
     if (!sessionResponse || !sessionResponse.url) {
       console.error('Invalid session response:', sessionResponse);
       throw new Error('Invalid response from server');
@@ -788,14 +789,18 @@ const loadSpotDetails = async () => {
     router.push('/campers')
     return
   }
-  loading.value = true
-  error.value = null
-  dbConnectionError.value = false
-// Price updates handled elsewhere
+  loading.value = true;
+  error.value = null;
+  dbConnectionError.value = false;
+  
+  try {
+    const response = await axios.get(`/api/camping-spots/${spotId}`, {
+      params: {
         startDate: dates.value.startDate || route.query.start,
         endDate: dates.value.endDate || route.query.end
       }
-    })
+    });
+    
     if (!response || !response.data) {
       throw new Error('No data received from server')
     }
