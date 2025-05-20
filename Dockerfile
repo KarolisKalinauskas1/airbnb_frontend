@@ -11,14 +11,14 @@ RUN apk add --no-cache \
     g++
 
 # Copy package files first for better layer caching
-COPY frontend/package*.json ./
+COPY package*.json ./
 
 # Install dependencies with clean cache
 RUN npm ci --no-audit --prefer-offline && \
     npm cache clean --force
 
 # Copy the rest of the application
-COPY frontend/ .
+COPY . .
 
 # Build the application with production settings
 RUN npm run build
