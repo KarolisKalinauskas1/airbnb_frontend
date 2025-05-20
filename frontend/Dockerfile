@@ -36,22 +36,27 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Copy built assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Set permissions
-RUN chown -R nginx:nginx /usr/share/nginx/html && \
+# Set permissions and create necessary directories
+RUN mkdir -p /tmp/nginx/client-body && \
+    chown -R nginx:nginx /usr/share/nginx/html && \
     chmod -R 755 /usr/share/nginx/html && \
     touch /var/run/nginx.pid && \
     chown -R nginx:nginx /var/run/nginx.pid && \
-    chown -R nginx:nginx /var/cache/nginx
+    chown -R nginx:nginx /var/cache/nginx && \
+    chown -R nginx:nginx /tmp/nginx
+
+# Check if Nginx config is valid before proceeding
+RUN nginx -t
 
 # Switch to non-root user
 USER nginx
 
 # Health check with more lenient settings
 HEALTHCHECK --interval=5s --timeout=10s --start-period=15s --retries=6 \
-    CMD curl -f http://localhost/health || wget -q --spider http://localhost/health || exit 1
+    CMD curl -f http://localhost:8080/health || wget -q --spider http://localhost:8080/health || exit 1
 
-# Expose port 80
-EXPOSE 80
+# Expose port 8080
+EXPOSE 8080
 
 # Start Nginx in the foreground
 CMD ["nginx", "-g", "daemon off; error_log /dev/stderr info;"]
