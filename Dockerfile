@@ -25,35 +25,38 @@ RUN apk add --no-cache \
     npm run build
 
 # Production stage
-FROM nginx:1.25.3-alpine3.18-slim
+FROM node:18-alpine as production
 
-# Install security updates and tools
-RUN apk --no-cache upgrade && \
-    apk add --no-cache curl
+# Install nginx and other dependencies
+RUN apk add --no-cache nginx && \
+    mkdir -p /run/nginx && \
+    mkdir -p /usr/share/nginx/html && \
+    chown -R nginx:nginx /var/lib/nginx && \
+    chown -R nginx:nginx /usr/share/nginx/html && \
+    chmod -R 755 /usr/share/nginx/html && \
+    rm -f /etc/nginx/conf.d/*.default
 
 # Copy nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Create necessary directories and set permissions
-RUN mkdir -p /usr/share/nginx/html && \
-    chown -R nginx:nginx /usr/share/nginx && \
-    chmod -R 755 /usr/share/nginx/html && \
-    chmod 644 /etc/nginx/conf.d/default.conf
-
 # Copy built assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Remove default nginx files and clean up
-RUN rm -f /etc/nginx/conf.d/*.default && \
-    rm -rf /usr/share/nginx/html/50x.html && \
-    rm -rf /var/cache/apk/*
+# Set working directory
+WORKDIR /app
+
+# Copy package files for production dependencies
+COPY package*.json ./
+
+# Install only production dependencies
+RUN npm ci --only=production --no-audit --prefer-offline
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
 
-# Expose port 8080 for Railway
-EXPOSE 8080
+# Expose port 80
+EXPOSE 80
 
-# Start Nginx with debug logging
-CMD ["nginx", "-g", "daemon off; error_log /dev/stderr info;"]
+# Start Nginx and keep it running in the foreground
+CMD ["sh", "-c", "nginx -g 'daemon off; error_log /dev/stderr info;'"]
