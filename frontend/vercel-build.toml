@@ -1,0 +1,14 @@
+# Vercel Build Configuration
+
+# Specify Node.js version
+engines = { node = "18.x" }
+
+# Install dependencies
+# This optimization prevents reinstalling packages if package.json hasn't changed
+[build.environment]
+  NPM_FLAGS = "--prefer-offline --no-audit"
+
+# Add the build command
+[build]
+  command = "npm install && npm run build"
+  publish = "dist"

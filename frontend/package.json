@@ -1,15 +1,17 @@
 {
   "name": "airbnb-frontend",
   "version": "1.0.0",
-  "private": true,
-  "scripts": {
+  "private": true,  "scripts": {
     "dev": "vite",
     "build": "vite build --mode production",
     "preview": "vite preview --host --port 4173",
     "start": "vite preview --host --port $PORT",
-    "serve": "vite preview --host --port $PORT",    "test": "vitest",
+    "serve": "vite preview --host --port $PORT",
+    "test": "vitest",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore",
-    "format": "prettier --write src/"
+    "format": "prettier --write src/",
+    "vercel-build": "vite build",
+    "prepare-deploy": "node deploy.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",
