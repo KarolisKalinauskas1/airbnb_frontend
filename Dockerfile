@@ -46,9 +46,9 @@ RUN chown -R nginx:nginx /usr/share/nginx/html && \
 # Switch to non-root user
 USER nginx
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
+# Health check with more lenient settings
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
+    CMD wget --no-verbose --tries=3 --spider http://localhost/ || exit 1
 
 # Expose port 80
 EXPOSE 80
