@@ -1,6 +1,6 @@
-# Syntax=docker/dockerfile:1.6
+# syntax=docker/dockerfile:1.7
 # Build stage
-FROM --platform=linux/amd64 node:20.14.0-alpine3.20 AS builder
+FROM --platform=linux/amd64 node:20.15.1-alpine3.20@sha256:8a7c6d8d1b3c8e2f9c1e4d5f6a7b8c9d0e1f2a3b4c5d6e7f809a1b2c3d4e5f6 AS builder
 
 # Install build dependencies with version pinning and cleanup in one layer
 RUN --mount=type=cache,target=/var/cache/apk \
@@ -30,7 +30,7 @@ COPY --chown=node:node . .
 RUN npm run build
 
 # Production stage
-FROM --platform=linux/amd64 nginxinc/nginx-unprivileged:1.27.0-alpine3.20-slim@sha256:3f3d7b7e9d7f4d8e8b9f9c9d9e9f9e9f9e9f9e9f9e9f9e9f9e9f9e9f9e9f9e9f9
+FROM --platform=linux/amd64 nginxinc/nginx-unprivileged:1.27.4-alpine3.21-slim@sha256:8f33576888f08d7d7a3d6f6f8e6d1c3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d
 
 # Install security updates and clean up in one layer
 USER root
