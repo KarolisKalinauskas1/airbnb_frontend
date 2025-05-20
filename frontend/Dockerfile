@@ -36,14 +36,22 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Copy built assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Set permissions and create necessary directories
-RUN mkdir -p /tmp/nginx/client-body && \
+# Set up necessary directories and permissions for non-root usage
+RUN mkdir -p /tmp/nginx/client-body /tmp/nginx/proxy /tmp/nginx/fastcgi /tmp/nginx/uwsgi /tmp/nginx/scgi && \
     chown -R nginx:nginx /usr/share/nginx/html && \
     chmod -R 755 /usr/share/nginx/html && \
-    touch /var/run/nginx.pid && \
-    chown -R nginx:nginx /var/run/nginx.pid && \
     chown -R nginx:nginx /var/cache/nginx && \
-    chown -R nginx:nginx /tmp/nginx
+    chown -R nginx:nginx /tmp/nginx && \
+    # Create a directory that nginx can write to
+    mkdir -p /var/cache/nginx/client_temp && \
+    mkdir -p /var/cache/nginx/proxy_temp && \
+    mkdir -p /var/cache/nginx/fastcgi_temp && \
+    mkdir -p /var/cache/nginx/uwsgi_temp && \
+    mkdir -p /var/cache/nginx/scgi_temp && \
+    chown -R nginx:nginx /var/cache/nginx
+
+# Install curl for healthchecks
+RUN apk --no-cache add curl
 
 # Check if Nginx config is valid before proceeding
 RUN nginx -t

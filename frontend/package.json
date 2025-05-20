@@ -7,11 +7,9 @@
     "build": "vite build --mode production",
     "preview": "vite preview --host --port 4173",
     "start": "vite preview --host --port $PORT",
-    "serve": "vite preview --host --port $PORT",
-    "test": "vitest",
+    "serve": "vite preview --host --port $PORT",    "test": "vitest",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore",
-    "format": "prettier --write src/",
-    "postinstall": "echo 'Skipping postinstall build - will be handled by Railway build command'"
+    "format": "prettier --write src/"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",

@@ -19,16 +19,11 @@ export default defineConfig(({ command, mode }) => {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url))
       },
-    },
-    server: {
-      host: '0.0.0.0',
+    },    server: {
+      host: true,
       port: process.env.PORT || 5173,
-      strictPort: true,
-      hmr: {
-        protocol: 'wss',
-        clientPort: 443,
-        host: 'airbnbfrontend-production.up.railway.app'
-      },
+      strictPort: false,
+      
       cors: true,
       proxy: {
         // API endpoints
