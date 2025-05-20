@@ -4,21 +4,21 @@ FROM node:20.12.2-alpine3.18 AS builder
 # Set working directory
 WORKDIR /app
 
-# Install build dependencies with version pinning
+# Install build dependencies
 RUN apk add --no-cache \
-    python3~=3.11 \
-    make~=4.4 \
-    g++~=12.2
+    python3 \
+    make \
+    g++
 
 # Copy package files first for better layer caching
-COPY package*.json ./
+COPY frontend/package*.json ./
 
 # Install dependencies with clean cache
 RUN npm ci --no-audit --prefer-offline && \
     npm cache clean --force
 
 # Copy the rest of the application
-COPY . .
+COPY frontend/ .
 
 # Build the application with production settings
 RUN npm run build
@@ -28,7 +28,7 @@ FROM nginx:1.25.3-alpine3.18-slim
 
 # Install security updates and tools
 RUN apk --no-cache upgrade && \
-    apk add --no-cache curl~=8.6
+    apk add --no-cache curl
 
 # Copy nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
