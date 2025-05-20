@@ -1,30 +1,34 @@
 # Build stage
-FROM node:18.18.2-alpine3.18 AS builder
+FROM node:20.12.2-alpine3.18 AS builder
 
 # Set working directory
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache python3 make g++
+# Install build dependencies with version pinning
+RUN apk add --no-cache \
+    python3~=3.11 \
+    make~=4.4 \
+    g++~=12.2
 
-# Copy package files
+# Copy package files first for better layer caching
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies with clean cache
+RUN npm ci --no-audit --prefer-offline && \
+    npm cache clean --force
 
 # Copy the rest of the application
 COPY . .
 
-# Build the application
+# Build the application with production settings
 RUN npm run build
 
 # Production stage
 FROM nginx:1.25.3-alpine3.18-slim
 
-# Install security updates and tools for debugging
+# Install security updates and tools
 RUN apk --no-cache upgrade && \
-    apk add --no-cache curl
+    apk add --no-cache curl~=8.6
 
 # Copy nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
@@ -38,16 +42,17 @@ RUN mkdir -p /usr/share/nginx/html && \
 # Copy built assets from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Remove default nginx files
+# Remove default nginx files and clean up
 RUN rm -f /etc/nginx/conf.d/*.default && \
-    rm -rf /usr/share/nginx/html/50x.html
+    rm -rf /usr/share/nginx/html/50x.html && \
+    rm -rf /var/cache/apk/*
 
-# Create a simple health check
+# Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/ || exit 1
+    CMD curl -f http://localhost:8080/health || exit 1
 
 # Expose port 8080 for Railway
 EXPOSE 8080
 
 # Start Nginx with debug logging
-CMD ["nginx", "-g", "daemon off; error_log /dev/stderr debug;"]
+CMD ["nginx", "-g", "daemon off; error_log /dev/stderr info;"]
