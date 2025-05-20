@@ -5,14 +5,14 @@ FROM node:18-alpine AS builder
 WORKDIR /app
 
 # Copy package files first for better layer caching
-COPY package*.json ./
+COPY frontend/package*.json ./
 
 # Install dependencies with clean cache
 RUN npm ci --no-audit --prefer-offline && \
     npm cache clean --force
 
 # Copy the rest of the application
-COPY . .
+COPY frontend/ .
 
 # Set environment variable for production build
 ENV NODE_ENV=production
