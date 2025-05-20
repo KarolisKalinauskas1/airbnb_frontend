@@ -1,41 +1,43 @@
-FROM node:18-alpine AS base
+# Build stage
+FROM node:18-alpine AS builder
 
-# Install dependencies only when needed
-FROM base AS deps
+# Set working directory
 WORKDIR /app
 
 # Copy package files
-COPY package.json package-lock.json* ./
+COPY package*.json ./
 
-# Install dependencies
+
+# Install all dependencies including devDependencies
 RUN npm ci
 
-# Rebuild the source code only when needed
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+# Copy the rest of the application
 COPY . .
 
-# Build the app
+# Build the application
 RUN npm run build
 
-# Production image, copy all the files and run the app
-FROM base AS runner
+# Production stage
+FROM node:18-alpine
+
+# Set working directory
 WORKDIR /app
 
-# Install a simple web server
+# Install serve to run the application
 RUN npm install -g serve
 
-# Copy build output
+# Copy built assets from builder
 COPY --from=builder /app/dist ./dist
 
-# Don't run as root
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 vuejs
+# Create a non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 vuejs
+
+# Set the user
 USER vuejs
 
-# Expose the port
+# Expose the port the app runs on
 EXPOSE 5173
 
-# Start the app
+# Command to run the application
 CMD ["serve", "-s", "dist", "-l", "5173"]
