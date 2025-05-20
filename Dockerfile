@@ -4,26 +4,25 @@ FROM node:18-alpine AS builder
 # Set working directory
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++
-
 # Copy package files first for better layer caching
-COPY frontend/package*.json ./
+COPY package*.json ./
 
 # Install dependencies with clean cache
 RUN npm ci --no-audit --prefer-offline && \
     npm cache clean --force
 
 # Copy the rest of the application
-COPY frontend/ .
+COPY . .
 
 # Set environment variable for production build
 ENV NODE_ENV=production
-# Build the application with production settings
-RUN npm run build
+
+# Install build dependencies and build the application
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ && \
+    npm run build
 
 # Production stage
 FROM nginx:1.25.3-alpine3.18-slim
