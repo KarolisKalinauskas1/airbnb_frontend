@@ -12,9 +12,8 @@ export default defineConfig(({ command, mode }) => {
   return {
     plugins: [
       vue(),
-      vueDevTools(),
-    ],
-    base: './', // Add this for proper asset loading
+      vueDevTools(),    ],
+    base: '/', // Changed to absolute path for Vercel deployment
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url))
