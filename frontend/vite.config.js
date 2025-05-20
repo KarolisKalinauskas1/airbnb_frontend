@@ -5,6 +5,9 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 
 export default defineConfig(({ command, mode }) => {
   const isProduction = mode === 'production'
+  const backendUrl = isProduction 
+    ? 'https://airbnbbackend-production-5ffb.up.railway.app' 
+    : 'http://localhost:3000';
 
   return {
     plugins: [
@@ -17,23 +20,30 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     server: {
+      host: '0.0.0.0',
+      port: 5173,
+      strictPort: true,
+      hmr: {
+        protocol: 'wss',
+        clientPort: 443
+      },
       proxy: {
         // API endpoints
         '^/api/.*': {
-          target: isProduction ? 'https://your-railway-backend-url.railway.app' : 'http://localhost:3000',
+          target: backendUrl,
           changeOrigin: true,
           secure: false,
           rewrite: (path) => path
         },
         // Health check endpoints
         '^/(ping|health)': {
-          target: isProduction ? 'https://your-railway-backend-url.railway.app' : 'http://localhost:3000',
+          target: backendUrl,
           changeOrigin: true,
           secure: false
         },
         // Other backend endpoints
         '^/(camping-spots|amenities|countries|users|bookings|dashboard)/.*': {
-          target: isProduction ? 'https://your-railway-backend-url.railway.app' : 'http://localhost:3000',
+          target: backendUrl,
           changeOrigin: true,
           secure: false,
           rewrite: (path) => path.replace(/^\/(camping-spots|amenities|countries|users|bookings|dashboard)/, '/api/$1')
