@@ -1,0 +1,32 @@
+# Ignore node modules
+node_modules
+*/node_modules
+
+# Ignore logs
+logs
+*.log
+npm-debug.log*
+
+# Ignore build directories
+dist
+dist-ssr
+coverage
+*.local
+
+# Editor directories and files
+.vscode
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Ignore git and version control
+.git
+.gitignore
+
+# Ignore development files
+*.md
+LICENSE
+.DS_Store
