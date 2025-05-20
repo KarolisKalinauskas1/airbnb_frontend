@@ -11,7 +11,7 @@
     "test": "vitest",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore",
     "format": "prettier --write src/",
-    "postinstall": "vite build"
+    "postinstall": "echo 'Skipping postinstall build - will be handled by Railway build command'"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",
