@@ -14,6 +14,7 @@ export default defineConfig(({ command, mode }) => {
       vue(),
       vueDevTools(),
     ],
+    base: './', // Add this for proper asset loading
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url))
@@ -21,12 +22,14 @@ export default defineConfig(({ command, mode }) => {
     },
     server: {
       host: '0.0.0.0',
-      port: 5173,
+      port: process.env.PORT || 5173,
       strictPort: true,
       hmr: {
         protocol: 'wss',
-        clientPort: 443
+        clientPort: 443,
+        host: 'airbnbfrontend-production.up.railway.app'
       },
+      cors: true,
       proxy: {
         // API endpoints
         '^/api/.*': {
