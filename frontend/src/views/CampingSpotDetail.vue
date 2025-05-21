@@ -706,22 +706,23 @@ const handleBookNow = async () => {
     }
     // Calculate base price and service fee
     const baseAmount = basePrice.value;
-    const serviceFeeAmount = serviceFee.value;
-    const totalAmount = totalPrice.value;
+    const serviceFeeAmount = serviceFee.value;    const totalAmount = totalPrice.value;
     
     // Prepare checkout session data
     const sessionData = {
-      spotId: spot.value.camping_spot_id,
-      startDate: dates.value.startDate,
-      endDate: dates.value.endDate,
-      guests: guests.value,
-      baseAmount: baseAmount,
-      serviceFee: serviceFeeAmount,
-      totalAmount: totalAmount
+      camper_id: spot.value.camping_spot_id,
+      user_id: authStore.publicUser?.user_id,
+      start_date: dates.value.startDate,
+      end_date: dates.value.endDate,
+      number_of_guests: guests.value,
+      cost: baseAmount,
+      service_fee: serviceFeeAmount,
+      total: totalAmount,
+      spot_name: spot.value.title || 'Camping Spot'
     };
     
     // Create checkout session
-    const sessionResponse = await axios.post('/api/checkout/create-session', sessionData);
+    const sessionResponse = await axios.post('/api/bookings/create-checkout-session', sessionData);
     
     if (!sessionResponse || !sessionResponse.url) {
       console.error('Invalid session response:', sessionResponse);
