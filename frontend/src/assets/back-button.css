@@ -1,0 +1,18 @@
+/* Simple back button styles */
+.back-link {
+  display: inline-flex !important; 
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  margin-bottom: 1.5rem;
+  cursor: pointer;
+  color: #4B5563; /* gray-600 */
+}
+
+.back-link:hover {
+  color: #111827; /* gray-900 */
+}
+
+.back-arrow {
+  font-size: 1.25rem;
+}

@@ -1,6 +1,7 @@
 import './assets/main.css'
 import './assets/z-index-fixes.css'
 import './assets/map-markers.css'
+import './assets/back-button.css'
 import { createApp } from 'vue'
 import App from './App.vue'
 import { createPinia } from 'pinia'

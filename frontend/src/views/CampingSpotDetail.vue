@@ -10,9 +10,9 @@
       </svg>
       <h2 class="text-xl font-semibold mb-4">This is Your Camping Spot</h2>
       <p class="mb-6">You cannot book your own camping spot.</p>      <div class="flex space-x-4 justify-center">
-        <router-link to="/campers" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 no-underline inline-block">
+        <button @click="goBackToCampers" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 no-underline inline-block">
           Back to Campers
-        </router-link>
+        </button>
         <button @click="router.push('/dashboard/spots')" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
           Go to Dashboard
         </button>
@@ -28,13 +28,15 @@
       <div v-else-if="!spot" class="h-screen flex items-center justify-center text-lg">
         Spot not found.
       </div>
-      <div v-else class="max-w-7xl mx-auto px-4 py-8">        <!-- Back Button - Simpler Router-Link -->
-        <router-link 
-          to="/campers" 
-          class="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
+      <div v-else class="max-w-7xl mx-auto px-4 py-8">        <!-- Back Button using Component -->
+        <BackButton 
+          class="mb-6"
+          url="/campers"
+          :useRouter="true"
+          @click="goBackToCampers"
         >
-          <span class="text-xl">←</span> Back to Campers
-        </router-link>
+          Back to Campers
+        </BackButton>
         <!-- Header Section -->
         <div class="mb-8 flex flex-col md:flex-row md:justify-between md:items-start gap-4">
           <div>
@@ -368,6 +370,7 @@ import OpenStreetLocationMap from '@/components/OpenStreetLocationMap.vue'
 import AvailabilityCalendar from '@/components/AvailabilityCalendar.vue'
 import CheckoutSummary from '@/components/CheckoutSummary.vue'
 import ReviewsList from '@/components/ReviewsList.vue'
+import BackButton from '@/components/BackButton.vue'
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
