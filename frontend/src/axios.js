@@ -15,17 +15,19 @@ apiClient.interceptors.request.use(
   async (config) => {
     // Don't log sensitive data like passwords
     const safeData = { ...config.data };
-    if (safeData.password) safeData.password = '[REDACTED]';
-    // Check if this is a public route (GET requests only)
+    if (safeData.password) safeData.password = '[REDACTED]';    // Check if this is a public route (GET requests only)
     const isPublicRoute = config.method.toLowerCase() === 'get' && (
       config.url.includes('/api/camping-spots') || 
+      config.url.includes('/api/campingspots') || // Alternative API endpoint format
       config.url.includes('/api/locations') || 
       config.url.includes('/api/countries') || 
       config.url.includes('/api/amenities') ||
       config.url.includes('/api/bookings/success') || // Add success route to public routes
       config.url.includes('/api/auth/oauth') || // Add OAuth routes to public routes
-      config.url.includes('/api/reviews/stats') // Add review stats to public routes
-    );// Only add auth token for non-public routes
+      config.url.includes('/api/reviews/stats') || // Add review stats to public routes
+      config.url.includes('/api/camper') // Add camper routes (for browsing) to public routes
+    );
+    // Only add auth token for non-public routes
     if (!isPublicRoute) {
       const authStore = useAuthStore();
       try {
@@ -35,12 +37,12 @@ apiClient.interceptors.request.use(
           console.log(`Token added: ${token.substring(0, 5)}...`); // Log partial token for debugging
         } else {
           console.error('Invalid token format:', typeof token);
-        }
-      } catch (error) {
+        }      } catch (error) {
         console.error('Error getting auth token:', error);
-        // Only redirect to login for non-public routes
+        // Only redirect to auth for non-public routes
+        // For public routes, continue without a token
         if (!isPublicRoute) {
-          window.location.href = '/login';
+          window.location.href = '/auth';
           return Promise.reject(error);
         }
       }
@@ -84,11 +86,25 @@ apiClient.interceptors.response.use(
           console.log(`Refreshed token: ${newToken.substring(0, 5)}...`); // Log partial token for debugging
           // Retry the original request
           return apiClient(originalRequest);
-        }
-      } catch (refreshError) {
+        }      } catch (refreshError) {
         console.error('Token refresh failed:', refreshError);
-        // If refresh fails, redirect to login
-        window.location.href = '/login';
+          // Check if this is a public route before redirecting
+        const isPublicRoute = originalRequest.method.toLowerCase() === 'get' && (
+          originalRequest.url.includes('/api/camping-spots') || 
+          originalRequest.url.includes('/api/campingspots') || // Alternative API endpoint format
+          originalRequest.url.includes('/api/locations') || 
+          originalRequest.url.includes('/api/countries') || 
+          originalRequest.url.includes('/api/amenities') ||
+          originalRequest.url.includes('/api/bookings/success') ||
+          originalRequest.url.includes('/api/auth/oauth') ||
+          originalRequest.url.includes('/api/reviews/stats') ||
+          originalRequest.url.includes('/api/camper')
+        );
+        
+        // Only redirect for non-public routes that require authentication
+        if (!isPublicRoute) {
+          window.location.href = '/auth';
+        }
         return Promise.reject(refreshError);
       }
     }

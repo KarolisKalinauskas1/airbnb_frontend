@@ -101,14 +101,10 @@ async function bookingAuthGuard(to, from, next) {
 function renterGuard(to, from, next) {
   const authStore = useAuthStore();
   
-  // Allow campers page for everyone, no auth check needed
-  if (to.path === '/campers') {
-    next();
-    return;
-  }
-
-  // For camping spot detail pages, we'll handle owner's own spot filtering in the component
-  if (to.path.startsWith('/camper/')) {
+  // Allow campers page and camping spot detail pages for everyone, no auth check needed
+  if (to.path === '/campers' || 
+      to.path.startsWith('/camper/') || 
+      to.path.startsWith('/camping-spot/')) {
     next();
     return;
   }
