@@ -408,13 +408,14 @@ router.beforeEach(async (to, from, next) => {
     '/camper',
     '/auth',
     '/offline',
-    '/404'
+    '/404',
+    '/camping-spots' // Added this path to handle camping spot details
   ];
   
   // Check if current path is a public path
   const isPublicPath = publicPaths.some(publicPath => 
     to.path === publicPath || to.path.startsWith(publicPath + '/')
-  );
+  ) || to.path.startsWith('/camping-spots/');
   
   // Handle direct OAuth callback to home page
   if (to.path === '/' && to.query.source === 'oauth') {

@@ -510,7 +510,8 @@ const reviewSubmitted = ref(false)
 const reviewError = ref(null)
 const reviewData = reactive({
   rating: 0,
-  comment: ''
+  comment: '',
+  review_id: null // Store the review ID for update operations
 })
 // Tabs
 const activeTab = ref('upcoming')
@@ -593,7 +594,8 @@ const getStatusText = (status) => {
 }
 // Check if a booking has a valid review (rating > 0)
 const hasReview = (booking) => {
-  return booking.has_review === true
+  // Use optional chaining to avoid errors if has_review property doesn't exist
+  return booking?.has_review === true || Boolean(booking?.review_id || booking?.rating)
 }
 // Check if a booking is eligible for review (completed and past end date)
 const isReviewEligible = (booking) => {
@@ -638,10 +640,22 @@ const loadBookings = async () => {
     const response = await axios.get('/api/bookings/user', {
       headers: {
         Authorization: `Bearer ${token}`
+      },
+      params: {
+        include_reviews: true // Request review information
       }
     })
+    
     if (response.data && response.data.length > 0) {
+      // Process the bookings to make sure review status is properly handled
+      response.data.forEach(booking => {
+        // If has_review is not explicitly set, check other indicators
+        if (booking.has_review === undefined) {
+          booking.has_review = Boolean(booking.review_id || booking.rating > 0);
+        }
+      });
     }
+    
     bookings.value = response.data
   } catch (err) {
     console.error('Error loading bookings:', err)
@@ -729,36 +743,69 @@ const changePassword = async () => {
 }
 // Review functions
 const openReviewModal = async (booking) => {
+  console.log('Opening review modal for booking:', booking);
+  
   // First check if the booking is eligible for review
   if (!isReviewEligible(booking)) {
     toast.error('This booking is not eligible for review. Only past bookings can be reviewed.')
     return
   }
+  
   selectedBookingForReview.value = booking
   showReviewModal.value = true
   reviewLoading.value = true
   reviewError.value = null
   reviewSubmitted.value = false
+  
   // Reset review form
   reviewData.rating = 0
   reviewData.comment = ''
   reviewExists.value = false
+  
+  // Check if we already know this booking has a review
+  if (booking.has_review) {
+    console.log('Booking already has a review, loading existing data');
+    reviewExists.value = true;
+    
+    // If we have the review data directly on the booking object, use it
+    if (booking.rating) {
+      reviewData.rating = booking.rating;
+      reviewData.comment = booking.comment || '';
+      reviewLoading.value = false;
+      return;
+    }
+  }
+  
   try {
-    // Check if a review already exists
+    // Check if a review already exists on the server
     const token = await authStore.getAuthToken()
+    
     // Ensure token is a string
     if (token && typeof token === 'string') {
       try {
+        console.log('Fetching review for booking ID:', booking.id);
         const response = await axios.get(`/api/reviews/booking/${booking.id}`, {
           headers: {
             Authorization: `Bearer ${token}`
           }
-        })
-        if (response.data) {
+        })        if (response.data) {
+          console.log('Existing review found:', response.data);
           // Pre-fill form with existing review data
-          reviewData.rating = response.data.rating || 0
-          reviewData.comment = response.data.comment || ''
-          reviewExists.value = true
+          reviewData.rating = response.data.rating || 0;
+          reviewData.comment = response.data.comment || '';
+          reviewData.review_id = response.data.review_id;
+          reviewExists.value = true;
+          
+          // Update the booking has_review property if needed
+          if (selectedBookingForReview.value) {
+            selectedBookingForReview.value.has_review = true;
+            
+            // Also update in the main bookings array
+            const bookingIndex = bookings.value.findIndex(b => b.id === selectedBookingForReview.value.id);
+            if (bookingIndex !== -1) {
+              bookings.value[bookingIndex].has_review = true;
+            }
+          }
         }
       } catch (err) {
         // 404 error is expected if no review exists yet
@@ -796,8 +843,9 @@ const submitReview = async () => {
     }
     const bookingId = selectedBookingForReview.value.id
     const method = reviewExists.value ? 'PUT' : 'POST'
-    const endpoint = reviewExists.value 
-      ? `/api/reviews/booking/${bookingId}`
+    // For PUT requests, we need the actual review ID, not just the booking ID
+    const endpoint = reviewExists.value && reviewData.review_id
+      ? `/api/reviews/${reviewData.review_id}`
       : `/api/reviews`
     const reviewPayload = {
       booking_id: parseInt(bookingId),

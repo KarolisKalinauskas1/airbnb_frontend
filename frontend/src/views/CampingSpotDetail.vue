@@ -145,6 +145,13 @@
               <h2 class="text-2xl font-semibold">About this spot</h2>
               <p class="text-gray-700 text-lg leading-relaxed whitespace-pre-line">{{ spot.description }}</p>
             </div>
+
+            <!-- Reviews Section -->
+            <ReviewsList 
+              v-if="spot" 
+              :camping-spot-id="spot.camping_spot_id" 
+            />
+
             <!-- Amenities with Better Spacing -->
             <div class="space-y-6 py-6">
               <h2 class="text-2xl font-semibold">What this place offers</h2>
@@ -362,6 +369,7 @@ import DateRangeSelector from '@/components/DateRangeSelector.vue'
 import OpenStreetLocationMap from '@/components/OpenStreetLocationMap.vue'
 import AvailabilityCalendar from '@/components/AvailabilityCalendar.vue'
 import CheckoutSummary from '@/components/CheckoutSummary.vue'
+import ReviewsList from '@/components/ReviewsList.vue'
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
