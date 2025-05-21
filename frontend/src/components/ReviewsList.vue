@@ -54,13 +54,21 @@ const props = defineProps({
 
 const reviews = ref([]);
 const loading = ref(true);
-const error = ref(null);
-
-const loadReviews = async () => {
+const error = ref(null);  const loadReviews = async () => {
   loading.value = true;
   error.value = null;
   
   console.log(`Loading reviews for camping spot ID: ${props.campingSpotId}`);
+  
+  // Try fetch directly first as a test
+  try {
+    console.log(`[DEBUG TEST] Making raw fetch request to: /api/reviews/spot/${props.campingSpotId}`);
+    const fetchResponse = await fetch(`/api/reviews/spot/${props.campingSpotId}`);
+    const fetchData = await fetchResponse.json();
+    console.log('[DEBUG TEST] Direct fetch response:', fetchData);
+  } catch (fetchErr) {
+    console.error('[DEBUG TEST] Direct fetch failed:', fetchErr);
+  }
   
   try {
     // First try with /api prefix (common pattern)
@@ -76,19 +84,39 @@ const loadReviews = async () => {
     }
   } catch (err) {
     console.error('Error loading reviews with /api prefix:', err);
+    console.error('Axios error details:', err.response?.status, err.response?.data, err.message);
     
-    // Try fallback path without /api prefix
+    // Try fallback paths
     try {
+      // Try without /api prefix
       console.log(`Attempting fallback review request to: /reviews/spot/${props.campingSpotId}`);
       const fallbackResponse = await axios.get(`/reviews/spot/${props.campingSpotId}`);
       if (fallbackResponse && fallbackResponse.data) {
         reviews.value = fallbackResponse.data;
         error.value = null;
         console.log('Reviews loaded via fallback:', reviews.value);
+        return;
       }
     } catch (fallbackErr) {
-      console.error('Fallback review request also failed:', fallbackErr);
-      error.value = 'Failed to load reviews. Please try again.';
+      console.error('First fallback review request failed:', fallbackErr);
+      console.error('Fallback error details:', fallbackErr.response?.status, fallbackErr.response?.data);
+      
+      // Try direct URL to backend 
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+        console.log(`Attempting direct backend request to: ${apiUrl}/api/reviews/spot/${props.campingSpotId}`);
+        const directResponse = await axios.get(`${apiUrl}/api/reviews/spot/${props.campingSpotId}`);
+        if (directResponse && directResponse.data) {
+          reviews.value = directResponse.data;
+          error.value = null;
+          console.log('Reviews loaded via direct backend request:', reviews.value);
+          return;
+        }
+      } catch (directErr) {
+        console.error('Direct backend request also failed:', directErr);
+        console.error('Direct error details:', directErr.response?.status, directErr.response?.data);
+        error.value = 'Failed to load reviews. Please try again.';
+      }
     }
   } finally {
     loading.value = false;
@@ -121,7 +149,27 @@ const formatDate = (dateString) => {
   });
 };
 
+// First try a health check to see if reviews API is accessible
+const checkReviewsAPI = async () => {
+  try {
+    console.log('[DEBUG] Checking reviews API health...');
+    const healthCheck = await axios.get('/api/reviews/health');
+    console.log('[DEBUG] Reviews API health check response:', healthCheck.data);
+  } catch (error) {
+    console.error('[DEBUG] Reviews API health check failed:', error);
+    try {
+      console.log('[DEBUG] Trying alternative health check...');
+      const directHealthCheck = await fetch('/api/reviews/health');
+      const healthData = await directHealthCheck.json();
+      console.log('[DEBUG] Direct fetch health response:', healthData);
+    } catch (fetchErr) {
+      console.error('[DEBUG] Direct health check failed too:', fetchErr);
+    }
+  }
+};
+
 onMounted(() => {
+  checkReviewsAPI();
   loadReviews();
 });
 </script>

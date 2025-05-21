@@ -1,8 +1,13 @@
 import axios from 'axios';
 import { useAuthStore } from '@/stores/auth';
 // Create axios instance with optimized configuration
+const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+// Log the base URL for debugging
+console.log(`[DEBUG] Axios configured with baseURL: ${baseURL}`);
+
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+  baseURL,
   timeout: 15000, // 15 second timeout
   withCredentials: true, // Enable credentials for cross-origin requests
   headers: {
@@ -25,6 +30,8 @@ apiClient.interceptors.request.use(
       config.url.includes('/api/bookings/success') || // Add success route to public routes
       config.url.includes('/api/auth/oauth') || // Add OAuth routes to public routes
       config.url.includes('/api/reviews/stats') || // Add review stats to public routes
+      config.url.includes('/api/reviews/spot') || // Add reviews specific endpoint
+      config.url.includes('/api/reviews/health') || // Add reviews health endpoint
       config.url.includes('/api/camper') // Add camper routes (for browsing) to public routes
     );
     // Only add auth token for non-public routes
