@@ -15,17 +15,16 @@
       <p>No reviews yet for this camping spot.</p>
     </div>
     
-    <div v-else class="space-y-6">
-      <div v-for="review in reviews" :key="review.review_id" class="border-b border-gray-200 pb-6 last:border-0">
+    <div v-else class="space-y-6">      <div v-for="review in reviews" :key="review.review_id" class="border-b border-gray-200 pb-6 last:border-0">
         <div class="flex justify-between items-start">
           <div class="flex items-center">
             <div class="flex-shrink-0 mr-3">
               <div class="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
-                {{ getInitials(review.user?.full_name || 'Anonymous') }}
+                {{ getInitials(getUserName(review)) }}
               </div>
             </div>
             <div>
-              <h3 class="font-medium">{{ review.user?.full_name || 'Anonymous' }}</h3>
+              <h3 class="font-medium">{{ getUserName(review) }}</h3>
               <p class="text-sm text-gray-500">{{ formatDate(review.created_at) }}</p>
             </div>
           </div>
@@ -64,16 +63,23 @@ const loadReviews = async () => {
   console.log(`Loading reviews for camping spot ID: ${props.campingSpotId}`);
   
   try {
+    // First try with /api prefix (common pattern)
+    console.log(`Requesting reviews from: /api/reviews/spot/${props.campingSpotId}`);
     const response = await axios.get(`/api/reviews/spot/${props.campingSpotId}`);
-    reviews.value = response.data;
-    console.log('Reviews loaded successfully:', reviews.value);
+    
+    if (response.data && Array.isArray(response.data)) {
+      reviews.value = response.data;
+      console.log('Reviews loaded successfully:', reviews.value);
+    } else {
+      console.warn('Reviews endpoint returned unexpected format:', response.data);
+      reviews.value = [];
+    }
   } catch (err) {
-    console.error('Error loading reviews:', err);
-    error.value = 'Failed to load reviews. Please try again.';
+    console.error('Error loading reviews with /api prefix:', err);
     
     // Try fallback path without /api prefix
     try {
-      console.log('Attempting fallback review request...');
+      console.log(`Attempting fallback review request to: /reviews/spot/${props.campingSpotId}`);
       const fallbackResponse = await axios.get(`/reviews/spot/${props.campingSpotId}`);
       if (fallbackResponse && fallbackResponse.data) {
         reviews.value = fallbackResponse.data;
@@ -82,10 +88,18 @@ const loadReviews = async () => {
       }
     } catch (fallbackErr) {
       console.error('Fallback review request also failed:', fallbackErr);
+      error.value = 'Failed to load reviews. Please try again.';
     }
   } finally {
     loading.value = false;
   }
+};
+
+const getUserName = (review) => {
+  // Try different possible paths to user name based on API response format
+  if (review.user?.full_name) return review.user.full_name;
+  if (review.bookings?.users?.full_name) return review.bookings.users.full_name;
+  return 'Anonymous';
 };
 
 const getInitials = (name) => {

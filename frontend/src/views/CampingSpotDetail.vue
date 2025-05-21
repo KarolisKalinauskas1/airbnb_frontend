@@ -32,7 +32,7 @@
       <div v-else class="max-w-7xl mx-auto px-4 py-8">
         <!-- Back Button -->
         <button 
-          @click="goBackToCampers" 
+          @click="router.push('/campers')" 
           class="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
         >
           <span class="text-xl">←</span> Back to Campers
