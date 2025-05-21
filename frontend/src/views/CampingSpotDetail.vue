@@ -10,9 +10,9 @@
       </svg>
       <h2 class="text-xl font-semibold mb-4">This is Your Camping Spot</h2>
       <p class="mb-6">You cannot book your own camping spot.</p>      <div class="flex space-x-4 justify-center">
-        <a href="/campers" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 no-underline inline-block" style="text-decoration: none;" onclick="javascript:window.location.href='/campers'; return false;">
+        <router-link to="/campers" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 no-underline inline-block">
           Back to Campers
-        </a>
+        </router-link>
         <button @click="router.push('/dashboard/spots')" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
           Go to Dashboard
         </button>
@@ -28,33 +28,13 @@
       <div v-else-if="!spot" class="h-screen flex items-center justify-center text-lg">
         Spot not found.
       </div>
-      <div v-else class="max-w-7xl mx-auto px-4 py-8">        <!-- Back Button with multiple fallbacks -->
-        <div class="mb-6 flex flex-col gap-2">
-          <a 
-            href="/campers" 
-            class="inline-block py-2 px-4 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
-            style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;"
-            onclick="javascript:window.location.href='/campers'; return false;"
-          >
-            <span class="text-xl">←</span> Back to Campers (Link)
-          </a>
-          
-          <button 
-            @click="router.push('/campers')" 
-            class="inline-block py-2 px-4 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-600 hover:text-gray-900 transition-colors cursor-pointer text-left"
-            style="display: inline-flex; align-items: center; gap: 6px;"
-          >
-            <span class="text-xl">←</span> Back to Campers (Router)
-          </button>
-          
-          <button 
-            @click="backToCampers" 
-            class="inline-block py-2 px-4 bg-gray-100 hover:bg-gray-200 rounded-md text-gray-600 hover:text-gray-900 transition-colors cursor-pointer text-left"
-            style="display: inline-flex; align-items: center; gap: 6px;"
-          >
-            <span class="text-xl">←</span> Back to Campers (Direct)
-          </button>
-        </div>
+      <div v-else class="max-w-7xl mx-auto px-4 py-8">        <!-- Back Button - Simpler Router-Link -->
+        <router-link 
+          to="/campers" 
+          class="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
+        >
+          <span class="text-xl">←</span> Back to Campers
+        </router-link>
         <!-- Header Section -->
         <div class="mb-8 flex flex-col md:flex-row md:justify-between md:items-start gap-4">
           <div>
