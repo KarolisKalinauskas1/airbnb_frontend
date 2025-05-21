@@ -720,14 +720,17 @@ const handleBookNow = async () => {
       total: totalAmount,
       spot_name: spot.value.title || 'Camping Spot'
     };
+      // Create checkout session
+    const response = await axios.post('/api/bookings/create-checkout-session', sessionData);
     
-    // Create checkout session
-    const sessionResponse = await axios.post('/api/bookings/create-checkout-session', sessionData);
-    
-    if (!sessionResponse || !sessionResponse.url) {
-      console.error('Invalid session response:', sessionResponse);
+    // Access the URL from the data property of the Axios response
+    if (!response || !response.data || !response.data.url) {
+      console.error('Invalid session response:', response);
       throw new Error('Invalid response from server');
     }
+    
+    // Store the URL for later use
+    const sessionUrl = response.data.url;
     // FINAL SAFETY CHECK: One last verification before redirecting to Stripe
     // This is our last chance to prevent an owner from booking their own spot
     if (authStore.publicUser && spot.value) {
@@ -741,10 +744,9 @@ const handleBookNow = async () => {
         router.push('/dashboard/spots');
         return; // Exit without redirecting to Stripe
       }
-    }
-    toast.success('Redirecting to payment...');
-    // Redirect to Stripe Checkout
-    window.location.href = sessionResponse.url;
+    }    toast.success('Redirecting to payment...');
+    // Redirect to Stripe Checkout using the URL from the response data
+    window.location.href = sessionUrl;
   } catch (error) {
     console.error('Booking Error:', error);
     loading.value = false;
