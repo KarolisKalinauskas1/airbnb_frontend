@@ -788,7 +788,8 @@ const openReviewModal = async (booking) => {
           headers: {
             Authorization: `Bearer ${token}`
           }
-        })        if (response.data) {
+        })        
+        if (response.data) {
           console.log('Existing review found:', response.data);
           // Pre-fill form with existing review data
           reviewData.rating = response.data.rating || 0;
