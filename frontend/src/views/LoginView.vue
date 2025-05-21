@@ -549,11 +549,18 @@ const handleGoogleLogin = async () => {
   try {
     googleLoginProcessing.value = true
     googleLoginError.value = null
-        // Use Supabase's built-in OAuth provider support
+        // Use Supabase's built-in OAuth provider support    // Determine the redirect URL based on environment
+    const isProduction = import.meta.env.PROD;
+    const redirectUrl = isProduction 
+      ? 'https://airbnb-frontend.vercel.app/?source=oauth'  // Use your actual production URL here
+      : `${window.location.origin}/?source=oauth`;
+      
+    console.log('OAuth redirect URL:', redirectUrl);
+    
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/?source=oauth`,
+        redirectTo: redirectUrl,
         scopes: 'profile email',
         // Include query parameter for previous page if needed
         queryParams: {

@@ -41,10 +41,9 @@
         <div class="mb-8 flex flex-col md:flex-row md:justify-between md:items-start gap-4">
           <div>
             <h1 class="text-4xl font-semibold mb-2">{{ spot.title }}</h1>
-            <div class="flex flex-wrap items-center gap-4 text-lg text-gray-600">
-              <div class="flex items-center">
+            <div class="flex flex-wrap items-center gap-4 text-lg text-gray-600">              <div class="flex items-center">
                 <span class="text-yellow-400">★</span>
-                <span>{{ averageRating }} ({{ spot.reviews?.length || 0 }} reviews)</span>
+                <span>{{ averageRating }} ({{ reviewStats.count || 0 }} reviews)</span>
               </div>
               <span>•</span>
               <span>📍 {{ spot.location?.city }}, {{ spot.location?.country?.name }}</span>
@@ -207,10 +206,9 @@
                   <div>
                     <span class="text-2xl font-bold">€{{ spot.price_per_night }}</span>
                     <span class="text-gray-600">/night</span>
-                  </div>
-                  <div class="flex items-center">
+                  </div>                  <div class="flex items-center">
                     <span class="text-yellow-400">★</span>
-                    <span>{{ averageRating }} ({{ spot.reviews?.length || 0 }})</span>
+                    <span>{{ averageRating }} ({{ reviewStats.count || 0 }})</span>
                   </div>
                 </div>
                 <!-- Owner's own spot warning - show instead of booking controls -->
@@ -422,11 +420,21 @@ const isOwner = computed(() => {
 });
 // Determine if the user can book the spot
 // Used for UI rendering conditions
+const reviewStats = ref({
+  count: 0,
+  average: 0,
+  distribution: {
+    5: 0,
+    4: 0,
+    3: 0,
+    2: 0,
+    1: 0
+  }
+});
+
 const averageRating = computed(() => {
-  if (!spot.value || !spot.value.reviews || spot.value.reviews.length === 0) return 'No ratings'
-  const total = spot.value.reviews.reduce((acc, review) => acc + review.rating, 0)
-  const average = total / spot.value.reviews.length
-  return average.toFixed(1)
+  if (!reviewStats.value || reviewStats.value.count === 0) return 'No ratings';
+  return reviewStats.value.average.toFixed(1);
 })
 // Next image in the gallery
 const nextImage = () => {
@@ -803,8 +811,7 @@ const loadSpotDetails = async () => {
         endDate: dates.value.endDate || route.query.end
       }
     });
-    
-    if (!response || !response.data) {
+      if (!response || !response.data) {
       throw new Error('No data received from server')
     }
     spot.value = response.data
@@ -816,7 +823,9 @@ const loadSpotDetails = async () => {
     if (!spot.value.camping_spot_amenities) {
       spot.value.camping_spot_amenities = []
     }
-    // Make sure location exists
+    // Make sure location exists    
+    // Fetch review statistics
+    await loadReviewStats(spotId);
     if (!spot.value.location) {
       spot.value.location = {
         city: 'Unknown',
@@ -869,6 +878,22 @@ const loadSpotDetails = async () => {
     loading.value = false
   }
 }
+
+// Load review statistics separately
+const loadReviewStats = async (spotId) => {
+  if (!spotId) return;
+  
+  try {
+    const reviewResponse = await axios.get(`/api/reviews/stats/${spotId}`);
+    if (reviewResponse && reviewResponse.data) {
+      reviewStats.value = reviewResponse.data;
+    }
+  } catch (reviewError) {
+    console.error('Error fetching review statistics:', reviewError);
+    // Non-blocking error - we'll just use default reviewStats values
+  }
+};
+
 // After adding @dateChange="calculateTotal", implement the function:
 const calculateTotal = () => {
   // Ensure dates are stored in sessionStorage
