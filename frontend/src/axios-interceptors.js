@@ -14,11 +14,12 @@ export function configureAxiosInterceptors() {
         if (config.url.includes('/ping')) {
           config.timeout = 3000; // 3 seconds for ping
         } else if (config.url.includes('/auth/')) {
-          config.timeout = 5000; // 5 seconds for auth endpoints
-        } else {
+          config.timeout = 5000; // 5 seconds for auth endpoints        } else {
           config.timeout = 10000; // 10 seconds for everything else
         }
-      }      // Check if this is a public route (GET requests only)
+      }
+      
+      // Check if this is a public route (GET requests only)
       const isPublicRoute = config.method.toLowerCase() === 'get' && (
         config.url.includes('/api/camping-spots') || 
         config.url.includes('/api/campingspots') || // Alternative API endpoint format
@@ -28,6 +29,7 @@ export function configureAxiosInterceptors() {
         config.url.includes('/api/bookings/success') || // Add success route to public routes
         config.url.includes('/api/auth/oauth') || // Add OAuth routes to public routes
         config.url.includes('/api/reviews/stats') || // Add review stats to public routes
+        config.url.includes('/api/reviews/spot') || // Add review listing to public routes
         config.url.includes('/api/camper') // Add camper routes (for browsing) to public routes
       );
 
@@ -42,11 +44,11 @@ export function configureAxiosInterceptors() {
           
           if (token && typeof token === 'string') {
             config.headers.Authorization = `Bearer ${token}`;
-            console.log(`Token: ${token.substring(0, 5)}...`); // Log partial token for debugging
-          } else {
+            console.log(`Token: ${token.substring(0, 5)}...`); // Log partial token for debugging          } else {
             console.error('Interceptor: Invalid token format:', typeof token);
           }
-        } catch (error) {          console.error('Error getting auth token:', error);
+        } catch (error) {
+          console.error('Error getting auth token:', error);
           // Only redirect to auth for non-public routes
           if (!isPublicRoute) {
             window.location.href = '/auth';
@@ -99,8 +101,8 @@ export function configureAxiosInterceptors() {
               return axios(originalRequest);
             } else {
               console.error('Interceptor: Invalid token format after refresh:', typeof token);
-            }
-          }          
+            }          }
+          
           // If we get here, token refresh failed
           console.error('Token refresh failed, redirecting to auth');
           window.location.href = '/auth';

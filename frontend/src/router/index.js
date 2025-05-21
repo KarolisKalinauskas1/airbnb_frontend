@@ -104,7 +104,8 @@ function renterGuard(to, from, next) {
   // Allow campers page and camping spot detail pages for everyone, no auth check needed
   if (to.path === '/campers' || 
       to.path.startsWith('/camper/') || 
-      to.path.startsWith('/camping-spot/')) {
+      to.path.startsWith('/camping-spot/') ||
+      to.path.startsWith('/api/reviews/')) {
     next();
     return;
   }

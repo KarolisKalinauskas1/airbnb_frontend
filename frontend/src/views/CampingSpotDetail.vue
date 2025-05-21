@@ -40,10 +40,10 @@
         <!-- Header Section -->
         <div class="mb-8 flex flex-col md:flex-row md:justify-between md:items-start gap-4">
           <div>
-            <h1 class="text-4xl font-semibold mb-2">{{ spot.title }}</h1>
-            <div class="flex flex-wrap items-center gap-4 text-lg text-gray-600">              <div class="flex items-center">
+            <h1 class="text-4xl font-semibold mb-2">{{ spot.title }}</h1>            <div class="flex flex-wrap items-center gap-4 text-lg text-gray-600">
+              <div class="flex items-center">
                 <span class="text-yellow-400">★</span>
-                <span>{{ averageRating }} ({{ reviewStats.count || 0 }} reviews)</span>
+                <span>{{ averageRating }} ({{ reviewStats.count || 0 }} {{ reviewStats.count === 1 ? 'review' : 'reviews' }})</span>
               </div>
               <span>•</span>
               <span>📍 {{ spot.location?.city }}, {{ spot.location?.country?.name }}</span>
@@ -205,8 +205,8 @@
                 <div class="flex items-baseline justify-between mb-6">
                   <div>
                     <span class="text-2xl font-bold">€{{ spot.price_per_night }}</span>
-                    <span class="text-gray-600">/night</span>
-                  </div>                  <div class="flex items-center">
+                    <span class="text-gray-600">/night</span>                  </div>
+                  <div class="flex items-center">
                     <span class="text-yellow-400">★</span>
                     <span>{{ averageRating }} ({{ reviewStats.count || 0 }})</span>
                   </div>
@@ -454,6 +454,23 @@ const openGallery = () => {
 const closeGallery = () => {
   showGallery.value = false
 }
+// Handle back button click to return to campers page while preserving filters
+const goBackToCampers = () => {
+  // Include any existing query parameters from the current route
+  const query = { ...route.query };
+  
+  // Preserve date selections if they exist
+  if (dates.value.startDate) query.start = dates.value.startDate;
+  if (dates.value.endDate) query.end = dates.value.endDate;
+  if (guests.value > 1) query.g = guests.value;
+  
+  // Navigate back to campers page with preserved filters
+  router.push({ 
+    path: '/campers',
+    query
+  });
+}
+
 // Gallery is opened from template directly via @click="showGallery = true"
 // Save dates and guests to URL and sessionStorage for persistence
 const persistDatesToUrl = (startDate, endDate, guestCount) => {
@@ -887,10 +904,23 @@ const loadReviewStats = async (spotId) => {
     const reviewResponse = await axios.get(`/api/reviews/stats/${spotId}`);
     if (reviewResponse && reviewResponse.data) {
       reviewStats.value = reviewResponse.data;
+      console.log('Review stats loaded successfully:', reviewStats.value);
     }
   } catch (reviewError) {
     console.error('Error fetching review statistics:', reviewError);
-    // Non-blocking error - we'll just use default reviewStats values
+    
+    // Try fallback without the /api prefix if that might be the issue
+    try {
+      console.log('Attempting fallback review stats request...');
+      const fallbackResponse = await axios.get(`/reviews/stats/${spotId}`);
+      if (fallbackResponse && fallbackResponse.data) {
+        reviewStats.value = fallbackResponse.data;
+        console.log('Review stats loaded via fallback:', reviewStats.value);
+      }
+    } catch (fallbackError) {
+      console.error('Fallback review stats request also failed:', fallbackError);
+      // Non-blocking error - we'll just use default reviewStats values
+    }
   }
 };
 
