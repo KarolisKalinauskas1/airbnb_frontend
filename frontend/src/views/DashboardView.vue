@@ -218,7 +218,7 @@ const loadDashboardData = async () => {
     console.error('Error loading dashboard data:', err)
     if (err.response?.status === 401) {
       error.value = 'Your session has expired. Please log in again.'
-      router.push('/login')
+      router.push('/auth')
     } else {
       error.value = 'Failed to load dashboard data. Please try again.'
     }

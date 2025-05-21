@@ -12,6 +12,11 @@
         "Access-Control-Allow-Headers": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization"
       }
     },
+    {
+      "src": "/login",
+      "status": 308,
+      "headers": { "Location": "/auth" }
+    },
     { "handle": "filesystem" },
     { "src": "/.*", "dest": "/frontend/index.html" }
   ],
