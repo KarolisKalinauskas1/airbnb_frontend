@@ -61,16 +61,19 @@ const loadReviews = async () => {
   loading.value = true;
   error.value = null;
   
+  console.log(`Loading reviews for camping spot ID: ${props.campingSpotId}`);
+  
   try {
     const response = await axios.get(`/api/reviews/spot/${props.campingSpotId}`);
     reviews.value = response.data;
-    console.log('Reviews loaded:', reviews.value);
+    console.log('Reviews loaded successfully:', reviews.value);
   } catch (err) {
     console.error('Error loading reviews:', err);
     error.value = 'Failed to load reviews. Please try again.';
     
     // Try fallback path without /api prefix
     try {
+      console.log('Attempting fallback review request...');
       const fallbackResponse = await axios.get(`/reviews/spot/${props.campingSpotId}`);
       if (fallbackResponse && fallbackResponse.data) {
         reviews.value = fallbackResponse.data;

@@ -940,6 +940,8 @@ const calculateTotal = () => {
     checkAvailability()
   }
 }
+// Function already defined above, so this declaration is removed
+
 onMounted(async () => {
   // First, check if user is already authenticated with public user info
   if (authStore.isLoggedIn && authStore.publicUser) {
