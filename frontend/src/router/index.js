@@ -101,16 +101,29 @@ async function bookingAuthGuard(to, from, next) {
 function renterGuard(to, from, next) {
   const authStore = useAuthStore();
   
-  // Allow campers page and camping spot detail pages for everyone, no auth check needed
-  if (to.path === '/campers' || 
-      to.path.startsWith('/camper/') || 
-      to.path.startsWith('/camping-spot/') ||
-      to.path.startsWith('/api/reviews/')) {
+  // Allow these pages for everyone, no auth check needed
+  const publicPaths = [
+    '/campers',
+    '/camping-spot',
+    '/camper',
+    '/api/reviews',
+    '/', // Home page
+    '/auth', // Login/register page
+    '/404', // Not found page
+    '/offline' // Offline page
+  ];
+
+  // Check if current path matches any public path
+  const isPublicPath = publicPaths.some(publicPath => 
+    to.path === publicPath || to.path.startsWith(publicPath + '/')
+  );
+
+  if (isPublicPath) {
     next();
     return;
   }
 
-  // If user isn't logged in, redirect to login for other pages
+  // If user isn't logged in, redirect to login for authenticated pages
   if (!authStore.isLoggedIn) {
     next({
       path: '/auth',
@@ -212,9 +225,11 @@ function lazyLoad(view) {
 function authPageGuard(to, from, next) {
   const authStore = useAuthStore();
   
-  // If user is already logged in, redirect to home
+  // If user is already logged in, redirect to home or the requested redirect
   if (authStore.isLoggedIn) {
-    next('/');
+    // If there's a redirect parameter, go there instead of home
+    const redirectPath = to.query.redirect || '/';
+    next(redirectPath);
     return;
   }
   
@@ -385,6 +400,22 @@ router.beforeEach(async (to, from, next) => {
   const requiresSeller = to.matched.some(record => record.meta.requiresSeller)
   const requiresRenter = to.matched.some(record => record.meta.requiresRenter)
   
+  // Define public paths that don't require authentication
+  const publicPaths = [
+    '/',
+    '/campers',
+    '/camping-spot',
+    '/camper',
+    '/auth',
+    '/offline',
+    '/404'
+  ];
+  
+  // Check if current path is a public path
+  const isPublicPath = publicPaths.some(publicPath => 
+    to.path === publicPath || to.path.startsWith(publicPath + '/')
+  );
+  
   // Handle direct OAuth callback to home page
   if (to.path === '/' && to.query.source === 'oauth') {
     
@@ -420,13 +451,15 @@ router.beforeEach(async (to, from, next) => {
     return next('/')
   }
 
-  // Quick check for routes not requiring auth
-  if (!requiresAuth) {
+  // Allow public paths or routes not requiring auth
+  if (isPublicPath || !requiresAuth) {
     return next()
   }
 
-  // Check authentication
+  // Check authentication for protected routes
   if (!authStore.isLoggedIn) {
+    console.log('User not authenticated, redirecting to login page from:', to.fullPath)
+    // Store the path user was trying to access for post-login redirect
     return next({
       path: '/auth',
       query: { redirect: to.fullPath }

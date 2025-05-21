@@ -18,8 +18,7 @@ export function configureAxiosInterceptors() {
           config.timeout = 10000; // 10 seconds for everything else
         }
       }
-      
-      // Check if this is a public route (GET requests only)
+        // Check if this is a public route (GET requests only)
       const isPublicRoute = config.method.toLowerCase() === 'get' && (
         config.url.includes('/api/camping-spots') || 
         config.url.includes('/api/campingspots') || // Alternative API endpoint format
@@ -30,7 +29,9 @@ export function configureAxiosInterceptors() {
         config.url.includes('/api/auth/oauth') || // Add OAuth routes to public routes
         config.url.includes('/api/reviews/stats') || // Add review stats to public routes
         config.url.includes('/api/reviews/spot') || // Add review listing to public routes
-        config.url.includes('/api/camper') // Add camper routes (for browsing) to public routes
+        config.url.includes('/api/camper') || // Add camper routes (for browsing) to public routes
+        config.url.includes('/api/health') || // Health check endpoints
+        config.url.includes('/api/status') // Status endpoints
       );
 
       // Only add auth token for non-public routes
@@ -48,10 +49,9 @@ export function configureAxiosInterceptors() {
             console.error('Interceptor: Invalid token format:', typeof token);
           }
         } catch (error) {
-          console.error('Error getting auth token:', error);
-          // Only redirect to auth for non-public routes
+          console.error('Error getting auth token:', error);          // Only redirect to login page for non-public routes
           if (!isPublicRoute) {
-            window.location.href = '/auth';
+            window.location.href = '/auth?redirect=' + window.location.pathname;
             return Promise.reject(error);
           }
         }
@@ -102,14 +102,12 @@ export function configureAxiosInterceptors() {
             } else {
               console.error('Interceptor: Invalid token format after refresh:', typeof token);
             }          }
-          
-          // If we get here, token refresh failed
-          console.error('Token refresh failed, redirecting to auth');
-          window.location.href = '/auth';
-          return Promise.reject(error);
-        } catch (refreshError) {
+            // If we get here, token refresh failed
+          console.error('Token refresh failed, redirecting to login page');
+          window.location.href = '/auth?redirect=' + window.location.pathname;
+          return Promise.reject(error);        } catch (refreshError) {
           console.error('Error during token refresh:', refreshError);
-          window.location.href = '/auth';
+          window.location.href = '/auth?redirect=' + window.location.pathname;
           return Promise.reject(error);
         }
       }
