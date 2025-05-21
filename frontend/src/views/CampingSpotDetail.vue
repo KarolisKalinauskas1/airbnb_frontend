@@ -11,9 +11,9 @@
       <h2 class="text-xl font-semibold mb-4">This is Your Camping Spot</h2>
       <p class="mb-6">You cannot book your own camping spot.</p>
       <div class="flex space-x-4 justify-center">
-        <button @click="router.push('/campers')" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700">
+        <a href="/campers" class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 no-underline inline-block">
           Back to Campers
-        </button>
+        </a>
         <button @click="router.push('/dashboard/spots')" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
           Go to Dashboard
         </button>
@@ -31,12 +31,12 @@
       </div>
       <div v-else class="max-w-7xl mx-auto px-4 py-8">
         <!-- Back Button -->
-        <button 
-          @click="router.push('/campers')" 
+        <a 
+          href="/campers" 
           class="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors cursor-pointer"
         >
           <span class="text-xl">←</span> Back to Campers
-        </button>
+        </a>
         <!-- Header Section -->
         <div class="mb-8 flex flex-col md:flex-row md:justify-between md:items-start gap-4">
           <div>
@@ -378,6 +378,12 @@ const spot = ref(null)
 const loading = ref(true)
 const error = ref(null)
 const activeImageIndex = ref(0)
+
+// Very simple back to campers function with logging
+const backToCampers = () => {
+  console.log("Navigating back to campers page...");
+  window.location.href = '/campers';
+}
 const dates = ref({ startDate: '', endDate: '' })
 const guests = ref(1)
 const blockedDates = ref([])
