@@ -16,14 +16,15 @@ apiClient.interceptors.request.use(
     // Don't log sensitive data like passwords
     const safeData = { ...config.data };
     if (safeData.password) safeData.password = '[REDACTED]';
-        // Check if this is a public route (GET requests only)
+    // Check if this is a public route (GET requests only)
     const isPublicRoute = config.method.toLowerCase() === 'get' && (
       config.url.includes('/api/camping-spots') || 
       config.url.includes('/api/locations') || 
       config.url.includes('/api/countries') || 
       config.url.includes('/api/amenities') ||
       config.url.includes('/api/bookings/success') || // Add success route to public routes
-      config.url.includes('/api/auth/oauth') // Add OAuth routes to public routes
+      config.url.includes('/api/auth/oauth') || // Add OAuth routes to public routes
+      config.url.includes('/api/reviews/stats') // Add review stats to public routes
     );// Only add auth token for non-public routes
     if (!isPublicRoute) {
       const authStore = useAuthStore();
