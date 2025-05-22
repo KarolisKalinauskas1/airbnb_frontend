@@ -12,55 +12,47 @@ export default defineConfig(({ command, mode }) => {
   return {
     plugins: [
       vue(),
-      vueDevTools(),    ],
-    base: '/', // Changed to absolute path for Vercel deployment
+      !isProduction && vueDevTools(),
+    ].filter(Boolean),
+    base: '/',
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url))
       },
-    },    server: {
+    },
+    server: {
       host: true,
       port: process.env.PORT || 5173,
       strictPort: false,
-      
       cors: true,
       proxy: {
-        // API endpoints
         '^/api/.*': {
           target: backendUrl,
           changeOrigin: true,
-          secure: false,
+          secure: isProduction,
           rewrite: (path) => path
         },
-        // Health check endpoints
-        '^/(ping|health)': {
-          target: backendUrl,
-          changeOrigin: true,
-          secure: false
-        },
-        // Other backend endpoints
-        '^/(camping-spots|amenities|countries|users|bookings|dashboard)/.*': {
-          target: backendUrl,
-          changeOrigin: true,
-          secure: false,
-          rewrite: (path) => path.replace(/^\/(camping-spots|amenities|countries|users|bookings|dashboard)/, '/api/$1')
-        }
       },
     },
     build: {
-      sourcemap: isProduction ? false : 'inline',
-      minify: isProduction ? 'terser' : false,
+      sourcemap: false,
+      minify: 'terser',
+      target: 'es2018',
+      terserOptions: {
+        compress: {
+          drop_console: isProduction,
+          drop_debugger: isProduction
+        }
+      },
       rollupOptions: {
         output: {
           manualChunks: {
-            vue: ['vue', 'vue-router', 'pinia'],
-            vendor: ['axios', 'lodash'],
-            ui: ['vue-toastification', 'vue3-toastify']
+            'vue-vendor': ['vue', 'vue-router', 'pinia'],
+            'ui-vendor': ['vue-toastification', 'vue3-toastify'],
+            'http-vendor': ['axios'],
+            'date-vendor': ['date-fns']
           }
         }
-      },
-      commonjsOptions: {
-        transformMixedEsModules: true
       }
     },
     optimizeDeps: {
@@ -71,7 +63,6 @@ export default defineConfig(({ command, mode }) => {
         'axios',
         'vue-toastification',
         'vue3-toastify',
-        'lodash',
         'date-fns'
       ]
     }
