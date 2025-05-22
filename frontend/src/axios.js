@@ -2,16 +2,12 @@ import axios from 'axios';
 import { useAuthStore } from '@/stores/auth';
 
 // Create axios instance with optimized configuration
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-
+const baseURL = '/'; // Use relative URL since we have Vite proxy
 // Log the base URL for debugging
 console.log(`[DEBUG] Axios configured with baseURL: ${baseURL}`);
 
-// Check if the baseURL already includes /api to avoid duplication
-const apiPrefix = baseURL.includes('/api') ? '' : '/api';
-
 const apiClient = axios.create({
-  baseURL: baseURL + apiPrefix,
+  baseURL: baseURL,
   timeout: 15000, // 15 second timeout
   withCredentials: true, // Enable credentials for cross-origin requests
   headers: {
