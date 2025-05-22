@@ -733,9 +733,9 @@ const handleBookNow = async () => {
     console.log('Creating checkout session with data:', JSON.stringify(sessionData));
     const response = await axios.post('/api/checkout/create-session', sessionData);
     console.log('Stripe response received:', response.status, JSON.stringify(response.data));
-    // Only accept object responses with a url property
+    // Accept any truthy url property
     let stripeUrl = null;
-    if (response && response.data && typeof response.data.url === 'string') {
+    if (response && response.data && response.data.url) {
       stripeUrl = response.data.url;
     } else {
       console.error('Invalid session response:', response);
