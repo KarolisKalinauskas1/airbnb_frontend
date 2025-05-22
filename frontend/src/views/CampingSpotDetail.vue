@@ -745,13 +745,13 @@ const handleBookNow = async () => {
         await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s between retries
       }
     }
-    
-    // Validate the response structure
+      // Validate and normalize the response structure
     if (!response.data || typeof response.data !== 'object') {
       console.error('Invalid response data:', response.data);
       throw new Error('Invalid response format from server');
     }
-
+    
+    // Handle both response formats: {url: string} or {url: string, session_id: string, status: string}
     const stripeUrl = response.data.url;
     if (!stripeUrl || typeof stripeUrl !== 'string') {
       console.error('Missing or invalid URL in response:', response.data);
