@@ -719,8 +719,17 @@ const handleBookNow = async () => {
     const baseAmount = basePrice.value;
     const serviceFeeAmount = serviceFee.value;
     const totalAmount = totalPrice.value;
+
+    console.log('Preparing checkout session data with:', {
+      spotId: spot.value.camping_spot_id,
+      userId: authStore.publicUser?.user_id,
+      dates: dates.value,
+      guests: guests.value,
+      amounts: { baseAmount, serviceFeeAmount, totalAmount }
+    });
+
     const sessionData = {
-      camper_id: spot.value.camping_spot_id,
+      camping_spot_id: spot.value.camping_spot_id, // Use consistent field name
       user_id: authStore.publicUser?.user_id,
       start_date: dates.value.startDate,
       end_date: dates.value.endDate,
@@ -729,23 +738,30 @@ const handleBookNow = async () => {
       service_fee: serviceFeeAmount,
       total: totalAmount,
       spot_name: spot.value.title || 'Camping Spot'
-    };    console.log('Creating checkout session with data:', JSON.stringify(sessionData));
+    };
+
     // Add retry logic for better reliability
     let retries = 3;
     let response;
+
     while (retries > 0) {
       try {
+        console.log('Attempting to create checkout session with data:', JSON.stringify(sessionData, null, 2));
         response = await axios.post('/api/checkout/create-session', sessionData);
-        console.log('Stripe response received:', response.status, JSON.stringify(response.data));
+        console.log('Stripe response received:', response.status, JSON.stringify(response.data, null, 2));
         break;
       } catch (err) {
         console.error(`Attempt failed (${retries} left):`, err.message);
+        if (err.response?.data) {
+          console.error('Server response:', JSON.stringify(err.response.data, null, 2));
+        }
         retries--;
         if (retries === 0) throw err;
         await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s between retries
       }
     }
-      // Validate and normalize the response structure
+
+    // Validate and normalize the response structure
     if (!response.data || typeof response.data !== 'object') {
       console.error('Invalid response data:', response.data);
       throw new Error('Invalid response format from server');
