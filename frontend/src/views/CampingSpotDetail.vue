@@ -733,12 +733,10 @@ const handleBookNow = async () => {
     console.log('Creating checkout session with data:', JSON.stringify(sessionData));
     const response = await axios.post('/api/checkout/create-session', sessionData);
     console.log('Stripe response received:', response.status, JSON.stringify(response.data));
-    // Accept any truthy url property
-    let stripeUrl = null;
-    if (response && response.data && response.data.url) {
-      stripeUrl = response.data.url;
-    } else {
-      console.error('Invalid session response:', response);
+    // Accept any truthy url property    // Extract and validate the Stripe URL from the response
+    const stripeUrl = response?.data?.url;
+    if (!stripeUrl) {
+      console.error('Missing or invalid URL in response:', response);
       throw new Error('Invalid response from server');
     }
     const sessionUrl = stripeUrl;
