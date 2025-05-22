@@ -352,21 +352,22 @@ const processBooking = async () => {
   
   loading.value = true;
   bookingError.value = null;
-
   try {
     const basePrice = spot.value.price_per_night * nights.value;
     const serviceFee = basePrice * 0.1; // 10% service fee
     const totalAmount = basePrice + serviceFee;
     
-    // Use camper_id instead of camping_spot_id
-    const { data } = await axios.post('/api/bookings/create-checkout-session', {
-      camper_id: spot.value.camping_spot_id, // This is the field name expected by the backend
+    // Use the endpoint the frontend is already using
+    const { data } = await axios.post('/api/checkout/create-session', {
+      camper_id: spot.value.camping_spot_id,
       user_id: authStore.fullUser.user_id,
       start_date: dates.value.startDate,
       end_date: dates.value.endDate,
       number_of_guests: guestCount.value,
       cost: basePrice.toFixed(2),       // Base cost without service fee
-      total: totalAmount.toFixed(2)     // Total amount including service fee
+      service_fee: serviceFee.toFixed(2), // Add service fee explicitly
+      total: totalAmount.toFixed(2),     // Total amount including service fee
+      spot_name: spot.value.title
     });
     
     toast.success('Redirecting to payment...');

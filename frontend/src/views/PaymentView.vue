@@ -118,17 +118,23 @@ const handleCheckout = async () => {
   errorMessage.value = ''
 
   try {
-    // Create a checkout session
-    const { data } = await axios.post('/api/bookings/create-checkout-session', {
+    // Create a checkout session with better error handling
+    const { data } = await axios.post('/api/checkout/create-session', {
       booking: bookingDetails.value
     })
+    
+    // Check if we got a valid URL back
+    if (!data || !data.url) {
+      throw new Error('Invalid response from payment service')
+    }
     
     // Redirect to the Stripe Checkout page
     window.location.href = data.url
   } catch (error) {
     console.error('Checkout error:', error)
-    errorMessage.value = error.response?.data?.error || 'Failed to initialize checkout'
-    toast.error('Failed to initialize checkout: ' + errorMessage.value)
+    const errorMsg = error.response?.data?.error || 'Failed to initialize checkout'
+    errorMessage.value = errorMsg
+    toast.error('Payment failed: ' + errorMsg)
   } finally {
     processing.value = false
   }
