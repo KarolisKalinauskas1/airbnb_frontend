@@ -705,11 +705,32 @@ const handleBookNow = async () => {
       return;
     }
   }
-  if (!authStore.publicUser?.user_id) {
-    console.error('User information not available');
-    toast.error('Unable to process booking. Please try again.');
+  // Validate required values for the checkout session
+  if (!spot.value?.camping_spot_id || !authStore.publicUser?.user_id) {
+    toast.error('Required booking information is missing. Please try again.');
+    console.error('Missing required IDs:', {
+      camping_spot_id: spot.value?.camping_spot_id,
+      user_id: authStore.publicUser?.user_id
+    });
     return;
   }
+
+  if (!dates.value.startDate || !dates.value.endDate || !guests.value || guests.value < 1) {
+    toast.error('Please fill in all the booking details.');
+    return;
+  }
+
+  // Validate the amounts are positive numbers
+  const baseAmount = basePrice.value;
+  const serviceFeeAmount = serviceFee.value;
+  const totalAmount = totalPrice.value;
+
+  if (!baseAmount || !serviceFeeAmount || !totalAmount || baseAmount <= 0 || serviceFeeAmount < 0 || totalAmount <= 0) {
+    toast.error('Invalid pricing information. Please try again.');
+    console.error('Invalid amounts:', { baseAmount, serviceFeeAmount, totalAmount });
+    return;
+  }
+
   loading.value = true;
   try {
     await checkAvailability();
@@ -718,21 +739,10 @@ const handleBookNow = async () => {
       loading.value = false;
       return;
     }
-    const baseAmount = basePrice.value;
-    const serviceFeeAmount = serviceFee.value;
-    const totalAmount = totalPrice.value;
-
-    console.log('Preparing checkout session data with:', {
-      spotId: spot.value.camping_spot_id,
-      userId: authStore.publicUser?.user_id,
-      dates: dates.value,
-      guests: guests.value,
-      amounts: { baseAmount, serviceFeeAmount, totalAmount }
-    });
 
     const sessionData = {
-      camping_spot_id: spot.value.camping_spot_id, // Use consistent field name
-      user_id: authStore.publicUser?.user_id,
+      camper_id: spot.value.camping_spot_id,
+      user_id: authStore.publicUser.user_id,
       start_date: dates.value.startDate,
       end_date: dates.value.endDate,
       number_of_guests: guests.value,

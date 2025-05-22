@@ -8,7 +8,7 @@ const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 console.log(`[DEBUG] Axios configured with baseURL: ${baseURL}`);
 
 // Check if the baseURL already includes /api to avoid duplication
-const apiPrefix = baseURL.endsWith('/api') ? '' : '/api';
+const apiPrefix = baseURL.includes('/api') ? '' : '/api';
 
 const apiClient = axios.create({
   baseURL: baseURL + apiPrefix,
