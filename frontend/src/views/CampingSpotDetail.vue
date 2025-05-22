@@ -733,22 +733,37 @@ const handleBookNow = async () => {
     console.log('Creating checkout session with data:', JSON.stringify(sessionData));
     const response = await axios.post('/api/checkout/create-session', sessionData);
     console.log('Stripe response received:', response.status, JSON.stringify(response.data));
-    if (!response) {
-      console.error('No response received from server');
-      throw new Error('No response received from payment service');
-    }
-    if (response.status !== 200) {
-      console.error('Invalid status code:', response.status);
-      throw new Error(`Unexpected response status: ${response.status}`);
-    }
-    if (!response.data) {
+    // Robustly check the response type and structure
+    let stripeUrl = null;
+    if (response && response.data) {
+      if (typeof response.data === 'string') {
+        // Sometimes backend may return a string (should not, but handle gracefully)
+        try {
+          const parsed = JSON.parse(response.data);
+          if (parsed && typeof parsed.url === 'string') {
+            stripeUrl = parsed.url;
+          } else {
+            console.error('Parsed response missing url:', parsed);
+            throw new Error('Invalid session response: ' + JSON.stringify(parsed));
+          }
+        } catch (e) {
+          console.error('Failed to parse string response:', response.data);
+          throw new Error('Invalid response from server');
+        }
+      } else if (typeof response.data === 'object' && response.data !== null) {
+        if (typeof response.data.url === 'string') {
+          stripeUrl = response.data.url;
+        } else {
+          console.error('Response object missing url:', response.data);
+          throw new Error('Invalid session response: ' + JSON.stringify(response.data));
+        }
+      } else {
+        console.error('Unexpected response data type:', typeof response.data, response.data);
+        throw new Error('Invalid response from server');
+      }
+    } else {
       console.error('No data in response:', response);
       throw new Error('Invalid response format from payment service');
-    }
-    const stripeUrl = response.data.url;
-    if (!stripeUrl) {
-      console.error('No URL found in response data:', response.data);
-      throw new Error('Missing checkout URL in payment service response');
     }
     const sessionUrl = stripeUrl;
     console.log('Successfully received Stripe URL:', sessionUrl);
