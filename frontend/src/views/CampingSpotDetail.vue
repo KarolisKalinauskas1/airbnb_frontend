@@ -638,52 +638,35 @@ watch(() => guests.value, (newGuests) => {
 })
 // Handle the booking process
 const handleBookNow = async () => {
-  // Force an immediate recheck of ownership to add an additional safety layer
+  // Prevent owners from booking their own spot
   if (authStore.publicUser && spot.value) {
-    // Do a direct comparison rather than relying on computed property
     const isCurrentUserTheOwner = authStore.publicUser.user_id === spot.value.owner_id;
     if (isCurrentUserTheOwner) {
       toast.error("You cannot book your own camping spot");
-      // Force an immediate redirect to dashboard
       router.push('/dashboard/spots');
-      return; // Critical - stop execution here
+      return;
     }
   }
-  // First check if user is trying to book their own spot
   if (isOwnSpot.value) {
     toast.error("You cannot book your own camping spot");
-    // Add a delay before redirecting to ensure the toast is seen
     setTimeout(() => {
       router.push('/dashboard/spots');
     }, 2000);
-    // Important: Return immediately to prevent any further booking logic from executing
     return;
   }
-  // Check if user is an owner and this is their own spot - we already handled this case above
-  // Commented out the general owner restriction - owners can now book other spots
-  // if (isOwner.value) {
-  //   
-  //   toast.error("Owner accounts cannot book spots. Please use a renter account.");
-  //   return;
-  // }
-  // Validate date selection
   if (!dates.value.startDate || !dates.value.endDate) {
     toast.warning('Please select check-in and check-out dates');
     return;
   }
-  // Validate guest count
   if (guests.value < 1) {
     toast.warning('Please specify at least 1 guest');
     return;
   }
-  // Check if dates overlap with blocked dates
   if (hasBlockedDates.value) {
     toast.error('Selected dates are not available for booking');
     return;
   }
-  // Check if user is logged in
   if (!authStore.isAuthenticated) {
-    // Save booking details for after login
     const bookingDetails = {
       spotId: spot.value.camping_spot_id,
       startDate: dates.value.startDate,
@@ -691,9 +674,7 @@ const handleBookNow = async () => {
       guests: guests.value,
       fromCampers: true
     };
-    // Store in sessionStorage for after login
     sessionStorage.setItem('pendingBooking', JSON.stringify(bookingDetails));
-    // Redirect to login with return URL
     router.push({
       path: '/auth',
       query: {
@@ -706,15 +687,10 @@ const handleBookNow = async () => {
     });
     return;
   }
-  // Ensure we have the user information
   if (!authStore.publicUser) {
     try {
-      // Try to get the current session first
       const session = await authStore.getSupabaseSession();
-      if (!session) {
-        throw new Error('No active session');
-      }
-      // Make a request to get the public user info
+      if (!session) throw new Error('No active session');
       const response = await axios.get('/api/users/me');
       if (response.data) {
         authStore.publicUser = response.data;
@@ -727,7 +703,6 @@ const handleBookNow = async () => {
       return;
     }
   }
-  // Double check that we have the user information
   if (!authStore.publicUser?.user_id) {
     console.error('User information not available');
     toast.error('Unable to process booking. Please try again.');
@@ -735,18 +710,15 @@ const handleBookNow = async () => {
   }
   loading.value = true;
   try {
-    // Double-check availability before proceeding
     await checkAvailability();
     if (hasBlockedDates.value) {
       toast.error('Sorry, these dates are no longer available');
       loading.value = false;
       return;
     }
-    // Calculate base price and service fee
     const baseAmount = basePrice.value;
-    const serviceFeeAmount = serviceFee.value;    const totalAmount = totalPrice.value;
-    
-    // Prepare checkout session data
+    const serviceFeeAmount = serviceFee.value;
+    const totalAmount = totalPrice.value;
     const sessionData = {
       camper_id: spot.value.camping_spot_id,
       user_id: authStore.publicUser?.user_id,
@@ -757,40 +729,29 @@ const handleBookNow = async () => {
       service_fee: serviceFeeAmount,
       total: totalAmount,
       spot_name: spot.value.title || 'Camping Spot'
-    };    // Create checkout session
-    const response = await axios.post('/api/bookings/create-checkout-session', sessionData);
-    
-    console.log('Stripe response received:', response.status);
-    
-    // More lenient validation of the response
+    };
+    console.log('Creating checkout session with data:', JSON.stringify(sessionData));
+    const response = await axios.post('/api/checkout/create-session', sessionData);
+    console.log('Stripe response received:', response.status, JSON.stringify(response.data));
     if (!response) {
       console.error('No response received from server');
       throw new Error('No response received from payment service');
     }
-    
-    // Check if we have a status 200 response
     if (response.status !== 200) {
       console.error('Invalid status code:', response.status);
       throw new Error(`Unexpected response status: ${response.status}`);
     }
-    
-    // Check for data and url property
     if (!response.data) {
       console.error('No data in response:', response);
       throw new Error('Invalid response format from payment service');
     }
-    
-    // Extract the URL - this is the critical part
     const stripeUrl = response.data.url;
     if (!stripeUrl) {
       console.error('No URL found in response data:', response.data);
       throw new Error('Missing checkout URL in payment service response');
     }
-    
-    // Store the URL for later use
     const sessionUrl = stripeUrl;
-    // FINAL SAFETY CHECK: One last verification before redirecting to Stripe
-    // This is our last chance to prevent an owner from booking their own spot
+    console.log('Successfully received Stripe URL:', sessionUrl);
     if (authStore.publicUser && spot.value) {
       const currentUserId = parseInt(authStore.publicUser.user_id);
       const spotOwnerId = parseInt(spot.value.owner_id);
@@ -798,49 +759,19 @@ const handleBookNow = async () => {
         console.error('CRITICAL SAFETY BLOCK: Prevented owner from booking their own spot');
         loading.value = false;
         toast.error("You cannot book your own camping spot");
-        // Force immediate redirect to dashboard instead of Stripe
         router.push('/dashboard/spots');
-        return; // Exit without redirecting to Stripe
-      }    }    toast.success('Redirecting to payment...');
-    // Redirect to Stripe Checkout using the URL from the response data
+        return;
+      }
+    }
+    toast.success('Redirecting to payment...');
     window.location.href = sessionUrl;
   } catch (error) {
     console.error('Booking Error:', error);
     loading.value = false;
-    
-    // Handle specific error cases
     if (error.response?.status === 401) {
-      // Auth token expired or invalid
       toast.error('Your session has expired. Please log in again to continue.');
-      // Redirect to login with return URL
       router.push({
         path: '/auth',
-        query: { redirect: route.fullPath }
-      });
-      return;
-    }
-    
-    // Handle other response errors
-    if (error.response?.data?.error) {
-      toast.error(`Payment error: ${error.response.data.error}`);
-      return;
-    }
-    
-    // Default error message
-    toast.error(error.message || 'Failed to process booking. Please try again.');
-  }
-    
-    // Handle other response errors
-    if (error.response?.data?.error) {
-      toast.error(`Payment error: ${error.response.data.error}`);
-      return;
-    }
-    
-    // Default error message
-    toast.error(error.message || 'Failed to process booking. Please try again.');
-  } finally {
-    loading.value = false;
-  }
         query: {
           redirect: route.fullPath,
           startDate: dates.value.startDate,
@@ -850,6 +781,7 @@ const handleBookNow = async () => {
           fromCampers: true
         }
       });
+      return;
     } else if (error.code === 'ERR_NETWORK') {
       toast.error('Cannot connect to server. Please check your internet connection or try again later.');
     } else if (error.response?.status === 400 && error.response?.data?.error) {
@@ -857,8 +789,10 @@ const handleBookNow = async () => {
       if (error.response.data.details) {
         console.error('Error details:', error.response.data.details);
       }
+    } else if (error.response?.data?.error) {
+      toast.error(`Payment error: ${error.response.data.error}`);
     } else {
-      toast.error('An error occurred while processing your booking. Please try again later.');
+      toast.error(error.message || 'Failed to process booking. Please try again.');
     }
   } finally {
     loading.value = false;
