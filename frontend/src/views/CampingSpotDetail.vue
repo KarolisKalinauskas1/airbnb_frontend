@@ -729,15 +729,39 @@ const handleBookNow = async () => {
       service_fee: serviceFeeAmount,
       total: totalAmount,
       spot_name: spot.value.title || 'Camping Spot'
-    };
-    console.log('Creating checkout session with data:', JSON.stringify(sessionData));
-    const response = await axios.post('/api/checkout/create-session', sessionData);
-    console.log('Stripe response received:', response.status, JSON.stringify(response.data));
-    // Accept any truthy url property    // Extract and validate the Stripe URL from the response
-    const stripeUrl = response?.data?.url;
-    if (!stripeUrl) {
-      console.error('Missing or invalid URL in response:', response);
-      throw new Error('Invalid response from server');
+    };    console.log('Creating checkout session with data:', JSON.stringify(sessionData));
+    // Add retry logic for better reliability
+    let retries = 3;
+    let response;
+    while (retries > 0) {
+      try {
+        response = await axios.post('/api/checkout/create-session', sessionData);
+        console.log('Stripe response received:', response.status, JSON.stringify(response.data));
+        break;
+      } catch (err) {
+        console.error(`Attempt failed (${retries} left):`, err.message);
+        retries--;
+        if (retries === 0) throw err;
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s between retries
+      }
+    }
+    
+    // Validate the response structure
+    if (!response.data || typeof response.data !== 'object') {
+      console.error('Invalid response data:', response.data);
+      throw new Error('Invalid response format from server');
+    }
+
+    const stripeUrl = response.data.url;
+    if (!stripeUrl || typeof stripeUrl !== 'string') {
+      console.error('Missing or invalid URL in response:', response.data);
+      throw new Error('Invalid URL in server response');
+    }
+
+    // Validate that it's a Stripe URL
+    if (!stripeUrl.startsWith('https://checkout.stripe.com/')) {
+      console.error('Invalid Stripe URL:', stripeUrl);
+      throw new Error('Invalid Stripe URL received');
     }
     const sessionUrl = stripeUrl;
     console.log('Successfully received Stripe URL:', sessionUrl);
