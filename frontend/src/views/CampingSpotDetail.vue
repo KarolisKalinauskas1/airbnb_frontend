@@ -757,18 +757,38 @@ const handleBookNow = async () => {
       service_fee: serviceFeeAmount,
       total: totalAmount,
       spot_name: spot.value.title || 'Camping Spot'
-    };
-      // Create checkout session
+    };    // Create checkout session
     const response = await axios.post('/api/bookings/create-checkout-session', sessionData);
     
-    // Access the URL from the data property of the Axios response
-    if (!response || !response.data || !response.data.url) {
-      console.error('Invalid session response:', response);
-      throw new Error('Invalid response from server');
+    console.log('Stripe response received:', response.status);
+    
+    // More lenient validation of the response
+    if (!response) {
+      console.error('No response received from server');
+      throw new Error('No response received from payment service');
+    }
+    
+    // Check if we have a status 200 response
+    if (response.status !== 200) {
+      console.error('Invalid status code:', response.status);
+      throw new Error(`Unexpected response status: ${response.status}`);
+    }
+    
+    // Check for data and url property
+    if (!response.data) {
+      console.error('No data in response:', response);
+      throw new Error('Invalid response format from payment service');
+    }
+    
+    // Extract the URL - this is the critical part
+    const stripeUrl = response.data.url;
+    if (!stripeUrl) {
+      console.error('No URL found in response data:', response.data);
+      throw new Error('Missing checkout URL in payment service response');
     }
     
     // Store the URL for later use
-    const sessionUrl = response.data.url;
+    const sessionUrl = stripeUrl;
     // FINAL SAFETY CHECK: One last verification before redirecting to Stripe
     // This is our last chance to prevent an owner from booking their own spot
     if (authStore.publicUser && spot.value) {
@@ -781,19 +801,46 @@ const handleBookNow = async () => {
         // Force immediate redirect to dashboard instead of Stripe
         router.push('/dashboard/spots');
         return; // Exit without redirecting to Stripe
-      }
-    }    toast.success('Redirecting to payment...');
+      }    }    toast.success('Redirecting to payment...');
     // Redirect to Stripe Checkout using the URL from the response data
     window.location.href = sessionUrl;
   } catch (error) {
     console.error('Booking Error:', error);
     loading.value = false;
+    
+    // Handle specific error cases
     if (error.response?.status === 401) {
       // Auth token expired or invalid
       toast.error('Your session has expired. Please log in again to continue.');
       // Redirect to login with return URL
       router.push({
         path: '/auth',
+        query: { redirect: route.fullPath }
+      });
+      return;
+    }
+    
+    // Handle other response errors
+    if (error.response?.data?.error) {
+      toast.error(`Payment error: ${error.response.data.error}`);
+      return;
+    }
+    
+    // Default error message
+    toast.error(error.message || 'Failed to process booking. Please try again.');
+  }
+    
+    // Handle other response errors
+    if (error.response?.data?.error) {
+      toast.error(`Payment error: ${error.response.data.error}`);
+      return;
+    }
+    
+    // Default error message
+    toast.error(error.message || 'Failed to process booking. Please try again.');
+  } finally {
+    loading.value = false;
+  }
         query: {
           redirect: route.fullPath,
           startDate: dates.value.startDate,
