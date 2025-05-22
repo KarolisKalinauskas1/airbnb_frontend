@@ -733,37 +733,13 @@ const handleBookNow = async () => {
     console.log('Creating checkout session with data:', JSON.stringify(sessionData));
     const response = await axios.post('/api/checkout/create-session', sessionData);
     console.log('Stripe response received:', response.status, JSON.stringify(response.data));
-    // Robustly check the response type and structure
+    // Only accept object responses with a url property
     let stripeUrl = null;
-    if (response && response.data) {
-      if (typeof response.data === 'string') {
-        // Sometimes backend may return a string (should not, but handle gracefully)
-        try {
-          const parsed = JSON.parse(response.data);
-          if (parsed && typeof parsed.url === 'string') {
-            stripeUrl = parsed.url;
-          } else {
-            console.error('Parsed response missing url:', parsed);
-            throw new Error('Invalid session response: ' + JSON.stringify(parsed));
-          }
-        } catch (e) {
-          console.error('Failed to parse string response:', response.data);
-          throw new Error('Invalid response from server');
-        }
-      } else if (typeof response.data === 'object' && response.data !== null) {
-        if (typeof response.data.url === 'string') {
-          stripeUrl = response.data.url;
-        } else {
-          console.error('Response object missing url:', response.data);
-          throw new Error('Invalid session response: ' + JSON.stringify(response.data));
-        }
-      } else {
-        console.error('Unexpected response data type:', typeof response.data, response.data);
-        throw new Error('Invalid response from server');
-      }
+    if (response && response.data && typeof response.data.url === 'string') {
+      stripeUrl = response.data.url;
     } else {
-      console.error('No data in response:', response);
-      throw new Error('Invalid response format from payment service');
+      console.error('Invalid session response:', response);
+      throw new Error('Invalid response from server');
     }
     const sessionUrl = stripeUrl;
     console.log('Successfully received Stripe URL:', sessionUrl);
