@@ -813,300 +813,109 @@ const handleBookNow = async () => {
     loading.value = false;
   }
 };
-// Handle price update (for owner)
-const handlePriceUpdate = (newPrice) => {
-  if (!spot.value) return
-  spot.value.price_per_night = newPrice
-}
-// Improved error handling for loading camping spot details
-const loadSpotDetails = async () => {
-  const spotId = route.params.id;
-  if (!spotId) {
-    console.error('No spot ID provided');
-    toast.error('Invalid camping spot ID');
-    router.push('/campers');
-    return;
-  }
-  
-  loading.value = true;
-  error.value = null;
-  dbConnectionError.value = false;
-  showRetryButton.value = false;
-  
-  let retryCount = 0;
-  const maxRetries = 3;
-  const requestConfig = {
-    params: {
-      startDate: dates.value.startDate || route.query.start,
-      endDate: dates.value.endDate || route.query.end
-    },
-    timeout: 10000,
-    headers: {
-      'X-Public-Route': 'true',
-      'Origin': 'https://airbnb-frontend-i8p5.vercel.app'
-    }
-  };
-
-  while (retryCount < maxRetries) {
-    try {
-      console.log(`[DEBUG] Fetching camping spot details for ID: ${spotId} (Attempt ${retryCount + 1}/${maxRetries})`);
-      
-      // First try with API prefix
-      let response;
-      try {
-        response = await axios.get(`/api/camping-spots/${spotId}`, requestConfig);
-        if (response?.data) {
-          // Process the successful response
-          spot.value = response.data;
-          
-          // Normalize data structures
-          spot.value.images = spot.value.images || [];
-          spot.value.camping_spot_amenities = spot.value.camping_spot_amenities || [];
-          spot.value.location = spot.value.location || {
-            city: 'Unknown',
-            country: { name: 'Unknown' }
-          };
-
-          // Load additional data
-          try {
-            await loadReviewStats(spotId);
-          } catch (reviewError) {
-            console.error('[DEBUG] Failed to load review stats:', reviewError);
-            toast.warning('Could not load reviews. They may appear later.');
-          }
-
-          // Handle dates from URL or session storage
-          if (route.query.start) dates.value.startDate = route.query.start;
-          if (route.query.end) dates.value.endDate = route.query.end;
-          if (route.query.g) guests.value = parseInt(route.query.g) || 1;
-
-          // Check session storage for dates if not in URL
-          if (!dates.value.startDate || !dates.value.endDate) {
-            const savedDates = sessionStorage.getItem('campersDates');
-            if (savedDates) {
-              try {
-                const parsed = JSON.parse(savedDates);
-                if (parsed.startDate && parsed.endDate) {
-                  dates.value.startDate = parsed.startDate;
-                  dates.value.endDate = parsed.endDate;
-                  persistDatesToUrl(dates.value.startDate, dates.value.endDate, guests.value);
-                }
-              } catch (e) {
-                console.error('Failed to parse saved dates:', e);
-              }
-            }
-          }
-
-          // Check availability if dates are set
-          if (dates.value.startDate && dates.value.endDate) {
-            await checkAvailability();
-          }
-
-          return; // Success - exit the retry loop
-        }
-      } catch (apiError) {
-        console.log('[DEBUG] API prefix request failed, trying without prefix:', apiError.message);
-        
-        // Try without /api prefix as fallback
-        response = await axios.get(`/camping-spots/${spotId}`, requestConfig);
-        if (response?.data) {
-          spot.value = response.data;
-          // ... same normalization and additional data loading as above ...
-          return; // Success with fallback - exit the retry loop
-        }
-      }
-
-      throw new Error('Failed to fetch camping spot data from both endpoints');
-      
-    } catch (error) {
-      console.error(`[DEBUG] Attempt ${retryCount + 1} failed:`, error.message);
-      
-      if (error.code === 'ECONNABORTED') {
-        toast.error('Request timed out. Retrying...');
-      } else if (error.response?.status === 404) {
-        toast.error('Camping spot not found');
-        router.push('/campers');
-        return;
-      } else if (error.response?.status === 503 || error.response?.data?.code === 'P1001') {
-        dbConnectionError.value = true;
-        toast.error('Database connection error. Retrying...');
-      }
-
-      retryCount++;
-      if (retryCount < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
-        continue;
-      }
-      
-      // If we've exhausted all retries
-      throw error;
-    }
+// Create checkout session with proper error handling
+const createCheckoutSession = async () => {
+  if (!spot.value || !authStore.publicUser) {
+    throw new Error('Missing required spot or user information');
   }
 
-  // If we get here, all retries failed
-  throw new Error('Failed to load camping spot after multiple attempts');
-}
+  try {
+    const bookingData = {
+      spotId: spot.value.camping_spot_id,
+      startDate: dates.value.startDate,
+      endDate: dates.value.endDate,
+      guests: guests.value,
+      baseAmount: basePrice.value,
+      serviceFee: serviceFee.value,
+      totalAmount: totalPrice.value,
+      spotName: spot.value.title
+    };
 
-// If we get here, all retries failed
-throw new Error('Failed to load camping spot after multiple attempts');
+    // Validate booking data
+    validateBookingData({
+      startDate: bookingData.startDate,
+      endDate: bookingData.endDate,
+      numberOfGuests: bookingData.guests,
+      cost: bookingData.totalAmount
+    });
+
+    const response = await axios.post('/api/checkout/create-session', bookingData, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Origin': 'https://airbnb-frontend-i8p5.vercel.app'
+      },
+      timeout: 10000 // 10 second timeout
+    });
+
+    if (!response.data?.url) {
+      throw new Error('No checkout URL received from server');
     }
-    spot.value = response.data
-    // Make sure images is always an array
-    if (!spot.value.images) {
-      spot.value.images = []
-    }
-    // Make sure amenities is always an array
-    if (!spot.value.camping_spot_amenities) {
-      spot.value.camping_spot_amenities = []
-    }
-    // Make sure location exists    
-    // Fetch review statistics
-    await loadReviewStats(spotId);
-    if (!spot.value.location) {
-      spot.value.location = {
-        city: 'Unknown',
-        country: { name: 'Unknown' }
-      }
-    }
-    // First check URL parameters for date information
-    if (route.query.start) {
-      dates.value.startDate = route.query.start
-    }
-    if (route.query.end) {
-      dates.value.endDate = route.query.end
-    }
-    if (route.query.g) {
-      guests.value = parseInt(route.query.g) || 1
-    }
-    // If URL doesn't have dates, check session storage
-    if (!dates.value.startDate || !dates.value.endDate) {
-      const savedDates = sessionStorage.getItem('campersDates')
-      if (savedDates) {
-        try {
-          const parsed = JSON.parse(savedDates)
-          if (parsed.startDate && parsed.endDate) {
-            dates.value.startDate = parsed.startDate
-            dates.value.endDate = parsed.endDate
-            // Persist the dates to URL
-            persistDatesToUrl(dates.value.startDate, dates.value.endDate, guests.value)
-          }
-        } catch (e) {
-          console.error('Failed to parse saved dates:', e)
-        }
-      }
-    }
-    // Check availability if dates are set
-    if (dates.value.startDate && dates.value.endDate) {
-      checkAvailability()
-    }
+
+    return response.data.url;
   } catch (error) {
-    console.error('Failed to load camping spot:', error)
-    error.value = error.message || 'Failed to load camping spot details'
-    // Check for database connection errors
-    if (error.response?.status === 503 || 
-        error.response?.data?.code === 'P1001' || 
-        error.response?.data?.code === 'DB_CONNECTION_ERROR' ||
-        (error.response?.data?.error && error.response.data.error.includes('database'))) {
-      dbConnectionError.value = true
+    if (error.response?.status === 401) {
+      throw new Error('Authentication required. Please log in again.');
+    } else if (error.response?.status === 400) {
+      throw new Error(error.response.data?.error || 'Invalid booking data');
+    } else if (error.code === 'ECONNABORTED') {
+      throw new Error('Request timed out. Please try again.');
+    } else if (error.response?.status === 503) {
+      throw new Error('Service temporarily unavailable. Please try again later.');
     }
-    showRetryButton.value = true
+    throw error;
+  }
+};
+// Load spot details including reviews and availability
+const loadSpotDetails = async () => {
+  loading.value = true
+  error.value = null
+  spot.value = null
+  try {
+    const { data } = await axios.get(`/api/camping-spots/${route.params.id}`, {
+      headers: {
+        'X-Public-Route': 'true'
+      }
+    })
+    spot.value = data
+    // If spot is found, load reviews and availability
+    if (spot.value) {
+      // Load reviews
+      try {
+        const reviewsResponse = await axios.get(`/api/camping-spots/${spot.value.camping_spot_id}/reviews`, {
+          headers: {
+            'X-Public-Route': 'true'
+          }
+        });
+        // Calculate review stats
+        reviewStats.value = calculateReviewStats(reviewsResponse.data);
+      } catch (reviewsError) {
+        console.error('Error loading reviews:', reviewsError);
+      }
+      // Load availability
+      try {
+        await checkAvailability();
+      } catch (availabilityError) {
+        console.error('Error loading availability:', availabilityError);
+      }
+    }
+  } catch (err) {
+    error.value = 'Failed to load spot details'
+    console.error(err)
   } finally {
     loading.value = false
   }
 }
-
-// Load review statistics separately
-const loadReviewStats = async (spotId) => {
-  if (!spotId) return;
-  
-  try {
-    console.log(`[DEBUG] Fetching review stats for ID: ${spotId}`);
-    
-    const reviewResponse = await axios.get(`/api/reviews/stats/${spotId}`, {
-      // Mark this request as a public route
-      headers: {
-        'X-Public-Route': 'true'
-      }
-    });
-    
-    if (reviewResponse && reviewResponse.data) {
-      reviewStats.value = reviewResponse.data;
-      console.log('[DEBUG] Review stats loaded successfully:', reviewStats.value);
-    }
-  } catch (reviewError) {
-    console.error('[DEBUG] Error fetching review statistics:', {
-      error: reviewError.message,
-      status: reviewError.response?.status,
-      url: `/api/reviews/stats/${spotId}`
-    });
-    
-    // Try fallback without the /api prefix if that might be the issue
-    try {
-      console.log('[DEBUG] Attempting fallback review stats request...');
-
-      const fallbackResponse = await axios.get(`/reviews/stats/${spotId}`, {
-        // Mark this request as a public route
-        headers: {
-          'X-Public-Route': 'true'
-        }
-      });
-      
-      if (fallbackResponse && fallbackResponse.data) {
-        reviewStats.value = fallbackResponse.data;
-        console.log('[DEBUG] Review stats loaded via fallback:', reviewStats.value);
-      }
-    } catch (fallbackError) {
-      console.error('[DEBUG] Fallback review stats request also failed:', {
-        error: fallbackError.message,
-        status: fallbackError.response?.status,
-        url: `/reviews/stats/${spotId}`
-      });
-      // Non-blocking error - we'll just use default reviewStats values
-    }
+// Initial load
+onMounted(() => {
+  // Check if spot ID is available in route params
+  if (!route.params.id) {
+    error.value = 'Invalid spot ID'
+    loading.value = false
+    return
   }
-};
-<!-- Validate payment data before processing booking -->
-const validatePaymentData = (data) => {
-  const requiredFields = {
-    camper_id: data.camper_id,
-    user_id: data.user_id,
-    start_date: data.start_date,
-    end_date: data.end_date,
-    number_of_guests: data.number_of_guests,
-    cost: data.cost,
-    service_fee: data.service_fee,
-    total: data.total
-  };
-
-  const missingFields = Object.entries(requiredFields)
-    .filter(([_, value]) => !value)
-    .map(([key]) => key);
-
-  if (missingFields.length > 0) {
-    throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
-  }
-
-  // Validate numeric fields
-  const numericFields = ['number_of_guests', 'cost', 'service_fee', 'total'];
-  numericFields.forEach(field => {
-    const value = Number(data[field]);
-    if (isNaN(value) || value <= 0) {
-      throw new Error(`Invalid ${field}: must be a positive number`);
-    }
-  });
-
-  // Validate dates
-  const start = new Date(data.start_date);
-  const end = new Date(data.end_date);
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-    throw new Error('Invalid date format');
-  }
-  if (start >= end) {
-    throw new Error('End date must be after start date');
-  }
-
-  return true;
-};
+  // Load spot details
+  loadSpotDetails()
+})
 </script>
 
 <style scoped>
