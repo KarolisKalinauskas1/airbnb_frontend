@@ -178,16 +178,9 @@ apiClient.interceptors.response.use(
     console.log(`[Axios Retry] Attempt ${config.retryCount} of ${config.retry} for ${config.url}`);
 
     // Handle CORS errors by trying alternative routes
-    if (error.response?.status === 403 || error.code === 'ERR_NETWORK') {
-      if (config.url.startsWith('/api/')) {
+    if (error.response?.status === 403 || error.code === 'ERR_NETWORK') {      if (config.url.startsWith('/api/')) {
+        // Try alternative endpoint without /api/ prefix
         config.url = config.url.replace('/api/', '/');
-        
-        // Add CORS headers
-        config.headers = {
-          ...config.headers,
-          'Access-Control-Allow-Origin': 'https://airbnb-frontend-i8p5.vercel.app',
-          'Origin': 'https://airbnb-frontend-i8p5.vercel.app'
-        };
       }
     }
 
