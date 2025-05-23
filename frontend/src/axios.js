@@ -152,38 +152,7 @@ apiClient.interceptors.response.use(
   }
 );
 
-// Add retry interceptor
-apiClient.interceptors.response.use(null, async error => {
-  const { config } = error;
-  
-  // If config is undefined or we've already retried, reject
-  if (!config || !config.retry) return Promise.reject(error);
-
-  // Set counter and delay
-  config._retryCount = config._retryCount || 0;
-  
-  // If we've reached max retries, reject
-  if (config._retryCount >= config.retry) {
-    return Promise.reject(error);
-  }
-
-  // Increment retry count
-  config._retryCount += 1;
-
-  // Log retry attempt
-  console.log(`[Axios Retry] Attempt ${config._retryCount} of ${config.retry} for ${config.url}`);
-
-  // Create new promise to handle delay
-  const delayRetry = new Promise(resolve => {
-    setTimeout(resolve, config.retryDelay(config._retryCount));
-  });
-
-  // Wait for delay, then retry request
-  await delayRetry;
-  return apiClient(config);
-});
-
-// Add response interceptor for better error handling and retries
+// Add response interceptor with combined retry and error handling
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -205,10 +174,8 @@ apiClient.interceptors.response.use(
     // Increment retry count
     config.retryCount += 1;
 
-    // Create a delay based on retry count
-    const backoff = new Promise(resolve => {
-      setTimeout(resolve, Math.min(1000 * Math.pow(2, config.retryCount), 10000));
-    });
+    // Log retry attempt
+    console.log(`[Axios Retry] Attempt ${config.retryCount} of ${config.retry} for ${config.url}`);
 
     // Handle CORS errors by trying alternative routes
     if (error.response?.status === 403 || error.code === 'ERR_NETWORK') {
@@ -224,7 +191,12 @@ apiClient.interceptors.response.use(
       }
     }
 
-    // Wait for the backoff delay then retry the request
+    // Create a delay with exponential backoff
+    const backoff = new Promise(resolve => {
+      setTimeout(resolve, Math.min(1000 * Math.pow(2, config.retryCount), 10000));
+    });
+
+    // Wait for the backoff delay then retry request
     await backoff;
     return apiClient(config);
   }
@@ -251,7 +223,6 @@ const errorChecks = {
   )
 };
 
-// Export configured client
-export default apiClient;
-
+// Export configured client and utilities
+export { errorChecks };
 export default apiClient;
