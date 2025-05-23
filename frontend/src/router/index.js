@@ -244,6 +244,11 @@ function authPageGuard(to, from, next) {
   next();
 }
 
+// CRITICAL FIX: Removed renterGuard from camper routes to allow non-logged-in users to view camping spots
+// This allows users to browse without being forced to log in, improving user experience
+// The booking process will still require authentication when the user attempts to make a reservation
+
+// Routes that define camping spot details - needs to be BEFORE renterGuard
 const routes = [
   {
     path: '/', 
@@ -253,20 +258,20 @@ const routes = [
   {
     path: '/campers',
     name: 'campers',
-    component: lazyLoad('CampersView'),
-    beforeEnter: renterGuard,
+    component: lazyLoad('CampersView')
+    // Removed renterGuard to allow non-logged in users to view
   },
   {
     path: '/camping-spot/:id',
     name: 'CampingSpotDetail',
-    component: lazyLoad('CampingSpotDetail'),
-    beforeEnter: renterGuard,
+    component: lazyLoad('CampingSpotDetail')
+    // Removed renterGuard to allow non-logged in users to view
   },
   {
     path: '/camper/:id',
     name: 'camping-spot-detail',
-    component: () => import('../views/CampingSpotDetail.vue'),
-    beforeEnter: renterGuard,
+    component: () => import('../views/CampingSpotDetail.vue')
+    // Removed renterGuard to allow non-logged in users to view
   },
   {
     path: '/auth',
