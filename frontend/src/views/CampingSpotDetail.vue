@@ -667,8 +667,7 @@ const handleBookNow = async () => {
   if (hasBlockedDates.value) {
     toast.error('Selected dates are not available for booking');
     return;
-  }
-  if (!authStore.isAuthenticated) {
+  }  if (!authStore.isAuthenticated) {
     const bookingDetails = {
       spotId: spot.value.camping_spot_id,
       startDate: dates.value.startDate,

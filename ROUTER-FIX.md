@@ -69,5 +69,6 @@ This fix complements our previous work fixing the checkout endpoint and geocodin
 1. Fixed field mapping in the `/api/checkout/create-session` endpoint
 2. Fixed geocoding cache to use writable locations on Railway
 3. Fixed this router guard issue for seamless browsing experience
+4. Fixed Axios interceptors for API requests (May 23, 2025) - see `AXIOS-INTERCEPTOR-FIX.md`
 
 All these changes together ensure a smooth user experience from browsing through booking.

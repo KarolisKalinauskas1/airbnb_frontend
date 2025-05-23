@@ -22,8 +22,7 @@ apiClient.interceptors.request.use(
     // Don't log sensitive data like passwords
     const safeData = { ...config.data };
     if (safeData.password) safeData.password = '[REDACTED]';    
-    
-    // Check if this is a public route (GET requests only)
+      // Check if this is a public route (GET requests only)
     const isPublicRoute = config.method.toLowerCase() === 'get' && (
       config.url.includes('/api/camping-spots') || 
       config.url.includes('/api/campingspots') || // Alternative API endpoint format
@@ -33,7 +32,10 @@ apiClient.interceptors.request.use(
       config.url.includes('/api/bookings/success') || // Add success route to public routes
       config.url.includes('/api/auth/oauth') || // Add OAuth routes to public routes
       config.url.includes('/api/reviews/stats') || // Add review stats to public routes
-      config.url.includes('/api/camper') // Add camper routes (for browsing) to public routes
+      config.url.includes('/api/camper') || // Add camper routes (for browsing) to public routes
+      // Add specific detail page endpoints to ensure they're treated as public
+      config.url.match(/\/api\/camping-spots\/\d+$/) || // Match specific camping spot by ID
+      config.url.match(/\/api\/camper\/\d+$/) // Match specific camper by ID
     );
 
     // Only add auth token for non-public routes
@@ -66,8 +68,23 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    // Handle authentication errors
-    if (error.response?.status === 401) {
+    // Determine if this was a request to a public route
+    const isPublicRequest = error.config && error.config.method.toLowerCase() === 'get' && (
+      error.config.url.includes('/api/camping-spots') || 
+      error.config.url.includes('/api/campingspots') ||
+      error.config.url.includes('/api/locations') || 
+      error.config.url.includes('/api/countries') || 
+      error.config.url.includes('/api/amenities') ||
+      error.config.url.includes('/api/bookings/success') ||
+      error.config.url.includes('/api/auth/oauth') ||
+      error.config.url.includes('/api/reviews/stats') ||
+      error.config.url.includes('/api/camper') ||
+      error.config.url.match(/\/api\/camping-spots\/\d+$/) ||
+      error.config.url.match(/\/api\/camper\/\d+$/)
+    );
+    
+    // Handle authentication errors - but only redirect for non-public routes
+    if (error.response?.status === 401 && !isPublicRequest) {
       const authStore = useAuthStore();
       await authStore.clearSession();
       window.location.href = '/auth';

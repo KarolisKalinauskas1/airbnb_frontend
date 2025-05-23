@@ -258,20 +258,20 @@ const routes = [
   {
     path: '/campers',
     name: 'campers',
-    component: lazyLoad('CampersView')
-    // Removed renterGuard to allow non-logged in users to view
+    component: lazyLoad('CampersView'),
+    meta: { public: true }  // Explicitly mark as public
   },
   {
     path: '/camping-spot/:id',
     name: 'CampingSpotDetail',
-    component: lazyLoad('CampingSpotDetail')
-    // Removed renterGuard to allow non-logged in users to view
+    component: lazyLoad('CampingSpotDetail'),
+    meta: { public: true }  // Explicitly mark as public
   },
   {
     path: '/camper/:id',
     name: 'camping-spot-detail',
-    component: () => import('../views/CampingSpotDetail.vue')
-    // Removed renterGuard to allow non-logged in users to view
+    component: () => import('../views/CampingSpotDetail.vue'),
+    meta: { public: true }  // Explicitly mark as public
   },
   {
     path: '/auth',
@@ -427,10 +427,16 @@ router.beforeEach(async (to, from, next) => {
     '/api/camping-spots' // Add public camping spots endpoint
   ];
   
+  // Check if current path is a public path or a camper detail page
+  const isCamperDetailPage = to.name === 'camping-spot-detail' || 
+                           to.name === 'CampingSpotDetail' ||
+                           to.path.match(/^\/camper\/\d+/) || 
+                           to.path.match(/^\/camping-spot\/\d+/);
+  
   // Check if current path is a public path
   const isPublicPath = publicPaths.some(publicPath => 
     to.path === publicPath || to.path.startsWith(publicPath + '/')
-  ) || to.path.startsWith('/camping-spots/') || to.path.includes('/api/reviews/stats/');
+  ) || to.path.startsWith('/camping-spots/') || to.path.includes('/api/reviews/stats/') || isCamperDetailPage;
   
   // Handle direct OAuth callback to home page
   if (to.path === '/' && to.query.source === 'oauth') {
