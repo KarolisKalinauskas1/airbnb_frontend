@@ -537,6 +537,13 @@ const checkAvailability = async () => {
   availabilityLoading.value = true
   hasBlockedDates.value = false
   availabilityError.value = null
+  
+  console.log(`[DEBUG] Checking availability for dates:`, {
+    startDate: dates.value.startDate,
+    endDate: dates.value.endDate,
+    spotId: spot.value.camping_spot_id
+  });
+  
   try {
     // First try with the API endpoint
     try {
@@ -547,32 +554,60 @@ const checkAvailability = async () => {
         },
         // Add specific config to prevent over-throttling
         bypassThrottle: true,
-        timeout: 15000 // Longer timeout for availability check
+        timeout: 15000, // Longer timeout for availability check
+        // Mark this request as a public route
+        headers: {
+          'X-Public-Route': 'true'
+        }
       })
+      console.log(`[DEBUG] Availability check succeeded:`, data);
+      
       // Check if dates are available
       hasBlockedDates.value = data.hasBlockedDates
       if (hasBlockedDates.value) {
         availabilityError.value = 'Selected dates are not available for booking'
       }
     } catch (apiError) {
+      console.error(`[DEBUG] Primary availability check failed:`, {
+        status: apiError.response?.status, 
+        message: apiError.message
+      });
+      
       // If API endpoint fails, try without the api prefix
       if (apiError.response?.status !== 429) { // Don't retry if rate limited
-        const { data } = await axios.get(`/camping-spots/${spot.value.camping_spot_id}/availability`, {
-          params: {
-            startDate: dates.value.startDate,
-            endDate: dates.value.endDate
-          },
-          bypassThrottle: true,
-          timeout: 15000
-        })
-        // Check if dates are available
-        hasBlockedDates.value = data.hasBlockedDates
-        if (hasBlockedDates.value) {
-          availabilityError.value = 'Selected dates are not available for booking'
+        try {
+          console.log(`[DEBUG] Attempting fallback availability check`);
+          
+          const { data } = await axios.get(`/camping-spots/${spot.value.camping_spot_id}/availability`, {
+            params: {
+              startDate: dates.value.startDate,
+              endDate: dates.value.endDate
+            },
+            bypassThrottle: true,
+            timeout: 15000,
+            // Mark this request as a public route
+            headers: {
+              'X-Public-Route': 'true'
+            }
+          })
+          
+          console.log(`[DEBUG] Fallback availability check succeeded:`, data);
+          
+          // Check if dates are available
+          hasBlockedDates.value = data.hasBlockedDates
+          if (hasBlockedDates.value) {
+            availabilityError.value = 'Selected dates are not available for booking'
+          }
+        } catch (fallbackError) {
+          console.error(`[DEBUG] Fallback availability check failed:`, {
+            status: fallbackError.response?.status,
+            message: fallbackError.message
+          });
+          throw fallbackError; // Let the outer catch handle this
         }
       } else {
         // Handle rate limiting specifically
-        console.warn('Availability check rate limited:', apiError)
+        console.warn('[DEBUG] Availability check rate limited:', apiError)
         // Don't set hasBlockedDates to true just because of rate limiting
         // Instead, set a more appropriate error
         availabilityError.value = 'Unable to check availability right now. Please try again shortly.'
@@ -856,13 +891,25 @@ const loadSpotDetails = async () => {
   dbConnectionError.value = false;
   
   try {
+    console.log(`[DEBUG] Fetching camping spot details for ID: ${spotId}`, {
+      authenticated: authStore.isAuthenticated,
+      publicUser: !!authStore.publicUser
+    });
+    
     const response = await axios.get(`/api/camping-spots/${spotId}`, {
       params: {
         startDate: dates.value.startDate || route.query.start,
         endDate: dates.value.endDate || route.query.end
+      },
+      // Mark this request as a public route
+      headers: {
+        'X-Public-Route': 'true'
       }
     });
-      if (!response || !response.data) {
+    
+    console.log(`[DEBUG] Camping spot details received for ID: ${spotId}`);
+      
+    if (!response || !response.data) {
       throw new Error('No data received from server')
     }
     spot.value = response.data
@@ -935,24 +982,47 @@ const loadReviewStats = async (spotId) => {
   if (!spotId) return;
   
   try {
-    const reviewResponse = await axios.get(`/api/reviews/stats/${spotId}`);
+    console.log(`[DEBUG] Fetching review stats for ID: ${spotId}`);
+    
+    const reviewResponse = await axios.get(`/api/reviews/stats/${spotId}`, {
+      // Mark this request as a public route
+      headers: {
+        'X-Public-Route': 'true'
+      }
+    });
+    
     if (reviewResponse && reviewResponse.data) {
       reviewStats.value = reviewResponse.data;
-      console.log('Review stats loaded successfully:', reviewStats.value);
+      console.log('[DEBUG] Review stats loaded successfully:', reviewStats.value);
     }
   } catch (reviewError) {
-    console.error('Error fetching review statistics:', reviewError);
+    console.error('[DEBUG] Error fetching review statistics:', {
+      error: reviewError.message,
+      status: reviewError.response?.status,
+      url: `/api/reviews/stats/${spotId}`
+    });
     
     // Try fallback without the /api prefix if that might be the issue
     try {
-      console.log('Attempting fallback review stats request...');
-      const fallbackResponse = await axios.get(`/reviews/stats/${spotId}`);
+      console.log('[DEBUG] Attempting fallback review stats request...');
+      
+      const fallbackResponse = await axios.get(`/reviews/stats/${spotId}`, {
+        // Mark this request as a public route
+        headers: {
+          'X-Public-Route': 'true'
+        }
+      });
+      
       if (fallbackResponse && fallbackResponse.data) {
         reviewStats.value = fallbackResponse.data;
-        console.log('Review stats loaded via fallback:', reviewStats.value);
+        console.log('[DEBUG] Review stats loaded via fallback:', reviewStats.value);
       }
     } catch (fallbackError) {
-      console.error('Fallback review stats request also failed:', fallbackError);
+      console.error('[DEBUG] Fallback review stats request also failed:', {
+        error: fallbackError.message,
+        status: fallbackError.response?.status,
+        url: `/reviews/stats/${spotId}`
+      });
       // Non-blocking error - we'll just use default reviewStats values
     }
   }
@@ -969,20 +1039,30 @@ const calculateTotal = () => {
 // Function already defined above, so this declaration is removed
 
 onMounted(async () => {
+  console.log('[DEBUG] CampingSpotDetail mounted:', {
+    isLoggedIn: authStore.isLoggedIn,
+    hasPublicUser: !!authStore.publicUser,
+    spotId: route.params.id
+  });
+  
   // First, check if user is already authenticated with public user info
   if (authStore.isLoggedIn && authStore.publicUser) {
+    console.log('[DEBUG] User already authenticated with public info');
   } 
   // Otherwise, fetch public user info if logged in
   else if (authStore.isLoggedIn) {
     try {
+      console.log('[DEBUG] Fetching public user info for authenticated user');
       await authStore.fetchPublicUser(authStore.user.id, true);
     } catch (error) {
-      console.error('Error fetching user info:', error);
+      console.error('[DEBUG] Error fetching user info:', error);
     }
+  } else {
+    console.log('[DEBUG] User not authenticated, proceeding as guest');
   }
+  
   // Now load the spot details
   await loadSpotDetails();
-  // We'll let the computed property and UI handle the owner check without automatic redirect
 });
 </script>
 <style scoped>
