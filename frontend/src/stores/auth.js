@@ -100,22 +100,39 @@ export const useAuthStore = defineStore('auth', () => {
     if (fetchPromise.value) {
       return fetchPromise.value
     }
+    
+    // Get current session token
+    const currentSession = await supabase.auth.getSession()
+    if (!currentSession?.data?.session?.access_token) {
+      console.warn('No valid session token available');
+      publicUser.value = null;
+      return null;
+    }
+
     try {
-      const promise = withTimeout(axios.get('/api/users/me'), AUTH_TIMEOUT, 'Public user fetch timed out')
-      fetchPromise.value = promise
-      const response = await promise
-      publicUser.value = response.data
-      lastFetch.value = now
-      return response.data
+      const promise = withTimeout(
+        axios.get('/api/users/me', {
+          headers: {
+            'Authorization': `Bearer ${currentSession.data.session.access_token}`
+          }
+        }), 
+        AUTH_TIMEOUT, 
+        'Public user fetch timed out'
+      );
+      fetchPromise.value = promise;
+      const response = await promise;
+      publicUser.value = response.data;
+      lastFetch.value = now;
+      return response.data;
     } catch (error) {
-      console.error('Error fetching public user:', error)
+      console.error('Error fetching public user:', error);
       // Only clear public user data on actual errors, not timeouts
       if (!error.message.includes('timed out')) {
-        publicUser.value = null
+        publicUser.value = null;
       }
-      return null
+      return null;
     } finally {
-      fetchPromise.value = null
+      fetchPromise.value = null;
     }
   }
   async function setSession(newSession) {
