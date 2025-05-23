@@ -113,18 +113,26 @@ function renterGuard(to, from, next) {
     '/offline' // Offline page
   ];
 
+  // Check if current path is a camper detail page (handle dynamic segments)
+  const isCamperDetailPage = to.name === 'camping-spot-detail' || 
+                           to.name === 'CampingSpotDetail' ||
+                           to.path.match(/^\/camper\/\d+/) || 
+                           to.path.match(/^\/camping-spot\/\d+/);
+
   // Check if current path matches any public path
   const isPublicPath = publicPaths.some(publicPath => 
     to.path === publicPath || to.path.startsWith(publicPath + '/')
   );
 
-  if (isPublicPath) {
+  if (isPublicPath || isCamperDetailPage) {
+    console.log('Public path or camper detail page, allowing access:', to.path);
     next();
     return;
   }
 
   // If user isn't logged in, redirect to login for authenticated pages
   if (!authStore.isLoggedIn) {
+    console.log('User not authenticated, redirecting from private path:', to.path);
     next({
       path: '/auth',
       query: { redirect: to.fullPath }
@@ -409,13 +417,15 @@ router.beforeEach(async (to, from, next) => {
     '/auth',
     '/offline',
     '/404',
-    '/camping-spots' // Added this path to handle camping spot details
+    '/camping-spots', // Added this path to handle camping spot details
+    '/api/reviews/stats', // Add public reviews endpoint
+    '/api/camping-spots' // Add public camping spots endpoint
   ];
   
   // Check if current path is a public path
   const isPublicPath = publicPaths.some(publicPath => 
     to.path === publicPath || to.path.startsWith(publicPath + '/')
-  ) || to.path.startsWith('/camping-spots/');
+  ) || to.path.startsWith('/camping-spots/') || to.path.includes('/api/reviews/stats/');
   
   // Handle direct OAuth callback to home page
   if (to.path === '/' && to.query.source === 'oauth') {
