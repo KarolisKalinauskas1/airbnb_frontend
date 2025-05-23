@@ -36,11 +36,11 @@ apiClient.interceptors.request.use(
     // Don't log sensitive data
     const safeData = { ...config.data };
     if (safeData.password) safeData.password = '[REDACTED]';
-    
-    // Check if this is a public route
+      // Check if this is a public route
     const isPublicRoute = 
       (config.headers && config.headers['X-Public-Route'] === 'true') ||
       (config.method.toLowerCase() === 'get' && (
+        // Basic routes
         config.url.includes('/api/camping-spots') || 
         config.url.includes('/camping-spots') ||
         config.url.includes('/api/locations') || 
@@ -50,9 +50,8 @@ apiClient.interceptors.request.use(
         config.url.includes('/api/reviews/stats') ||
         config.url.includes('/reviews/stats') ||
         config.url.includes('/api/countries') ||
-        config.url.includes('/countries')
-      ));
-        // Add specific detail page endpoints to ensure they're treated as public
+        config.url.includes('/countries') ||
+        // Specific detail page endpoints
         config.url.match(/\/api\/camping-spots\/\d+$/) || // Match specific camping spot by ID
         config.url.match(/\/api\/camper\/\d+$/) || // Match specific camper by ID 
         config.url.match(/\/api\/camping-spots\/\d+\/availability/) || // Match availability endpoint
@@ -186,14 +185,12 @@ apiClient.interceptors.response.use(null, async error => {
 
 // Add response interceptor for better error handling and retries
 apiClient.interceptors.response.use(
-  (response) => {
-    return response;
-  },
+  (response) => response,
   async (error) => {
     const { config } = error;
     
     // Skip retry for specific error types
-    if (!config || error.code === 'ERR_CANCELED' || error.response?.status === 404) {
+    if (!config || !config.retry || error.code === 'ERR_CANCELED' || error.response?.status === 404) {
       return Promise.reject(error);
     }
 
@@ -201,7 +198,7 @@ apiClient.interceptors.response.use(
     config.retryCount = config.retryCount || 0;
 
     // Check if we should retry the request
-    if (config.retryCount >= config.retry) {
+    if (config.retryCount >= (config.retry || 3)) {
       return Promise.reject(error);
     }
 
@@ -209,23 +206,21 @@ apiClient.interceptors.response.use(
     config.retryCount += 1;
 
     // Create a delay based on retry count
-    const backoff = new Promise((resolve) => {
-      setTimeout(() => {
-        resolve();
-      }, config.retryDelay(config.retryCount));
+    const backoff = new Promise(resolve => {
+      setTimeout(resolve, Math.min(1000 * Math.pow(2, config.retryCount), 10000));
     });
 
     // Handle CORS errors by trying alternative routes
     if (error.response?.status === 403 || error.code === 'ERR_NETWORK') {
-      // Try without /api prefix if it exists
       if (config.url.startsWith('/api/')) {
         config.url = config.url.replace('/api/', '/');
-      }
-      
-      // Add CORS headers if they're missing
-      if (!config.headers['Access-Control-Allow-Origin']) {
-        config.headers['Access-Control-Allow-Origin'] = 'https://airbnb-frontend-i8p5.vercel.app';
-        config.headers['Origin'] = 'https://airbnb-frontend-i8p5.vercel.app';
+        
+        // Add CORS headers
+        config.headers = {
+          ...config.headers,
+          'Access-Control-Allow-Origin': 'https://airbnb-frontend-i8p5.vercel.app',
+          'Origin': 'https://airbnb-frontend-i8p5.vercel.app'
+        };
       }
     }
 
@@ -235,50 +230,28 @@ apiClient.interceptors.response.use(
   }
 );
 
-// Utility function to check if error is due to network/CORS
-const isNetworkError = (error) => {
-  return error.code === 'ERR_NETWORK' || 
-         error.code === 'ECONNABORTED' ||
-         error.response?.status === 403;
+// Error type checking utilities
+const errorChecks = {
+  isNetwork: (error) => (
+    error.code === 'ERR_NETWORK' || 
+    error.code === 'ECONNABORTED' ||
+    error.response?.status === 403
+  ),
+
+  isAuth: (error) => (
+    error.response?.status === 401 || 
+    error.response?.status === 403
+  ),
+
+  isDatabase: (error) => (
+    error.response?.status === 503 || 
+    error.response?.data?.code === 'P1001' ||
+    error.response?.data?.code === 'DB_CONNECTION_ERROR' ||
+    (error.response?.data?.error && error.response.data.error.includes('database'))
+  )
 };
 
-// Utility function to check if error is due to authentication
-const isAuthError = (error) => {
-  return error.response?.status === 401 || 
-         error.response?.status === 403;
-};
-
-// Utility function to check if error is due to database
-const isDatabaseError = (error) => {
-  return error.response?.status === 503 || 
-         error.response?.data?.code === 'P1001' ||
-         error.response?.data?.code === 'DB_CONNECTION_ERROR' ||
-         (error.response?.data?.error && error.response.data.error.includes('database'));
-};
-
-// Global error handler function
-const handleRequestError = async (error, config) => {
-  if (isNetworkError(error)) {
-    // Try alternative endpoint if CORS/network error
-    if (config.url.startsWith('/api/')) {
-      config.url = config.url.replace('/api/', '/');
-      return apiClient(config);
-    }
-  }
-
-  if (isAuthError(error)) {
-    // Handle auth errors (e.g., redirect to login)
-    const authStore = useAuthStore();
-    await authStore.logout();
-    return Promise.reject(error);
-  }
-
-  if (isDatabaseError(error)) {
-    // Could implement specific handling for DB errors
-    console.error('Database error:', error);
-  }
-
-  return Promise.reject(error);
-};
+// Export configured client
+export default apiClient;
 
 export default apiClient;
