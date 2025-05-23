@@ -2,9 +2,13 @@ import axios from 'axios';
 import { useAuthStore } from '@/stores/auth';
 
 // Create axios instance with optimized configuration
-const baseURL = '/'; // Use relative URL since we have Vite proxy
-// Log the base URL for debugging
-console.log(`[DEBUG] Axios configured with baseURL: ${baseURL}`);
+const isProd = import.meta.env.PROD;
+const baseURL = isProd 
+  ? 'https://airbnbbackend-production-5ffb.up.railway.app'
+  : 'http://localhost:3000';
+
+// Log the base URL and environment for debugging
+console.log(`[DEBUG] Axios configured with baseURL: ${baseURL} (${isProd ? 'production' : 'development'})`);
 
 const apiClient = axios.create({
   baseURL: baseURL,
@@ -47,11 +51,17 @@ apiClient.interceptors.request.use(
         config.url.match(/\/camping-spots\/\d+\/availability/) // Match alternative availability endpoint
       ));
 
-    // Debug logging for request analysis
-    console.log(`[DEBUG] ${config.method.toUpperCase()} ${config.url}`, { 
+    // Enhanced debug logging for request analysis
+    console.log(`[Axios Interceptor] ${config.method.toUpperCase()} ${config.url}`, { 
+      timestamp: new Date().toISOString(),
       isPublicRoute,
       hasAuth: !!config.headers.Authorization,
-      url: config.url
+      url: config.url,
+      baseURL: config.baseURL,
+      headers: {
+        contentType: config.headers['Content-Type'],
+        accept: config.headers['Accept']
+      }
     });
 
     // Only add auth token for non-public routes

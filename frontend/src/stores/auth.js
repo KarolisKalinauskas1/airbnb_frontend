@@ -109,25 +109,50 @@ export const useAuthStore = defineStore('auth', () => {
         return null
       }
 
-      const promise = withTimeout(
-        axios.get('/api/users/full-info', {  // Use the correct endpoint
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        }), 
-        AUTH_TIMEOUT, 
-        'Public user fetch timed out'
-      )
-      
-      fetchPromise.value = promise
-
-      const response = await promise
-      if (response.data) {
-        publicUser.value = response.data
-        lastFetch.value = now
-        return response.data
+      // Try the full-info endpoint first
+      try {
+        const promise = withTimeout(
+          axios.get('/api/users/full-info', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          }), 
+          AUTH_TIMEOUT, 
+          'Public user fetch timed out'
+        )
+        
+        fetchPromise.value = promise
+        const response = await promise
+        
+        if (response.data) {
+          publicUser.value = response.data
+          lastFetch.value = now
+          console.log('Successfully fetched user data:', { userId: response.data.user_id });
+          return response.data
+        }
+      } catch (fullInfoError) {
+        console.error('Error fetching from /full-info:', fullInfoError)
+        // Try the /basic-info endpoint as fallback
+        const basicPromise = withTimeout(
+          axios.get('/api/users/basic-info', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          }),
+          AUTH_TIMEOUT,
+          'Basic info fetch timed out'
+        )
+        
+        const basicResponse = await basicPromise
+        if (basicResponse.data) {
+          publicUser.value = basicResponse.data
+          lastFetch.value = now
+          console.log('Successfully fetched basic user data:', { userId: basicResponse.data.user_id });
+          return basicResponse.data
+        }
       }
-      throw new Error('No data in response')
+      
+      throw new Error('Failed to fetch user data')
     } catch (error) {
       console.error('Error fetching public user:', error)
       if (error.response?.status === 401) {
