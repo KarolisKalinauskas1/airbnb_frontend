@@ -12,11 +12,16 @@ console.log(`[DEBUG] Axios configured with baseURL: ${baseURL} (${isProd ? 'prod
 
 const apiClient = axios.create({
   baseURL: baseURL,
-  timeout: 15000, // 15 second timeout
+  timeout: 30000, // Increased timeout to 30 seconds
   withCredentials: true, // Enable credentials for cross-origin requests
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
+  },
+  // Add retry configuration
+  retry: 3,
+  retryDelay: (retryCount) => {
+    return retryCount * 1000; // Wait 1s, 2s, 3s between retries
   }
 });
 
@@ -144,5 +149,36 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// Add retry interceptor
+apiClient.interceptors.response.use(null, async error => {
+  const { config } = error;
+  
+  // If config is undefined or we've already retried, reject
+  if (!config || !config.retry) return Promise.reject(error);
+
+  // Set counter and delay
+  config._retryCount = config._retryCount || 0;
+  
+  // If we've reached max retries, reject
+  if (config._retryCount >= config.retry) {
+    return Promise.reject(error);
+  }
+
+  // Increment retry count
+  config._retryCount += 1;
+
+  // Log retry attempt
+  console.log(`[Axios Retry] Attempt ${config._retryCount} of ${config.retry} for ${config.url}`);
+
+  // Create new promise to handle delay
+  const delayRetry = new Promise(resolve => {
+    setTimeout(resolve, config.retryDelay(config._retryCount));
+  });
+
+  // Wait for delay, then retry request
+  await delayRetry;
+  return apiClient(config);
+});
 
 export default apiClient;

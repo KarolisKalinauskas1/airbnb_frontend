@@ -94,12 +94,16 @@ export const useAuthStore = defineStore('auth', () => {
     const now = Date.now()
     // Return cached data if available and not forced
     if (!force && publicUser.value && (now - lastFetch.value) < CACHE_TIME) {
+      console.log('[Auth Store] Using cached user data');
       return publicUser.value
     }
     // If there's already a fetch in progress, return its promise
     if (fetchPromise.value) {
+      console.log('[Auth Store] Using existing fetch promise');
       return fetchPromise.value
     }
+    
+    console.log('[Auth Store] Starting new fetch for user data');
 
     try {
       const token = await getAuthToken()
