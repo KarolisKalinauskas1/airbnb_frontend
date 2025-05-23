@@ -12,43 +12,46 @@ console.log(`[DEBUG] Axios configured with baseURL: ${baseURL} (${isProd ? 'prod
 
 const apiClient = axios.create({
   baseURL: baseURL,
-  timeout: 30000, // Increased timeout to 30 seconds
-  withCredentials: true, // Enable credentials for cross-origin requests
+  timeout: 30000, // 30 second timeout
+  withCredentials: true, 
   headers: {
     'Content-Type': 'application/json',
-    'Accept': 'application/json'
+    'Accept': 'application/json',
+    'Access-Control-Allow-Origin': 'https://airbnb-frontend-i8p5.vercel.app',
+    'Origin': 'https://airbnb-frontend-i8p5.vercel.app'
   },
-  // Add retry configuration
+  // Enhanced retry configuration
   retry: 3,
   retryDelay: (retryCount) => {
-    return retryCount * 1000; // Wait 1s, 2s, 3s between retries
+    return Math.min(1000 * Math.pow(2, retryCount), 10000); // Exponential backoff with 10s max
+  },
+  validateStatus: function (status) {
+    return (status >= 200 && status < 300) || status === 304; // Consider 304 Not Modified as success
   }
 });
 
-// Debug logging for all requests
+// Request interceptor for authentication and request configuration
 apiClient.interceptors.request.use(
   async (config) => {
-    // Don't log sensitive data like passwords
+    // Don't log sensitive data
     const safeData = { ...config.data };
     if (safeData.password) safeData.password = '[REDACTED]';
     
-    // Check if this is a public route (using header or URL patterns)
+    // Check if this is a public route
     const isPublicRoute = 
-      // Check for X-Public-Route header
       (config.headers && config.headers['X-Public-Route'] === 'true') ||
-      // Then check URL patterns for GET requests
       (config.method.toLowerCase() === 'get' && (
         config.url.includes('/api/camping-spots') || 
-        config.url.includes('/api/campingspots') || // Alternative API endpoint format
+        config.url.includes('/camping-spots') ||
         config.url.includes('/api/locations') || 
-        config.url.includes('/api/countries') || 
+        config.url.includes('/locations') ||
         config.url.includes('/api/amenities') ||
-        config.url.includes('/api/bookings/success') || // Add success route to public routes
-        config.url.includes('/api/auth/oauth') || // Add OAuth routes to public routes
-        config.url.includes('/api/reviews/stats') || // Add review stats to public routes
-        config.url.includes('/api/camper') || // Add camper routes (for browsing) to public routes
-        config.url.includes('/reviews/stats/') || // Alternative reviews stats path
-        config.url.includes('/camping-spots/') || // Alternative camping spots path
+        config.url.includes('/amenities') ||
+        config.url.includes('/api/reviews/stats') ||
+        config.url.includes('/reviews/stats') ||
+        config.url.includes('/api/countries') ||
+        config.url.includes('/countries')
+      ));
         // Add specific detail page endpoints to ensure they're treated as public
         config.url.match(/\/api\/camping-spots\/\d+$/) || // Match specific camping spot by ID
         config.url.match(/\/api\/camper\/\d+$/) || // Match specific camper by ID 
@@ -180,5 +183,102 @@ apiClient.interceptors.response.use(null, async error => {
   await delayRetry;
   return apiClient(config);
 });
+
+// Add response interceptor for better error handling and retries
+apiClient.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  async (error) => {
+    const { config } = error;
+    
+    // Skip retry for specific error types
+    if (!config || error.code === 'ERR_CANCELED' || error.response?.status === 404) {
+      return Promise.reject(error);
+    }
+
+    // Initialize retry count
+    config.retryCount = config.retryCount || 0;
+
+    // Check if we should retry the request
+    if (config.retryCount >= config.retry) {
+      return Promise.reject(error);
+    }
+
+    // Increment retry count
+    config.retryCount += 1;
+
+    // Create a delay based on retry count
+    const backoff = new Promise((resolve) => {
+      setTimeout(() => {
+        resolve();
+      }, config.retryDelay(config.retryCount));
+    });
+
+    // Handle CORS errors by trying alternative routes
+    if (error.response?.status === 403 || error.code === 'ERR_NETWORK') {
+      // Try without /api prefix if it exists
+      if (config.url.startsWith('/api/')) {
+        config.url = config.url.replace('/api/', '/');
+      }
+      
+      // Add CORS headers if they're missing
+      if (!config.headers['Access-Control-Allow-Origin']) {
+        config.headers['Access-Control-Allow-Origin'] = 'https://airbnb-frontend-i8p5.vercel.app';
+        config.headers['Origin'] = 'https://airbnb-frontend-i8p5.vercel.app';
+      }
+    }
+
+    // Wait for the backoff delay then retry the request
+    await backoff;
+    return apiClient(config);
+  }
+);
+
+// Utility function to check if error is due to network/CORS
+const isNetworkError = (error) => {
+  return error.code === 'ERR_NETWORK' || 
+         error.code === 'ECONNABORTED' ||
+         error.response?.status === 403;
+};
+
+// Utility function to check if error is due to authentication
+const isAuthError = (error) => {
+  return error.response?.status === 401 || 
+         error.response?.status === 403;
+};
+
+// Utility function to check if error is due to database
+const isDatabaseError = (error) => {
+  return error.response?.status === 503 || 
+         error.response?.data?.code === 'P1001' ||
+         error.response?.data?.code === 'DB_CONNECTION_ERROR' ||
+         (error.response?.data?.error && error.response.data.error.includes('database'));
+};
+
+// Global error handler function
+const handleRequestError = async (error, config) => {
+  if (isNetworkError(error)) {
+    // Try alternative endpoint if CORS/network error
+    if (config.url.startsWith('/api/')) {
+      config.url = config.url.replace('/api/', '/');
+      return apiClient(config);
+    }
+  }
+
+  if (isAuthError(error)) {
+    // Handle auth errors (e.g., redirect to login)
+    const authStore = useAuthStore();
+    await authStore.logout();
+    return Promise.reject(error);
+  }
+
+  if (isDatabaseError(error)) {
+    // Could implement specific handling for DB errors
+    console.error('Database error:', error);
+  }
+
+  return Promise.reject(error);
+};
 
 export default apiClient;

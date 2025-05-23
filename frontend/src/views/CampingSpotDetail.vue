@@ -820,37 +820,135 @@ const handlePriceUpdate = (newPrice) => {
 }
 // Improved error handling for loading camping spot details
 const loadSpotDetails = async () => {
-  const spotId = route.params.id
+  const spotId = route.params.id;
   if (!spotId) {
-    console.error('No spot ID provided')
-    router.push('/campers')
-    return
+    console.error('No spot ID provided');
+    toast.error('Invalid camping spot ID');
+    router.push('/campers');
+    return;
   }
+  
   loading.value = true;
   error.value = null;
   dbConnectionError.value = false;
+  showRetryButton.value = false;
   
-  try {
-    console.log(`[DEBUG] Fetching camping spot details for ID: ${spotId}`, {
-      authenticated: authStore.isAuthenticated,
-      publicUser: !!authStore.publicUser
-    });
-    
-    const response = await axios.get(`/api/camping-spots/${spotId}`, {
-      params: {
-        startDate: dates.value.startDate || route.query.start,
-        endDate: dates.value.endDate || route.query.end
-      },
-      // Mark this request as a public route
-      headers: {
-        'X-Public-Route': 'true'
-      }
-    });
-    
-    console.log(`[DEBUG] Camping spot details received for ID: ${spotId}`);
+  let retryCount = 0;
+  const maxRetries = 3;
+  const requestConfig = {
+    params: {
+      startDate: dates.value.startDate || route.query.start,
+      endDate: dates.value.endDate || route.query.end
+    },
+    timeout: 10000,
+    headers: {
+      'X-Public-Route': 'true',
+      'Origin': 'https://airbnb-frontend-i8p5.vercel.app'
+    }
+  };
+
+  while (retryCount < maxRetries) {
+    try {
+      console.log(`[DEBUG] Fetching camping spot details for ID: ${spotId} (Attempt ${retryCount + 1}/${maxRetries})`);
       
-    if (!response || !response.data) {
-      throw new Error('No data received from server')
+      // First try with API prefix
+      let response;
+      try {
+        response = await axios.get(`/api/camping-spots/${spotId}`, requestConfig);
+        if (response?.data) {
+          // Process the successful response
+          spot.value = response.data;
+          
+          // Normalize data structures
+          spot.value.images = spot.value.images || [];
+          spot.value.camping_spot_amenities = spot.value.camping_spot_amenities || [];
+          spot.value.location = spot.value.location || {
+            city: 'Unknown',
+            country: { name: 'Unknown' }
+          };
+
+          // Load additional data
+          try {
+            await loadReviewStats(spotId);
+          } catch (reviewError) {
+            console.error('[DEBUG] Failed to load review stats:', reviewError);
+            toast.warning('Could not load reviews. They may appear later.');
+          }
+
+          // Handle dates from URL or session storage
+          if (route.query.start) dates.value.startDate = route.query.start;
+          if (route.query.end) dates.value.endDate = route.query.end;
+          if (route.query.g) guests.value = parseInt(route.query.g) || 1;
+
+          // Check session storage for dates if not in URL
+          if (!dates.value.startDate || !dates.value.endDate) {
+            const savedDates = sessionStorage.getItem('campersDates');
+            if (savedDates) {
+              try {
+                const parsed = JSON.parse(savedDates);
+                if (parsed.startDate && parsed.endDate) {
+                  dates.value.startDate = parsed.startDate;
+                  dates.value.endDate = parsed.endDate;
+                  persistDatesToUrl(dates.value.startDate, dates.value.endDate, guests.value);
+                }
+              } catch (e) {
+                console.error('Failed to parse saved dates:', e);
+              }
+            }
+          }
+
+          // Check availability if dates are set
+          if (dates.value.startDate && dates.value.endDate) {
+            await checkAvailability();
+          }
+
+          return; // Success - exit the retry loop
+        }
+      } catch (apiError) {
+        console.log('[DEBUG] API prefix request failed, trying without prefix:', apiError.message);
+        
+        // Try without /api prefix as fallback
+        response = await axios.get(`/camping-spots/${spotId}`, requestConfig);
+        if (response?.data) {
+          spot.value = response.data;
+          // ... same normalization and additional data loading as above ...
+          return; // Success with fallback - exit the retry loop
+        }
+      }
+
+      throw new Error('Failed to fetch camping spot data from both endpoints');
+      
+    } catch (error) {
+      console.error(`[DEBUG] Attempt ${retryCount + 1} failed:`, error.message);
+      
+      if (error.code === 'ECONNABORTED') {
+        toast.error('Request timed out. Retrying...');
+      } else if (error.response?.status === 404) {
+        toast.error('Camping spot not found');
+        router.push('/campers');
+        return;
+      } else if (error.response?.status === 503 || error.response?.data?.code === 'P1001') {
+        dbConnectionError.value = true;
+        toast.error('Database connection error. Retrying...');
+      }
+
+      retryCount++;
+      if (retryCount < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
+        continue;
+      }
+      
+      // If we've exhausted all retries
+      throw error;
+    }
+  }
+
+  // If we get here, all retries failed
+  throw new Error('Failed to load camping spot after multiple attempts');
+}
+
+// If we get here, all retries failed
+throw new Error('Failed to load camping spot after multiple attempts');
     }
     spot.value = response.data
     // Make sure images is always an array
@@ -967,7 +1065,7 @@ const loadReviewStats = async (spotId) => {
     }
   }
 };
-// Validate payment data before processing booking
+<!-- Validate payment data before processing booking -->
 const validatePaymentData = (data) => {
   const requiredFields = {
     camper_id: data.camper_id,
