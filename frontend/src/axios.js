@@ -21,8 +21,7 @@ apiClient.interceptors.request.use(
   async (config) => {
     // Don't log sensitive data like passwords
     const safeData = { ...config.data };
-    if (safeData.password) safeData.password = '[REDACTED]';    
-      // Check if this is a public route (GET requests only)
+    if (safeData.password) safeData.password = '[REDACTED]';        // Check if this is a public route (GET requests only)
     const isPublicRoute = config.method.toLowerCase() === 'get' && (
       config.url.includes('/api/camping-spots') || 
       config.url.includes('/api/campingspots') || // Alternative API endpoint format
@@ -33,9 +32,13 @@ apiClient.interceptors.request.use(
       config.url.includes('/api/auth/oauth') || // Add OAuth routes to public routes
       config.url.includes('/api/reviews/stats') || // Add review stats to public routes
       config.url.includes('/api/camper') || // Add camper routes (for browsing) to public routes
+      config.url.includes('/reviews/stats/') || // Alternative reviews stats path
+      config.url.includes('/camping-spots/') || // Alternative camping spots path
       // Add specific detail page endpoints to ensure they're treated as public
       config.url.match(/\/api\/camping-spots\/\d+$/) || // Match specific camping spot by ID
-      config.url.match(/\/api\/camper\/\d+$/) // Match specific camper by ID
+      config.url.match(/\/api\/camper\/\d+$/) || // Match specific camper by ID 
+      config.url.match(/\/api\/camping-spots\/\d+\/availability/) || // Match availability endpoint
+      config.url.match(/\/camping-spots\/\d+\/availability/) // Match alternative availability endpoint
     );
 
     // Only add auth token for non-public routes
@@ -48,11 +51,12 @@ apiClient.interceptors.request.use(
           console.log(`Token added: ${token.substring(0, 5)}...`); // Log partial token for debugging
         } else {
           console.error('Invalid token format:', typeof token);
-        }
-      } catch (error) {
+        }      } catch (error) {
         console.error('Error getting auth token:', error);
         // Only redirect to auth for non-public routes
-        window.location.href = '/auth';
+        if (!isPublicRoute) {
+          window.location.href = '/auth';
+        }
         return Promise.reject(error);
       }
     }
@@ -79,8 +83,12 @@ apiClient.interceptors.response.use(
       error.config.url.includes('/api/auth/oauth') ||
       error.config.url.includes('/api/reviews/stats') ||
       error.config.url.includes('/api/camper') ||
+      error.config.url.includes('/reviews/stats/') ||
+      error.config.url.includes('/camping-spots/') ||
       error.config.url.match(/\/api\/camping-spots\/\d+$/) ||
-      error.config.url.match(/\/api\/camper\/\d+$/)
+      error.config.url.match(/\/api\/camper\/\d+$/) ||
+      error.config.url.match(/\/api\/camping-spots\/\d+\/availability/) ||
+      error.config.url.match(/\/camping-spots\/\d+\/availability/)
     );
     
     // Handle authentication errors - but only redirect for non-public routes
