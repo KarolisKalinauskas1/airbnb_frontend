@@ -702,12 +702,13 @@ const handleBookNow = async () => {
   if (hasBlockedDates.value) {
     toast.error('Selected dates are not available for booking');
     return;
-  }  if (!authStore.isAuthenticated) {
+  }
+  if (!authStore.isAuthenticated) {
     const bookingDetails = {
-      spotId: spot.value.camping_spot_id,
-      startDate: dates.value.startDate,
-      endDate: dates.value.endDate,
-      guests: guests.value,
+      camper_id: spot.value.camping_spot_id,
+      start_date: dates.value.startDate,
+      end_date: dates.value.endDate,
+      number_of_guests: guests.value,
       fromCampers: true
     };
     sessionStorage.setItem('pendingBooking', JSON.stringify(bookingDetails));
@@ -767,84 +768,32 @@ const handleBookNow = async () => {
 
   loading.value = true;
   try {
+    // Make sure the user is logged in and has public user info
+    if (!authStore.publicUser) {
+      const response = await axios.get('/api/users/me');
+      if (response.data) {
+        authStore.publicUser = response.data;
+      } else {
+        throw new Error('Failed to load user information');
+      }
+    }
+
+    // Check availability one last time
     await checkAvailability();
     if (hasBlockedDates.value) {
       toast.error('Sorry, these dates are no longer available');
-      loading.value = false;
       return;
     }
 
-    const sessionData = {
-      camper_id: spot.value.camping_spot_id,
-      user_id: authStore.publicUser.user_id,
-      start_date: dates.value.startDate,
-      end_date: dates.value.endDate,
-      number_of_guests: guests.value,
-      cost: baseAmount,
-      service_fee: serviceFeeAmount,
-      total: totalAmount,
-      spot_name: spot.value.title || 'Camping Spot'
-    };
-
-    // Add retry logic for better reliability
-    let retries = 3;
-    let response;
-
-    while (retries > 0) {
-      try {
-        console.log('Attempting to create checkout session with data:', JSON.stringify(sessionData, null, 2));
-        response = await axios.post('/api/checkout/create-session', sessionData);
-        console.log('Stripe response received:', response.status, JSON.stringify(response.data, null, 2));
-        break;
-      } catch (err) {
-        console.error(`Attempt failed (${retries} left):`, err.message);
-        if (err.response?.data) {
-          console.error('Server response:', JSON.stringify(err.response.data, null, 2));
-        }
-        retries--;
-        if (retries === 0) throw err;
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s between retries
-      }
-    }
-
-    // Validate and normalize the response structure
-    if (!response.data || typeof response.data !== 'object') {
-      console.error('Invalid response data:', response.data);
-      throw new Error('Invalid response format from server');
-    }
-    
-    // Handle both response formats: {url: string} or {url: string, session_id: string, status: string}
-    const stripeUrl = response.data.url;
-    if (!stripeUrl || typeof stripeUrl !== 'string') {
-      console.error('Missing or invalid URL in response:', response.data);
-      throw new Error('Invalid URL in server response');
-    }
-
-    // Validate that it's a Stripe URL
-    if (!stripeUrl.startsWith('https://checkout.stripe.com/')) {
-      console.error('Invalid Stripe URL:', stripeUrl);
-      throw new Error('Invalid Stripe URL received');
-    }
-    const sessionUrl = stripeUrl;
-    console.log('Successfully received Stripe URL:', sessionUrl);
-    if (authStore.publicUser && spot.value) {
-      const currentUserId = parseInt(authStore.publicUser.user_id);
-      const spotOwnerId = parseInt(spot.value.owner_id);
-      if (currentUserId === spotOwnerId) {
-        console.error('CRITICAL SAFETY BLOCK: Prevented owner from booking their own spot');
-        loading.value = false;
-        toast.error("You cannot book your own camping spot");
-        router.push('/dashboard/spots');
-        return;
-      }
-    }
+    // Create checkout session and get URL
+    const checkoutUrl = await createCheckoutSession();
     toast.success('Redirecting to payment...');
-    window.location.href = sessionUrl;
+    window.location.href = checkoutUrl;
+
   } catch (error) {
-    console.error('Booking Error:', error);
-    loading.value = false;
+    console.error('Booking failed:', error);
     if (error.response?.status === 401) {
-      toast.error('Your session has expired. Please log in again to continue.');
+      toast.error('Your session has expired. Please log in again.');
       router.push({
         path: '/auth',
         query: {
@@ -852,22 +801,13 @@ const handleBookNow = async () => {
           startDate: dates.value.startDate,
           endDate: dates.value.endDate,
           guests: guests.value,
-          authError: 'session_expired',
-          fromCampers: true
+          authError: 'session_expired'
         }
       });
-      return;
     } else if (error.code === 'ERR_NETWORK') {
-      toast.error('Cannot connect to server. Please check your internet connection or try again later.');
-    } else if (error.response?.status === 400 && error.response?.data?.error) {
-      toast.error(`Booking failed: ${error.response.data.error}`);
-      if (error.response.data.details) {
-        console.error('Error details:', error.response.data.details);
-      }
-    } else if (error.response?.data?.error) {
-      toast.error(`Payment error: ${error.response.data.error}`);
+      toast.error('Cannot connect to the server. Please check your connection.');
     } else {
-      toast.error(error.message || 'Failed to process booking. Please try again.');
+      toast.error(error.response?.data?.error || error.message || 'Failed to process booking');
     }
   } finally {
     loading.value = false;
@@ -1005,7 +945,7 @@ const loadReviewStats = async (spotId) => {
     // Try fallback without the /api prefix if that might be the issue
     try {
       console.log('[DEBUG] Attempting fallback review stats request...');
-      
+
       const fallbackResponse = await axios.get(`/reviews/stats/${spotId}`, {
         // Mark this request as a public route
         headers: {
@@ -1027,135 +967,50 @@ const loadReviewStats = async (spotId) => {
     }
   }
 };
+// Validate payment data before processing booking
+const validatePaymentData = (data) => {
+  const requiredFields = {
+    camper_id: data.camper_id,
+    user_id: data.user_id,
+    start_date: data.start_date,
+    end_date: data.end_date,
+    number_of_guests: data.number_of_guests,
+    cost: data.cost,
+    service_fee: data.service_fee,
+    total: data.total
+  };
 
-// After adding @dateChange="calculateTotal", implement the function:
-const calculateTotal = () => {
-  // Ensure dates are stored in sessionStorage
-  if (dates.value.startDate && dates.value.endDate) {
-    persistDatesToUrl(dates.value.startDate, dates.value.endDate, guests.value)
-    checkAvailability()
+  const missingFields = Object.entries(requiredFields)
+    .filter(([_, value]) => !value)
+    .map(([key]) => key);
+
+  if (missingFields.length > 0) {
+    throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
   }
-}
-// Function already defined above, so this declaration is removed
 
-onMounted(async () => {
-  console.log('[DEBUG] CampingSpotDetail mounted:', {
-    isLoggedIn: authStore.isLoggedIn,
-    hasPublicUser: !!authStore.publicUser,
-    spotId: route.params.id
-  });
-  
-  // First, check if user is already authenticated with public user info
-  if (authStore.isLoggedIn && authStore.publicUser) {
-    console.log('[DEBUG] User already authenticated with public info');
-  } 
-  // Otherwise, fetch public user info if logged in
-  else if (authStore.isLoggedIn) {
-    try {
-      console.log('[DEBUG] Fetching public user info for authenticated user');
-      await authStore.fetchPublicUser(authStore.user.id, true);
-    } catch (error) {
-      console.error('[DEBUG] Error fetching user info:', error);
+  // Validate numeric fields
+  const numericFields = ['number_of_guests', 'cost', 'service_fee', 'total'];
+  numericFields.forEach(field => {
+    const value = Number(data[field]);
+    if (isNaN(value) || value <= 0) {
+      throw new Error(`Invalid ${field}: must be a positive number`);
     }
-  } else {
-    console.log('[DEBUG] User not authenticated, proceeding as guest');
+  });
+
+  // Validate dates
+  const start = new Date(data.start_date);
+  const end = new Date(data.end_date);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    throw new Error('Invalid date format');
   }
-  
-  // Now load the spot details
-  await loadSpotDetails();
-});
+  if (start >= end) {
+    throw new Error('End date must be after start date');
+  }
+
+  return true;
+};
 </script>
+
 <style scoped>
-.shadow-lg {
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-}
-/* Enhanced spacing utilities */
-.space-y-12 > * + * {
-  margin-top: 3rem;
-}
-.space-y-10 > * + * {
-  margin-top: 2.5rem;
-}
-.space-y-8 > * + * {
-  margin-top: 2rem;
-}
-.space-y-6 > * + * {
-  margin-top: 1.5rem;
-}
-.space-y-4 > * + * {
-  margin-top: 1rem;
-}
-.space-y-2 > * + * {
-  margin-top: 0.5rem;
-}
-/* Improved DateRangePicker styling */
-.date-range-selector {
-  padding: 10px 0;
-  width: 100%;
-}
-:deep(.dp__main) {
-  width: 100%;
-}
-/* Make DateRangePicker wider */
-:deep(.dp__input) {
-  padding: 10px 14px !important;
-  border: 1px solid #d1d5db;
-  border-radius: 0.375rem;
-  font-size: 1rem;
-  line-height: 1.5;
-  min-width: 320px;
-}
-/* Make DateRangePicker appear above all other elements */
-:deep(.dp__input_wrap) {
-  width: 100%;
-}
-:deep(.dp__overlay) {
-  z-index: 9998 !important;
-}
-/* Make sure buttons are more clickable */
-.light-text {
-  color: white;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-/* Transition for hover effects */
-.transition-colors {
-  transition: background-color 0.3s ease, border-color 0.15s ease;
-}
-.transition-opacity {
-  transition: opacity 0.3s ease;
-}
-/* Navigation arrow styles */
-.absolute {
-  z-index: 10;
-}
-/* Added CSS for the gallery navigation buttons */
-.gallery-nav-button {
-  font-size: 36px;
-  color: white;
-  transition: opacity 0.2s ease;
-}
-/* Enhanced button styles */
-button {
-  outline: none !important;
-}
-button:focus {
-  outline: none !important;
-  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2);
-}
-/* Gradient animation for main booking button */
-@keyframes gradient-shift {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
-}
-.from-rose-500.to-red-600:hover {
-  background-size: 200% 200%;
-  animation: gradient-shift 3s ease infinite;
-}
+/* Add any component-specific styles here */
 </style>
