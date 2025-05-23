@@ -100,39 +100,55 @@ export const useAuthStore = defineStore('auth', () => {
     if (fetchPromise.value) {
       return fetchPromise.value
     }
-    
-    // Get current session token
-    const currentSession = await supabase.auth.getSession()
-    if (!currentSession?.data?.session?.access_token) {
-      console.warn('No valid session token available');
-      publicUser.value = null;
-      return null;
-    }
 
     try {
+      const token = await getAuthToken()
+      if (!token) {
+        console.warn('No valid auth token available')
+        publicUser.value = null
+        return null
+      }
+
       const promise = withTimeout(
-        axios.get('/api/users/me', {
+        axios.get('/api/users/full-info', {  // Use the correct endpoint
           headers: {
-            'Authorization': `Bearer ${currentSession.data.session.access_token}`
+            'Authorization': `Bearer ${token}`
           }
         }), 
         AUTH_TIMEOUT, 
         'Public user fetch timed out'
-      );
-      fetchPromise.value = promise;
-      const response = await promise;
-      publicUser.value = response.data;
-      lastFetch.value = now;
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching public user:', error);
-      // Only clear public user data on actual errors, not timeouts
-      if (!error.message.includes('timed out')) {
-        publicUser.value = null;
+      )
+      
+      fetchPromise.value = promise
+
+      const response = await promise
+      if (response.data) {
+        publicUser.value = response.data
+        lastFetch.value = now
+        return response.data
       }
-      return null;
+      throw new Error('No data in response')
+    } catch (error) {
+      console.error('Error fetching public user:', error)
+      if (error.response?.status === 401) {
+        // Try to refresh the session on auth errors
+        try {
+          const { data: { session } } = await supabase.auth.refreshSession()
+          if (session) {
+            // Retry the fetch with new token
+            return fetchPublicUser(authUserId, true)
+          }
+        } catch (refreshError) {
+          console.error('Session refresh failed:', refreshError)
+        }
+      }
+      // Only clear on non-timeout errors
+      if (!error.message.includes('timed out')) {
+        publicUser.value = null
+      }
+      return null
     } finally {
-      fetchPromise.value = null;
+      fetchPromise.value = null
     }
   }
   async function setSession(newSession) {
@@ -217,56 +233,37 @@ export const useAuthStore = defineStore('auth', () => {
       throw error
     }
   }
-  async function getAuthToken(forceRefresh = false) {
+  
+  // Helper function to get the current auth token
+  async function getAuthToken() {
     try {
-      // First check localStorage for token
-      const storedToken = localStorage.getItem('supabase.auth.token');
-      if (storedToken) {
-        try {
-          const { access_token, expires_at } = JSON.parse(storedToken);
-          // Check if token is expired
-          if (expires_at && Date.now() < expires_at * 1000) {
-            if (typeof access_token === 'string') {
-              return access_token;
-            } else {
-              console.error('Stored access_token is not a string:', typeof access_token);
-            }
-          }
-        } catch (e) {
-          console.warn('Failed to parse stored token:', e);
-        }
+      // First check if we have a valid session
+      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError) {
+        console.error('Error getting session:', sessionError)
+        return null
       }
-      // If no valid stored token, try to get current session
-      const { data: { session: currentSession }, error: sessionError } = 
-        await withTimeout(supabase.auth.getSession(), AUTH_TIMEOUT, 'Session timeout');
-      if (sessionError) throw sessionError;
+      
       if (currentSession?.access_token) {
-        if (typeof currentSession.access_token !== 'string') {
-          console.error('Session token is not a string!', typeof currentSession.access_token);
-          throw new Error('Invalid token format: token must be a string');
-        }
-        // Store the new token
-        localStorage.setItem('supabase.auth.token', JSON.stringify({
-          access_token: currentSession.access_token,
-          refresh_token: currentSession.refresh_token,
-          expires_at: currentSession.expires_at
-        }));
-        return currentSession.access_token;
+        return currentSession.access_token
       }
-      // If no valid session, try to refresh
-      if (forceRefresh) {
-        const success = await refreshToken();
-        if (success) {
-          return await getAuthToken(false); // Try again without force refresh
-        }
+      
+      // If no session, try to refresh
+      const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession()
+      
+      if (refreshError) {
+        console.error('Error refreshing session:', refreshError)
+        return null
       }
-      console.error('No valid authentication token found');
-      throw new Error('No valid authentication token available');
+      
+      return refreshedSession?.access_token || null
     } catch (error) {
-      console.error('Error getting auth token:', error);
-      throw error;
+      console.error('Error in getAuthToken:', error)
+      return null
     }
   }
+
   async function refreshToken() {
     try {
       // First try to refresh Supabase session
@@ -325,13 +322,9 @@ export const useAuthStore = defineStore('auth', () => {
     isOwner,
     // Actions
     initAuth,
-    setSession,
-    clearSession,
-    getSupabaseSession,
-    fetchFullUserInfo,
-    getAuthToken,
+    fetchPublicUser,
+    getAuthToken,  // Export the new method
     cleanup,
-    refreshToken,
-    fetchPublicUser
+    refreshToken
   }
 })
