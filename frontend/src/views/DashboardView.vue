@@ -104,13 +104,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useDashboardStore } from '@/stores/dashboard'
 import DashboardLayout from '@/components/DashboardLayout.vue'
 import axios from 'axios'
 import { format } from 'date-fns'
+import { supabase } from '@/lib/supabase'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -175,55 +176,75 @@ const formatCurrency = (value) => {
 
 const loadDashboardData = async () => {
   try {
-    loading.value = true
-    error.value = null
+    loading.value = true;
+    error.value = null;
     
-    const currentUser = authStore.user
-    if (!currentUser) {
-      throw new Error('No user found')
+    // Check auth store initialization with a timeout
+    const startTime = Date.now();
+    const timeout = 5000; // 5 seconds timeout
+    
+    while (!authStore.initialized && Date.now() - startTime < timeout) {
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    const token = await authStore.getAuthToken()
-    if (!token) {
-      throw new Error('No valid authentication token found')
+    if (!authStore.initialized) {
+      throw new Error('Authentication initialization timed out');
     }
 
-    // Load basic dashboard data
+    if (!authStore.isAuthenticated) {
+      error.value = 'Please log in to view your dashboard';
+      router.push('/auth?redirect=/dashboard');
+      return;
+    }
+
+    // Get a fresh session without refreshing token
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      // Clear session and redirect to login
+      await authStore.clearSession();
+      error.value = 'Session expired. Please log in again.';
+      router.push('/auth?redirect=/dashboard');
+      return;
+    }
+
+    // Load dashboard data with session token
     const response = await axios.get('/api/dashboard', {
       headers: {
-        Authorization: `Bearer ${token}`
+        Authorization: `Bearer ${session.access_token}`
       }
-    })
+    });
 
     if (!response.data) {
-      throw new Error('No user data received')
+      throw new Error('No dashboard data received');
     }
 
-    user.value = response.data
-    spots.value = response.data.spots || []
-    bookings.value = response.data.bookings || []
+    // Update local state
+    user.value = response.data;
+    spots.value = response.data.spots || [];
+    bookings.value = response.data.bookings || [];
 
-    // Also load analytics data if the user is an owner
+    // Load analytics if user is owner
     if (authStore.isOwner) {
       try {
-        // Load analytics data using the dashboard store
-        await dashboardStore.loadDashboardData(false)
-        analytics.value = dashboardStore.dashboardData
+        await dashboardStore.loadDashboardData(false);
+        analytics.value = dashboardStore.dashboardData;
       } catch (analyticsErr) {
-        console.error('Error loading analytics data:', analyticsErr)
-        // Don't fail the whole dashboard if analytics fail
+        console.error('Error loading analytics:', analyticsErr);
+        // Don't fail the whole dashboard for analytics error
       }
     }
   } catch (err) {
-    console.error('Error loading dashboard data:', err)
-    if (err.response?.status === 401) {
-      error.value = 'Your session has expired. Please log in again.'
-      router.push('/auth')
+    console.error('Dashboard loading error:', err);
+    if (err.response?.status === 401 || err.message.includes('authentication')) {
+      // Handle auth errors by redirecting to login
+      await authStore.clearSession();
+      error.value = 'Your session has expired. Please log in again.';
+      router.push('/auth?redirect=/dashboard');
     } else {
-      error.value = 'Failed to load dashboard data. Please try again.'
+      error.value = err.message || 'Failed to load dashboard data';
     }
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
@@ -235,9 +256,35 @@ const viewAllBookings = () => {
   router.push('/dashboard/bookings')
 }
 
-onMounted(() => {
-  loadDashboardData()
+onMounted(async () => {
+  try {
+    // Give a short delay for auth store to initialize from route guard
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Only load if we're already authenticated
+    if (authStore.isAuthenticated) {
+      await loadDashboardData();
+    }
+  } catch (err) {
+    console.error('Error loading dashboard on mount:', err);
+    error.value = err.message;
+  }
 })
+
+// Watch for auth state changes, but avoid infinite loops by checking initialization
+watch([() => authStore.isAuthenticated, () => authStore.initialized], 
+  async ([isAuthenticated, isInitialized]) => {
+    try {
+      if (isInitialized && isAuthenticated) {
+        await loadDashboardData();
+      }
+    } catch (err) {
+      console.error('Error in auth state watcher:', err);
+      error.value = err.message;
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>

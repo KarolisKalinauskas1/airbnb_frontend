@@ -2,6 +2,9 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { supabase } from '@/lib/supabase'
 import axios from '@/axios'
+import router from '@/router'
+import { saveTokenToStorage, saveUserToStorage } from '@/utils/persistentAuth'
+
 export const useAuthStore = defineStore('auth', () => {
   // State
   const user = ref(null)
@@ -9,333 +12,279 @@ export const useAuthStore = defineStore('auth', () => {
   const loading = ref(false)
   const error = ref(null)
   const initialized = ref(false)
-  const publicUser = ref(null)
+  const isInitializing = ref(false)
   const lastFetch = ref(0)
-  const fetchPromise = ref(null)
-  const initPromise = ref(null)
-  const AUTH_TIMEOUT = 30000 // 30 seconds timeout for auth operations
+  const publicUser = ref(null)
+  const isLoggingOut = ref(false)
+
+  // Constants
   const CACHE_TIME = 5 * 60 * 1000 // 5 minutes cache
-  // Getters
-  const isAuthenticated = computed(() => !!user.value)
-  const isLoggedIn = computed(() => !!user.value)  // Alias for isAuthenticated for code consistency
-  const currentUser = computed(() => user.value)
-  const isOwner = computed(() => {
-    return (
-      user.value?.user_metadata?.isowner === true || 
-      user.value?.user_metadata?.isowner === 1 ||
-      publicUser.value?.isowner === 1 ||
-      publicUser.value?.isowner === '1' ||
-      publicUser.value?.isowner === true
-    )
-  })
-  // Helper function to handle timeouts
-  const withTimeout = (promise, ms, errorMessage) => {
-    return Promise.race([
-      promise,
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error(errorMessage)), ms)
-      )
-    ])
-  }
-  // Actions
-  async function initAuth(options = {}) {
-    // Return existing promise if initialization is in progress
-    if (initPromise.value && !options.forceRefresh) return initPromise.value
-    // Return early if already initialized and not forcing refresh
-    if (initialized.value && !options.forceRefresh) return Promise.resolve()
-    initPromise.value = (async () => {
-      try {
-        loading.value = true
-        error.value = null
-        // Try to restore session from localStorage first
-        const storedUser = localStorage.getItem('supabase.auth.user')
-        if (storedUser) {
-          try {
-            user.value = JSON.parse(storedUser)
-          } catch (e) {
-            localStorage.removeItem('supabase.auth.user')
-          }
-        }
-        // Get current session from Supabase with timeout
-        const { data: { session: currentSession }, error: sessionError } = 
-          await withTimeout(supabase.auth.getSession(), AUTH_TIMEOUT, 'Session timeout')
-        if (sessionError) throw sessionError
-        if (currentSession) {
-          await setSession(currentSession)
-        }
-        // Set up auth state change listener
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(
-          async (event, newSession) => {
-            if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-              await setSession(newSession)
-            } else if (event === 'SIGNED_OUT') {
-              clearSession()
-            }
-          }
-        )
-        initialized.value = true
-        return true
-      } catch (err) {
-        console.error('Auth initialization error:', err)
-        error.value = err.message
-        // Don't clear session on timeout, only on actual auth errors
-        if (!err.message.includes('timed out')) {
-          clearSession()
-        }
-        return false
-      } finally {
-        loading.value = false
-        initPromise.value = null
-      }
-    })()
-    return initPromise.value
-  }
-  async function fetchPublicUser(authUserId, force = false) {
-    const now = Date.now()
-    // Return cached data if available and not forced
-    if (!force && publicUser.value && (now - lastFetch.value) < CACHE_TIME) {
-      console.log('[Auth Store] Using cached user data');
-      return publicUser.value
-    }
-    // If there's already a fetch in progress, return its promise
-    if (fetchPromise.value) {
-      console.log('[Auth Store] Using existing fetch promise');
-      return fetchPromise.value
-    }
-    
-    console.log('[Auth Store] Starting new fetch for user data');
+  const MIN_OPERATION_INTERVAL = 500 // 500ms minimum between operations
 
+  // Set session
+  const setSession = async (newSession) => {
     try {
-      const token = await getAuthToken()
-      if (!token) {
-        console.warn('No valid auth token available')
-        publicUser.value = null
-        return null
+      if (!newSession) {
+        await clearSession(true)
+        return
       }
 
-      // Try the full-info endpoint first
-      try {
-        const promise = withTimeout(
-          axios.get('/api/users/full-info', {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          }), 
-          AUTH_TIMEOUT, 
-          'Public user fetch timed out'
-        )
-        
-        fetchPromise.value = promise
-        const response = await promise
-        
-        if (response.data) {
-          publicUser.value = response.data
-          lastFetch.value = now
-          console.log('Successfully fetched user data:', { userId: response.data.user_id });
-          return response.data
-        }
-      } catch (fullInfoError) {
-        console.error('Error fetching from /full-info:', fullInfoError)
-        // Try the /basic-info endpoint as fallback
-        const basicPromise = withTimeout(
-          axios.get('/api/users/basic-info', {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          }),
-          AUTH_TIMEOUT,
-          'Basic info fetch timed out'
-        )
-        
-        const basicResponse = await basicPromise
-        if (basicResponse.data) {
-          publicUser.value = basicResponse.data
-          lastFetch.value = now
-          console.log('Successfully fetched basic user data:', { userId: basicResponse.data.user_id });
-          return basicResponse.data
-        }
-      }
+      // Update session state
+      session.value = newSession
+      user.value = newSession.user
+
+      // Store session in localStorage for persistence
+      localStorage.setItem('supabase.auth.token', JSON.stringify({
+        access_token: newSession.access_token,
+        refresh_token: newSession.refresh_token,
+        expires_at: newSession.expires_at
+      }))
+      localStorage.setItem('supabase.auth.user', JSON.stringify(newSession.user))
       
-      throw new Error('Failed to fetch user data')
-    } catch (error) {
-      console.error('Error fetching public user:', error)
-      if (error.response?.status === 401) {
-        // Try to refresh the session on auth errors
-        try {
-          const { data: { session } } = await supabase.auth.refreshSession()
-          if (session) {
-            // Retry the fetch with new token
-            return fetchPublicUser(authUserId, true)
-          }
-        } catch (refreshError) {
-          console.error('Session refresh failed:', refreshError)
-        }
-      }
-      // Only clear on non-timeout errors
-      if (!error.message.includes('timed out')) {
-        publicUser.value = null
-      }
-      return null
-    } finally {
-      fetchPromise.value = null
+      // Save to persistent storage
+      saveTokenToStorage(newSession.access_token)
+      saveUserToStorage(newSession.user)
+
+      // Fetch additional user data
+      await fetchUserData(newSession.access_token)
+
+      error.value = null
+    } catch (err) {
+      console.error('Error setting session:', err)
+      error.value = 'Failed to set session'
     }
   }
-  async function setSession(newSession) {
-    if (!newSession) {
-      clearSession()
+
+  // Fetch user data from backend
+  const fetchUserData = async (token) => {
+    try {
+      const response = await axios.get('/api/users/me', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+      publicUser.value = response.data
+      if (publicUser.value) {
+        saveUserToStorage(publicUser.value)
+      }
+    } catch (err) {
+      console.error('Error fetching user data:', err)
+    }
+  }
+
+  // Update token
+  const updateToken = async (newToken) => {
+    try {
+      if (!newToken) {
+        console.warn('Attempted to update with null token')
+        return
+      }
+
+      // If we have a session, update it
+      if (session.value) {
+        session.value.access_token = newToken
+        // Save to storage
+        saveTokenToStorage(newToken)
+        localStorage.setItem('supabase.auth.token', JSON.stringify({
+          ...JSON.parse(localStorage.getItem('supabase.auth.token') || '{}'),
+          access_token: newToken
+        }))
+      } else {
+        // If no session, try to restore it using the new token
+        await refreshSession(newToken)
+      }
+    } catch (err) {
+      console.error('Error updating token:', err)
+      error.value = 'Failed to update token'
+    }
+  }
+
+  // Refresh token
+  const refreshToken = async () => {
+    try {
+      // Get current refresh token from session
+      const currentSession = session.value
+      if (!currentSession?.refresh_token) {
+        console.warn('No refresh token available')
+        return false
+      }
+
+      // Try to refresh the session using Supabase
+      const { data: { session: newSession }, error: refreshError } = await supabase.auth.refreshSession()
+      
+      if (refreshError) throw refreshError
+      
+      if (newSession) {
+        await setSession(newSession)
+        return true
+      }
+
+      return false
+    } catch (err) {
+      console.error('Error refreshing token:', err)
+      error.value = 'Failed to refresh authentication token'
+      return false
+    }
+  }
+
+  // Refresh the session
+  const refreshSession = async (token) => {
+    try {
+      const { data: { session: newSession }, error: refreshError } = await supabase.auth.getSession()
+      if (refreshError) throw refreshError
+      
+      if (newSession) {
+        await setSession(newSession)
+        return true
+      }
+      return false
+    } catch (err) {
+      console.error('Error refreshing session:', err)
+      return false
+    }
+  }
+
+  // Clear session helper function
+  const clearSession = async (force = false) => {
+    if (isLoggingOut.value && !force) {
+      console.log('Logout already in progress')
+      return false
+    }
+
+    isLoggingOut.value = true
+    try {
+      // Sign out from Supabase
+      await supabase.auth.signOut()
+      
+      // Clear state
+      user.value = null
+      session.value = null
+      publicUser.value = null
+      error.value = null
+      initialized.value = false
+      
+      // Clear all auth-related storage
+      localStorage.removeItem('supabase.auth.token')
+      localStorage.removeItem('supabase.auth.user')
+      localStorage.removeItem('token')
+      localStorage.removeItem('authenticationComplete')
+      
+      // Force router to home page
+      router.push('/')
+      
+      isLoggingOut.value = false
+      return true
+    } catch (err) {
+      console.error('Error during logout:', err)
+      error.value = 'Failed to completely clear session'
+      isLoggingOut.value = false
+      
+      // Force page refresh in case of error
+      window.location.reload()
+      throw err
+    }
+  }
+
+  // Initialize auth state
+  const initAuth = async ({ forceRefresh = false } = {}) => {
+    if (isInitializing.value) {
+      console.log('Auth initialization already in progress')
       return
     }
+    isInitializing.value = true
     try {
-      session.value = newSession
-      if (newSession.user) {
-        user.value = newSession.user
-        localStorage.setItem('supabase.auth.user', JSON.stringify(newSession.user))
-        localStorage.setItem('supabase.auth.token', JSON.stringify({
-          access_token: newSession.access_token,
-          refresh_token: newSession.refresh_token,
-          expires_at: newSession.expires_at
-        }))
-        const now = Date.now()
-        if (!publicUser.value || (now - lastFetch.value) >= CACHE_TIME) {
-          await withTimeout(fetchPublicUser(newSession.user.id), AUTH_TIMEOUT, 'Public user fetch timed out')
-        }
+      // Check if we have a recent cached session
+      if (!forceRefresh && Date.now() - lastFetch.value < CACHE_TIME) {
+        isInitializing.value = false
+        return
       }
-    } catch (error) {
-      console.error('Error setting session:', error)
-      // Only clear on actual errors, not timeouts
-      if (!error.message.includes('timed out')) {
-        clearSession()
-      }
-    }
-  }
-  function clearSession() {
-    session.value = null
-    user.value = null
-    publicUser.value = null
-    lastFetch.value = 0
-    localStorage.removeItem('supabase.auth.user')
-    localStorage.removeItem('supabase.auth.token')
-  }
-  async function getSupabaseSession() {
-    try {
-      const { data: { session }, error } = 
-        await withTimeout(supabase.auth.getSession(), AUTH_TIMEOUT, 'Session timeout')
-      if (error) throw error
-      return session
-    } catch (error) {
-      console.error('Error getting Supabase session:', error)
-      return null
-    }
-  }
-  async function fetchFullUserInfo(forceRefresh = false) {
-    try {
-      if (!forceRefresh) {
-        const storedUser = localStorage.getItem('supabase.auth.user')
-        if (storedUser) {
-          const userData = JSON.parse(storedUser)
-          user.value = userData
-          return userData
-        }
-      }
-      const { data: { session: currentSession }, error: sessionError } = 
-        await withTimeout(supabase.auth.getSession(), AUTH_TIMEOUT, 'Session timeout')
-      if (sessionError) throw sessionError
-      if (!currentSession) {
-        throw new Error('No active session')
-      }
-      const { data: { user: supabaseUser }, error: userError } = 
-        await withTimeout(supabase.auth.getUser(), AUTH_TIMEOUT, 'User info fetch timed out')
-      if (userError) throw userError
-      if (supabaseUser) {
-        user.value = supabaseUser
-        localStorage.setItem('supabase.auth.user', JSON.stringify(supabaseUser))
-        return supabaseUser
-      }
-      throw new Error('No user data available')
-    } catch (error) {
-      console.error('Error fetching user info:', error)
-      error.value = error.message
-      // Only clear on actual errors, not timeouts
-      if (!error.message.includes('timed out')) {
-        clearSession()
-      }
-      throw error
-    }
-  }
-  
-  // Helper function to get the current auth token
-  async function getAuthToken() {
-    try {
-      // First check if we have a valid session
+
       const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession()
-      
-      if (sessionError) {
-        console.error('Error getting session:', sessionError)
-        return null
+      if (sessionError) throw sessionError
+
+      if (currentSession) {
+        await setSession(currentSession)
+      } else {
+        await clearSession(true)
       }
-      
-      if (currentSession?.access_token) {
-        return currentSession.access_token
-      }
-      
-      // If no session, try to refresh
-      const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession()
-      
-      if (refreshError) {
-        console.error('Error refreshing session:', refreshError)
-        return null
-      }
-      
-      return refreshedSession?.access_token || null
-    } catch (error) {
-      console.error('Error in getAuthToken:', error)
-      return null
+
+      lastFetch.value = Date.now()
+      initialized.value = true
+      error.value = null
+    } catch (err) {
+      console.error('Auth initialization error:', err)
+      error.value = 'Failed to initialize authentication'
+      await clearSession(true)
+    } finally {
+      isInitializing.value = false
     }
   }
 
-  async function refreshToken() {
+  // Get current auth token
+  const getAuthToken = async () => {
     try {
-      // First try to refresh Supabase session
-      const { data: { session: newSession }, error: refreshError } = 
-        await withTimeout(supabase.auth.refreshSession(), AUTH_TIMEOUT, 'Supabase session refresh timed out');
-      if (refreshError) {
-        console.error('Supabase session refresh failed:', refreshError);
-        throw refreshError;
+      console.log('[AUTH] Getting auth token, session state:', {
+        hasSession: !!session.value,
+        hasUser: !!user.value,
+        hasPublicUser: !!publicUser.value
+      });
+      
+      // First try to get from session
+      if (session.value?.access_token) {
+        return session.value.access_token;
       }
-      if (newSession) {
-        // Store the new session
-        localStorage.setItem('supabase.auth.token', JSON.stringify({
-          access_token: newSession.access_token,
-          refresh_token: newSession.refresh_token,
-          expires_at: newSession.expires_at
-        }));
-        await setSession(newSession);
-        return true;
+      
+      // Then try to get from storage
+      const storedToken = localStorage.getItem('supabase.auth.token');
+      if (storedToken) {
+        try {
+          const { access_token } = JSON.parse(storedToken);
+          if (access_token) {
+            // Validate token format
+            if (typeof access_token === 'string' && access_token.length > 0) {
+              return access_token;
+            }
+          }
+        } catch (parseError) {
+          console.error('Error parsing stored token:', parseError);
+        }
       }
-      // If Supabase refresh fails, try our custom token refresh
-      const response = await withTimeout(
-        axios.post('/auth/refresh-token'),
-        AUTH_TIMEOUT,
-        'Custom token refresh timed out'
-      );
-      if (response.data.token) {
-        localStorage.setItem('token', response.data.token);
-        return true;
+      
+      // If we got here, we need to refresh
+      const refreshed = await refreshToken();
+      if (refreshed && session.value?.access_token) {
+        return session.value.access_token;
       }
-      return false;
+      
+      // If all else fails, clear session and return null
+      await clearSession();
+      return null;
     } catch (error) {
-      console.error('Token refresh failed:', error);
-      // Clear auth state on any error
-      clearSession();
-      return false;
+      console.error('Error getting auth token:', error);
+      return null;
     }
   }
-  function cleanup() {
-    clearSession()
+
+  // Cleanup function
+  const cleanup = () => {
+    user.value = null
+    session.value = null
+    publicUser.value = null
+    error.value = null
     initialized.value = false
-    initPromise.value = null
-    fetchPromise.value = null
+    isInitializing.value = false
+    lastFetch.value = 0
   }
+
+  // Computed properties
+  const isLoggedIn = computed(() => !!session.value && !!user.value)
+  const isOwner = computed(() => publicUser.value?.isowner === 1)
+  const isAuthenticated = computed(() => !!session.value?.access_token)
+  const fullUser = computed(() => ({
+    ...user.value,
+    ...publicUser.value
+  }))
+
   return {
     // State
     user,
@@ -343,17 +292,25 @@ export const useAuthStore = defineStore('auth', () => {
     loading,
     error,
     initialized,
+    isInitializing,
     publicUser,
+    
     // Getters
-    isAuthenticated,
     isLoggedIn,
-    currentUser,
     isOwner,
+    fullUser,
+    isAuthenticated,
+    
     // Actions
     initAuth,
-    fetchPublicUser,
-    getAuthToken,  // Export the new method
+    setSession,
+    clearSession,
+    refreshToken,
+    getAuthToken,
+    updateToken, // Add the new function
     cleanup,
-    refreshToken
+    
+    // Helper getters
+    token: computed(() => session.value?.access_token)
   }
 })

@@ -30,13 +30,31 @@ watch(
     if (newIsInitializing) return
     // Handle login redirect
     if (!oldAuth && newAuth) {
-      const redirectPath = router.currentRoute.value.query.redirect || 
-        (newUser?.user_metadata?.isowner === 1 ? '/dashboard' : '/campers')
-      router.push(redirectPath)
+      // We'll just log session activation here - actual redirect will be handled by login page
+      console.log('Auth state changed: User logged in');
+      
+      // Navigation will be handled by the login page directly
+      // This prevents multiple components competing to handle redirection
+      // But we can set a flag indicating authentication is complete for other components
+      localStorage.setItem('authenticationComplete', 'true');
+      
+      // Let LoginView handle redirects to avoid race conditions
     }
     // Handle logout cleanup
     else if (oldAuth && !newAuth) {
-      localStorage.clear()
+      // Clear all localStorage items except pendingBooking-related ones
+      // to avoid losing booking state during auth/logout operations
+      const bookingState = localStorage.getItem('pendingBooking');
+      const bookingUrl = localStorage.getItem('pendingBookingUrl');
+      const pendingRedirect = localStorage.getItem('pendingRedirect');
+      
+      localStorage.clear();
+      
+      // Restore booking data if it exists
+      if (bookingState) localStorage.setItem('pendingBooking', bookingState);
+      if (bookingUrl) localStorage.setItem('pendingBookingUrl', bookingUrl);
+      if (pendingRedirect) localStorage.setItem('pendingRedirect', pendingRedirect);
+      
       const currentRoute = router.currentRoute.value.path
       if (currentRoute.startsWith('/profile') || 
           currentRoute.startsWith('/my-listings') || 
@@ -79,28 +97,47 @@ function updateMenuItems() {
   }
   menuItems.value = items
 }
-// Handle logout
+// Handle logout with proper error handling and cleanup
 const handleLogout = async () => {
   try {
-    // Clear session from auth store
-    authStore.clearSession()
-    // Clear any remaining data from localStorage
+    // Save pending state if any
+    const bookingState = localStorage.getItem('pendingBooking')
+    const bookingUrl = localStorage.getItem('pendingBookingUrl')
+    const pendingRedirect = localStorage.getItem('pendingRedirect')
+
+    // Clear the session which handles both backend and Supabase logout
+    await authStore.clearSession()
+    
+    // Clear all localStorage
     localStorage.clear()
-    // Show success message
+
+    // Show success message and redirect
     toast.success('Successfully logged out')
-    // Redirect to login page with logout flag
-    router.push({ 
-      path: '/auth',
-      query: { 
-        logout: 'true',
-        redirect: router.currentRoute.value.fullPath 
-      }
-    })
+    
+    // Immediately redirect to home page
+    router.push('/')
+
+    // Check current route and redirect if on protected route
+    const currentRoute = router.currentRoute.value.path
+    if (currentRoute.startsWith('/profile') || 
+        currentRoute.startsWith('/my-listings') || 
+        currentRoute.startsWith('/my-bookings') || 
+        currentRoute.startsWith('/add-listing') ||
+        currentRoute.startsWith('/dashboard')) {
+      await router.push('/')
+    }
+
     // Force update menu items
     updateMenuItems()
+
   } catch (error) {
     console.error('Logout error:', error)
-    toast.error('Failed to log out. Please try again.')
+    toast.error('An error occurred during logout. Some cleanup may not be complete.')
+    
+    // Force a page refresh as a last resort to clear any stuck state
+    if (error.message?.includes('Failed to completely clear session')) {
+      window.location.reload()
+    }
   }
 }
 // Initialize auth state once

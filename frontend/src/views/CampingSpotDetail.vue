@@ -212,37 +212,24 @@
                 <div class="flex items-baseline justify-between mb-6">
                   <div>
                     <span class="text-2xl font-bold">€{{ spot.price_per_night }}</span>
-                    <span class="text-gray-600">/night</span>                  </div>
+                    <span class="text-gray-600">/night</span>
+                  </div>
                   <div class="flex items-center">
                     <span class="text-yellow-400">★</span>
                     <span>{{ averageRating }} ({{ reviewStats.count || 0 }})</span>
                   </div>
                 </div>
-                <!-- Owner's own spot warning - show instead of booking controls -->
-                <div v-if="isOwnSpot" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 my-4">
-                  <div class="flex items-start">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-yellow-600 mt-0.5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77-1.333.192 3 1.732 3z" />
-                    </svg>
-                    <div>
-                      <p class="font-medium text-yellow-800">This is your camping spot</p>
-                      <p class="text-yellow-700 text-sm mt-1">You cannot book your own camping spot. Manage it from your dashboard instead.</p>
-                      <button 
-                        @click="router.push('/dashboard/spots')" 
-                        class="mt-3 px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors text-sm">
-                        Go to Dashboard
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <!-- Only show booking elements if not owner's own spot -->
-                <div v-else class="space-y-4">
+
+                <!-- Date and Guest Selection -->
+                <div class="space-y-4">
                   <DateRangeSelector
                     v-model:startDate="dates.startDate"
                     v-model:endDate="dates.endDate"
                     @dateChange="calculateTotal"
                     class="date-range-selector w-full"
                   />
+
+                  <!-- Guest Selection -->
                   <div class="mt-4">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Guests</label>
                     <select 
@@ -252,26 +239,42 @@
                       <option v-for="n in spot.max_guests" :key="n" :value="n">{{ n }} {{ n === 1 ? 'guest' : 'guests' }}</option>
                     </select>
                   </div>
-                  <!-- Use the new CheckoutSummary component when dates are selected -->
+
+                  <!-- Price Breakdown -->
                   <CheckoutSummary 
                     v-if="nights > 0 && spot"
                     :basePrice="spot.price_per_night" 
                     :nights="nights"
                     :serviceFeePercent="10"
                   />
-                  <!-- Add a warning if dates overlap with blocked dates -->
-                  <div v-if="hasBlockedDates" class="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+
+                  <!-- Availability Status -->
+                  <div v-if="availabilityLoading" class="mt-2 p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+                    <div class="flex items-center gap-2">
+                      <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-700"></div>
+                      <p>Checking availability...</p>
+                    </div>
+                  </div>
+                  <div v-else-if="availabilityError" class="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                    <p class="font-medium">{{ availabilityError }}</p>
+                    <p>Please try again or select different dates.</p>
+                  </div>
+                  <div v-else-if="hasBlockedDates" class="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
                     <p class="font-medium">These dates are unavailable for booking.</p>
                     <p>Please select different dates.</p>
                   </div>
-                  <!-- Show booking button based on user type -->
+                  <div v-else-if="hasCheckedAvailability && !hasBlockedDates && dates.startDate && dates.endDate" class="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+                    <p class="font-medium">These dates are available!</p>
+                  </div>
+
+                  <!-- Booking Button -->
                   <button 
                     v-if="!hasBlockedDates && dates.startDate && dates.endDate"
                     @click="handleBookNow" 
-                    class="w-full bg-gradient-to-r from-rose-500 to-red-600 text-white py-4 rounded-xl font-semibold hover:from-rose-600 hover:to-red-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"                  >
+                    class="w-full bg-gradient-to-r from-rose-500 to-red-600 text-white py-4 rounded-xl font-semibold hover:from-rose-600 hover:to-red-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
+                  >
                     Reserve now
                   </button>
-                  <!-- Show a disabled state when there are no dates selected -->
                   <button 
                     v-else-if="!hasBlockedDates && (!dates.startDate || !dates.endDate)" 
                     disabled
@@ -371,6 +374,7 @@ import AvailabilityCalendar from '@/components/AvailabilityCalendar.vue'
 import CheckoutSummary from '@/components/CheckoutSummary.vue'
 import ReviewsList from '@/components/ReviewsList.vue'
 import BackButton from '@/components/BackButton.vue'
+import { shouldBreakAuthLoop, resetAuthLoopCounter } from '@/utils/authLoopBreaker'
 const route = useRoute()
 const router = useRouter()
 const toast = useToast()
@@ -379,62 +383,37 @@ const spot = ref(null)
 const loading = ref(true)
 const error = ref(null)
 const activeImageIndex = ref(0)
-
-// Very simple back to campers function with logging
-const backToCampers = () => {
-  console.log("Navigating back to campers page...");
-  window.location.href = '/campers';
-}
+const isAvailable = ref(true)
 const dates = ref({ startDate: '', endDate: '' })
 const guests = ref(1)
 const blockedDates = ref([])
 const showGallery = ref(false)
 const showMap = ref(false)
 const mapError = ref(false)
-const dbConnectionError = ref(false)
-const showRetryButton = ref(false)
-const hasCheckedAvailability = ref(false)
 const availabilityLoading = ref(false)
 const availabilityError = ref(null)
-// Track if there are any blocking dates for the selected period
+const hasCheckedAvailability = ref(false)
 const hasBlockedDates = ref(false)
-// Compute the number of nights
-const nights = computed(() => {
-  if (!dates.value.startDate || !dates.value.endDate) return 0
-  const start = new Date(dates.value.startDate)
-  const end = new Date(dates.value.endDate)
-  return Math.round((end - start) / (1000 * 60 * 60 * 24))
-})
-// Calculate base price and total price with service fees
-const basePrice = computed(() => {
-  if (!spot.value) return 0
-  return spot.value.price_per_night * nights.value
-})
-const serviceFee = computed(() => {
-  return basePrice.value * 0.10 // 10% service fee
-})
-const totalPrice = computed(() => {
-  return basePrice.value + serviceFee.value
-})
-// Check if user is the owner of THIS specific spot
-const isOwnSpot = computed(() => {
-  if (!authStore.publicUser || !spot.value) return false;
-  const isOwner = authStore.publicUser.user_id === spot.value.owner_id;
-  // Debug logs to help identify ownership issues
-  if (isOwner) {
-  }
-  return isOwner;
-});
-// Check if user is an owner generally
+const dbConnectionError = ref(false)
+
+// Define isOwner as a computed property
 const isOwner = computed(() => {
-  const isOwnerAccount = authStore.publicUser?.isowner === 1;
-  // Debug log
-  if (isOwnerAccount) {
-  }
-  return isOwnerAccount;
+  return authStore.isLoggedIn && (authStore.fullUser?.isowner === 1 || authStore.fullUser?.isowner === '1');
 });
-// Determine if the user can book the spot
-// Used for UI rendering conditions
+
+// Define isOwnSpot as a computed property
+const isOwnSpot = computed(() => {
+  if (!authStore.isLoggedIn || !spot.value || !authStore.fullUser) {
+    return false;
+  }
+  return authStore.fullUser.user_id === spot.value.owner_id;
+});
+
+// Very simple back to campers function with logging
+const backToCampers = () => {
+  console.log("Navigating back to campers page...");
+  router.push('/campers');
+}
 const reviewStats = ref({
   count: 0,
   average: 0,
@@ -469,6 +448,37 @@ const openGallery = () => {
 const closeGallery = () => {
   showGallery.value = false
 }
+
+// Handle blocked dates coming from the AvailabilityCalendar component
+const handleBlockedDates = (dates) => {
+  if (!dates || !Array.isArray(dates)) {
+    console.log('No dates provided to handleBlockedDates');
+    blockedDates.value = [];
+    return;
+  }
+  
+  // Map the dates to the correct format, handling both start_date/end_date and startDate/endDate formats
+  blockedDates.value = dates
+    .filter(dateRange => {
+      // Check for both formats and ensure we have valid dates
+      const start = dateRange?.start_date || dateRange?.startDate;
+      const end = dateRange?.end_date || dateRange?.endDate;
+      return start && end;
+    })
+    .map(dateRange => {
+      // Convert to standardized format using Date objects
+      const start = dateRange?.start_date || dateRange?.startDate;
+      const end = dateRange?.end_date || dateRange?.endDate;
+      return {
+        start: new Date(start),
+        end: new Date(end)
+      };
+    });
+  
+  // Log for debugging
+  console.log('Processed blocked dates:', blockedDates.value);
+}
+
 // Handle back button click to return to campers page while preserving filters
 const goBackToCampers = () => {
   // Include any existing query parameters from the current route
@@ -505,6 +515,26 @@ const persistDatesToUrl = (startDate, endDate, guestCount) => {
     timestamp: new Date().getTime()
   }));
 }
+
+// Calculate totals when dates or guest count changes
+const calculateTotal = () => {
+  // Save the current state to URL
+  persistDatesToUrl(dates.value.startDate, dates.value.endDate, guests.value);
+  
+  // Check availability if both dates are set
+  if (dates.value.startDate && dates.value.endDate) {
+    checkAvailability();
+  }
+}
+
+// Calculate number of nights
+const nights = computed(() => {
+  if (!dates.value.startDate || !dates.value.endDate) return 0;
+  const start = new Date(dates.value.startDate);
+  const end = new Date(dates.value.endDate);
+  return Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+});
+
 // Open map safely
 const openMap = () => {
   if (!spot.value || !spot.value.location || 
@@ -531,371 +561,160 @@ const closeMap = () => {
 const retryLoading = () => {
   loadSpotDetails()
 }
-// Check availability of the selected dates
-const checkAvailability = async () => {
-  if (!dates.value.startDate || !dates.value.endDate || !spot.value) return
-  availabilityLoading.value = true
-  hasBlockedDates.value = false
-  availabilityError.value = null
-  
-  console.log(`[DEBUG] Checking availability for dates:`, {
-    startDate: dates.value.startDate,
-    endDate: dates.value.endDate,
-    spotId: spot.value.camping_spot_id
+// Calculate the review stats for UI display
+const calculateReviewStats = (reviews = []) => {
+  const stats = {
+    count: reviews.length,
+    average: 0,
+    distribution: {
+      5: 0,
+      4: 0,
+      3: 0,
+      2: 0,
+      1: 0
+    }
+  };
+
+  if (stats.count === 0) return stats;
+
+  // Calculate total and distribution
+  let totalRating = 0;
+  reviews.forEach(review => {
+    totalRating += review.rating;
+    if (stats.distribution[review.rating] !== undefined) {
+      stats.distribution[review.rating]++;
+    }
   });
-  
+
+  // Calculate average
+  stats.average = totalRating / stats.count;
+  return stats;
+}
+
+// Check availability for the selected dates
+const checkAvailability = async () => {
+  availabilityLoading.value = true;
+  availabilityError.value = null;
+  hasCheckedAvailability.value = false;
+
   try {
-    // First try with the API endpoint
-    try {
-      const { data } = await axios.get(`/api/camping-spots/${spot.value.camping_spot_id}/availability`, {
-        params: {
-          startDate: dates.value.startDate,
-          endDate: dates.value.endDate
-        },
-        // Add specific config to prevent over-throttling
-        bypassThrottle: true,
-        timeout: 15000, // Longer timeout for availability check
-        // Mark this request as a public route
-        headers: {
-          'X-Public-Route': 'true'
-        }
-      })
-      console.log(`[DEBUG] Availability check succeeded:`, data);
-      
-      // Check if dates are available
-      hasBlockedDates.value = data.hasBlockedDates
-      if (hasBlockedDates.value) {
-        availabilityError.value = 'Selected dates are not available for booking'
-      }
-    } catch (apiError) {
-      console.error(`[DEBUG] Primary availability check failed:`, {
-        status: apiError.response?.status, 
-        message: apiError.message
-      });
-      
-      // If API endpoint fails, try without the api prefix
-      if (apiError.response?.status !== 429) { // Don't retry if rate limited
-        try {
-          console.log(`[DEBUG] Attempting fallback availability check`);
-          
-          const { data } = await axios.get(`/camping-spots/${spot.value.camping_spot_id}/availability`, {
-            params: {
-              startDate: dates.value.startDate,
-              endDate: dates.value.endDate
-            },
-            bypassThrottle: true,
-            timeout: 15000,
-            // Mark this request as a public route
-            headers: {
-              'X-Public-Route': 'true'
-            }
-          })
-          
-          console.log(`[DEBUG] Fallback availability check succeeded:`, data);
-          
-          // Check if dates are available
-          hasBlockedDates.value = data.hasBlockedDates
-          if (hasBlockedDates.value) {
-            availabilityError.value = 'Selected dates are not available for booking'
-          }
-        } catch (fallbackError) {
-          console.error(`[DEBUG] Fallback availability check failed:`, {
-            status: fallbackError.response?.status,
-            message: fallbackError.message
-          });
-          throw fallbackError; // Let the outer catch handle this
-        }
-      } else {
-        // Handle rate limiting specifically
-        console.warn('[DEBUG] Availability check rate limited:', apiError)
-        // Don't set hasBlockedDates to true just because of rate limiting
-        // Instead, set a more appropriate error
-        availabilityError.value = 'Unable to check availability right now. Please try again shortly.'
-        // Return without setting hasCheckedAvailability to true
-        availabilityLoading.value = false
-        return
-      }
-    }
-    hasCheckedAvailability.value = true
-  } catch (error) {
-    console.error('Failed to check availability:', error)
-    // Check for database connection errors
-    if (error.response?.status === 503 || 
-        error.response?.data?.code === 'P1001' || 
-        error.response?.data?.code === 'DB_CONNECTION_ERROR' ||
-        (error.response?.data?.error && error.response.data.error.includes('database'))) {
-      availabilityError.value = 'Database is currently unavailable. Unable to check availability.'
-    } else if (error.code === 'ECONNABORTED') {
-      availabilityError.value = 'Request timed out. Please try again.'
-    } else {
-      availabilityError.value = 'Failed to check availability for selected dates'
-    }
-  } finally {
-    availabilityLoading.value = false
-  }
-}
-// Handle blocked dates from calendar component
-const handleBlockedDates = (dates) => {
-  blockedDates.value = dates
-  checkDateOverlap()
-}
-// Check if selected dates overlap with blocked dates
-const checkDateOverlap = () => {
-  if (!dates.value.startDate || !dates.value.endDate || blockedDates.value.length === 0) {
-    hasBlockedDates.value = false
-    return
-  }
-  const start = new Date(dates.value.startDate)
-  const end = new Date(dates.value.endDate)
-  start.setHours(0, 0, 0, 0)
-  end.setHours(0, 0, 0, 0)
-  hasBlockedDates.value = blockedDates.value.some(block => {
-    const blockStart = new Date(block.start_date)
-    const blockEnd = new Date(block.end_date)
-    blockStart.setHours(0, 0, 0, 0)
-    blockEnd.setHours(0, 0, 0, 0)
-    // Check if ranges overlap
-    return (start <= blockEnd && end >= blockStart)
-  })
-}
-// Watch for changes to dates and guests to persist them and check availability
-watch([() => dates.value.startDate, () => dates.value.endDate], 
-  ([newStartDate, newEndDate]) => {
-    if (newStartDate && newEndDate) {
-      persistDatesToUrl(newStartDate, newEndDate, guests.value)
-      checkAvailability() // Check availability when dates change
-    }
-  }
-)
-// Watch for changes to guests to persist them
-watch(() => guests.value, (newGuests) => {
-  if (dates.value.startDate && dates.value.endDate) {
-    persistDatesToUrl(dates.value.startDate, dates.value.endDate, newGuests)
-  }
-})
-// Handle the booking process
-const handleBookNow = async () => {
-  // Prevent owners from booking their own spot
-  if (authStore.publicUser && spot.value) {
-    const isCurrentUserTheOwner = authStore.publicUser.user_id === spot.value.owner_id;
-    if (isCurrentUserTheOwner) {
-      toast.error("You cannot book your own camping spot");
-      router.push('/dashboard/spots');
-      return;
-    }
-  }
-  if (isOwnSpot.value) {
-    toast.error("You cannot book your own camping spot");
-    setTimeout(() => {
-      router.push('/dashboard/spots');
-    }, 2000);
-    return;
-  }
-  if (!dates.value.startDate || !dates.value.endDate) {
-    toast.warning('Please select check-in and check-out dates');
-    return;
-  }
-  if (guests.value < 1) {
-    toast.warning('Please specify at least 1 guest');
-    return;
-  }
-  if (hasBlockedDates.value) {
-    toast.error('Selected dates are not available for booking');
-    return;
-  }
-  if (!authStore.isAuthenticated) {
-    const bookingDetails = {
-      camper_id: spot.value.camping_spot_id,
-      start_date: dates.value.startDate,
-      end_date: dates.value.endDate,
-      number_of_guests: guests.value,
-      fromCampers: true
-    };
-    sessionStorage.setItem('pendingBooking', JSON.stringify(bookingDetails));
-    router.push({
-      path: '/auth',
-      query: {
-        redirect: route.fullPath,
-        startDate: dates.value.startDate,
-        endDate: dates.value.endDate,
-        guests: guests.value,
-        fromCampers: true
-      }
-    });
-    return;
-  }
-  if (!authStore.publicUser) {
-    try {
-      const session = await authStore.getSupabaseSession();
-      if (!session) throw new Error('No active session');
-      const response = await axios.get('/api/users/me');
-      if (response.data) {
-        authStore.publicUser = response.data;
-      } else {
-        throw new Error('No user data received');
-      }
-    } catch (error) {
-      console.error('Error fetching user info:', error);
-      toast.error('Failed to load user information. Please try again.');
-      return;
-    }
-  }
-  // Validate required values for the checkout session
-  if (!spot.value?.camping_spot_id || !authStore.publicUser?.user_id) {
-    toast.error('Required booking information is missing. Please try again.');
-    console.error('Missing required IDs:', {
-      camping_spot_id: spot.value?.camping_spot_id,
-      user_id: authStore.publicUser?.user_id
-    });
-    return;
-  }
-
-  if (!dates.value.startDate || !dates.value.endDate || !guests.value || guests.value < 1) {
-    toast.error('Please fill in all the booking details.');
-    return;
-  }
-
-  // Validate the amounts are positive numbers
-  const baseAmount = basePrice.value;
-  const serviceFeeAmount = serviceFee.value;
-  const totalAmount = totalPrice.value;
-
-  if (!baseAmount || !serviceFeeAmount || !totalAmount || baseAmount <= 0 || serviceFeeAmount < 0 || totalAmount <= 0) {
-    toast.error('Invalid pricing information. Please try again.');
-    console.error('Invalid amounts:', { baseAmount, serviceFeeAmount, totalAmount });
-    return;
-  }
-
-  loading.value = true;
-  try {
-    // Make sure the user is logged in and has public user info
-    if (!authStore.publicUser) {
-      const response = await axios.get('/api/users/me');
-      if (response.data) {
-        authStore.publicUser = response.data;
-      } else {
-        throw new Error('Failed to load user information');
-      }
-    }
-
-    // Check availability one last time
-    await checkAvailability();
-    if (hasBlockedDates.value) {
-      toast.error('Sorry, these dates are no longer available');
+    if (!spot.value || !dates.value.startDate || !dates.value.endDate) {
+      console.log('Missing required data for availability check');
       return;
     }
 
-    // Create checkout session and get URL
-    const checkoutUrl = await createCheckoutSession();
-    toast.success('Redirecting to payment...');
-    window.location.href = checkoutUrl;
-
-  } catch (error) {
-    console.error('Booking failed:', error);
-    if (error.response?.status === 401) {
-      toast.error('Your session has expired. Please log in again.');
-      router.push({
-        path: '/auth',
-        query: {
-          redirect: route.fullPath,
-          startDate: dates.value.startDate,
-          endDate: dates.value.endDate,
-          guests: guests.value,
-          authError: 'session_expired'
-        }
-      });
-    } else if (error.code === 'ERR_NETWORK') {
-      toast.error('Cannot connect to the server. Please check your connection.');
-    } else {
-      toast.error(error.response?.data?.error || error.message || 'Failed to process booking');
-    }
-  } finally {
-    loading.value = false;
-  }
-};
-// Create checkout session with proper error handling
-const createCheckoutSession = async () => {
-  if (!spot.value || !authStore.publicUser) {
-    throw new Error('Missing required spot or user information');
-  }
-
-  try {
-    const bookingData = {
+    console.log('Checking availability:', {
       spotId: spot.value.camping_spot_id,
       startDate: dates.value.startDate,
-      endDate: dates.value.endDate,
-      guests: guests.value,
-      baseAmount: basePrice.value,
-      serviceFee: serviceFee.value,
-      totalAmount: totalPrice.value,
-      spotName: spot.value.title
-    };
-
-    // Validate booking data
-    validateBookingData({
-      startDate: bookingData.startDate,
-      endDate: bookingData.endDate,
-      numberOfGuests: bookingData.guests,
-      cost: bookingData.totalAmount
+      endDate: dates.value.endDate
     });
 
-    const response = await axios.post('/api/checkout/create-session', bookingData, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Origin': 'https://airbnb-frontend-i8p5.vercel.app'
+    const response = await axios.get(`/api/camping-spots/${spot.value.camping_spot_id}/availability`, {
+      params: {
+        startDate: dates.value.startDate,
+        endDate: dates.value.endDate
       },
-      timeout: 10000 // 10 second timeout
+      headers: {
+        'X-Public-Route': 'true'
+      }
     });
 
-    if (!response.data?.url) {
-      throw new Error('No checkout URL received from server');
-    }
+    // Update booking status based on response
+    const existingBookings = response.data;
+    const hasConflictingBookings = existingBookings.some(booking => {
+      const bookingStart = new Date(booking.start_date);
+      const bookingEnd = new Date(booking.end_date);
+      const selectedStart = new Date(dates.value.startDate);
+      const selectedEnd = new Date(dates.value.endDate);
 
-    return response.data.url;
+      return (
+        (selectedStart >= bookingStart && selectedStart <= bookingEnd) ||
+        (selectedEnd >= bookingStart && selectedEnd <= bookingEnd) ||
+        (selectedStart <= bookingStart && selectedEnd >= bookingEnd)
+      );
+    });
+
+    // Update availability states
+    isAvailable.value = !hasConflictingBookings;
+    hasBlockedDates.value = hasConflictingBookings;
+    hasCheckedAvailability.value = true;
+
+    // Add the dates to blockedDates if not already there
+    const newBlockedDates = existingBookings
+      .map(booking => ({
+        start: new Date(booking.start_date),
+        end: new Date(booking.end_date)
+      }))
+      .filter(date => !blockedDates.value.some(
+        existing => 
+          existing.start.getTime() === date.start.getTime() && 
+          existing.end.getTime() === date.end.getTime()
+      ));
+
+    blockedDates.value = [...blockedDates.value, ...newBlockedDates];
+    console.log('Availability check complete:', { 
+      isAvailable: isAvailable.value,
+      blockedDates: blockedDates.value
+    });
+
   } catch (error) {
-    if (error.response?.status === 401) {
-      throw new Error('Authentication required. Please log in again.');
-    } else if (error.response?.status === 400) {
-      throw new Error(error.response.data?.error || 'Invalid booking data');
-    } else if (error.code === 'ECONNABORTED') {
-      throw new Error('Request timed out. Please try again.');
-    } else if (error.response?.status === 503) {
-      throw new Error('Service temporarily unavailable. Please try again later.');
-    }
-    throw error;
+    console.error('Error checking availability:', error);
+    isAvailable.value = false;
+    availabilityError.value = 'Failed to check availability';
+  } finally {
+    availabilityLoading.value = false;
   }
 };
+
 // Load spot details including reviews and availability
 const loadSpotDetails = async () => {
   loading.value = true
   error.value = null
   spot.value = null
   try {
+    // First get base camping spot details
     const { data } = await axios.get(`/api/camping-spots/${route.params.id}`, {
       headers: {
-        'X-Public-Route': 'true'
+        'X-Public-Route': 'true' 
       }
     })
     spot.value = data
-    // If spot is found, load reviews and availability
+    
+    // If spot is found, load reviews
     if (spot.value) {
-      // Load reviews
       try {
+        console.log('Loading reviews for spot:', spot.value.camping_spot_id);
         const reviewsResponse = await axios.get(`/api/camping-spots/${spot.value.camping_spot_id}/reviews`, {
           headers: {
             'X-Public-Route': 'true'
           }
         });
-        // Calculate review stats
         reviewStats.value = calculateReviewStats(reviewsResponse.data);
-      } catch (reviewsError) {
-        console.error('Error loading reviews:', reviewsError);
-      }
-      // Load availability
-      try {
-        await checkAvailability();
-      } catch (availabilityError) {
-        console.error('Error loading availability:', availabilityError);
+        console.log('Reviews loaded successfully:', reviewStats.value);
+
+        // Also load initial availability for current month
+        const now = new Date();
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        const response = await axios.get(`/api/camping-spots/${spot.value.camping_spot_id}/availability`, {
+          params: {
+            startDate: now.toISOString().split('T')[0],
+            endDate: endOfMonth.toISOString().split('T')[0]
+          },
+          headers: {
+            'X-Public-Route': 'true'
+          }
+        });
+
+        // Update blocked dates from the response
+        const existingBookings = response.data;
+        blockedDates.value = existingBookings.map(booking => ({
+          start: new Date(booking.start_date),
+          end: new Date(booking.end_date)
+        }));
+
+      } catch (error) {
+        console.error('Error loading additional data:', error);
+        availabilityError.value = 'Failed to load availability data';
       }
     }
   } catch (err) {
@@ -913,9 +732,128 @@ onMounted(() => {
     loading.value = false
     return
   }
+  
   // Load spot details
   loadSpotDetails()
+  
+  // Check if we need to restore booking state after login redirect
+  checkForRestoredBookingState()
+  
+  // Reset auth loop counter since we've successfully loaded the camping spot detail page
+  resetAuthLoopCounter()
 })
+// Watch for date changes and check availability
+watch([() => dates.value.startDate, () => dates.value.endDate], async ([newStartDate, newEndDate], [oldStartDate, oldEndDate]) => {
+  // Only check if both dates are set and either date has changed
+  if (newStartDate && newEndDate && (newStartDate !== oldStartDate || newEndDate !== oldEndDate)) {
+    await checkAvailability();
+    calculateTotal();
+  }
+});
+
+// Auth loop breaker utilities are already imported at the top of the file
+
+const handleBookNow = async () => {
+  if (!authStore.isLoggedIn) {
+    // Save current booking state to localStorage with timestamp
+    const bookingState = {
+      start: dates.value.startDate,
+      end: dates.value.endDate,
+      guests: guests.value,
+      spotId: spot.value?.camping_spot_id,
+      timestamp: new Date().getTime()
+    };
+    
+    // Store booking data and current URL
+    localStorage.setItem('pendingBooking', JSON.stringify(bookingState));
+    localStorage.setItem('pendingBookingUrl', router.currentRoute.value.path);
+    localStorage.setItem('pendingRedirect', 'booking');
+    
+    // Navigate to auth
+    router.push({ path: '/auth' });
+    return;
+  }
+
+  // For logged-in users, proceed with booking
+  if (!dates.value.startDate || !dates.value.endDate || !guests.value) {
+    toast.error('Please select dates and number of guests');
+    return;
+  }
+
+  try {
+    // Prepare the booking data
+    const basePrice = spot.value.price_per_night * nights.value;
+    const serviceFee = basePrice * 0.1; // 10% service fee
+    const totalAmount = basePrice + serviceFee;
+
+    // Create the checkout session directly from here
+    const { data } = await axios.post('/api/checkout/create-session', {
+      camper_id: spot.value.camping_spot_id,
+      user_id: authStore.fullUser.user_id,
+      start_date: dates.value.startDate,
+      end_date: dates.value.endDate,
+      number_of_guests: guests.value,
+      cost: basePrice.toFixed(2),
+      service_fee: serviceFee.toFixed(2),
+      total: totalAmount.toFixed(2),
+      spot_name: spot.value.title
+    });
+
+    // Handle successful response
+    if (data && data.url) {
+      toast.success('Redirecting to payment...');
+      // Redirect to Stripe checkout
+      window.location.href = data.url;
+    } else {
+      throw new Error('Invalid checkout session response');
+    }
+  } catch (error) {
+    console.error('Booking error:', error);
+    toast.error(error.response?.data?.error || 'Failed to create booking');
+  }
+};
+
+
+// Safely restore booking state from auth redirect
+const checkForRestoredBookingState = () => {
+  const authComplete = localStorage.getItem('authenticationComplete');
+  
+  // Only check if we've just completed authentication
+  if (authComplete === 'true') {
+    // Clear the flag immediately
+    localStorage.removeItem('authenticationComplete');
+    
+    // Check URL parameters for restored booking state
+    const urlParams = new URLSearchParams(window.location.search);
+    const startDate = urlParams.get('startDate');
+    const endDate = urlParams.get('endDate');
+    const guestCount = urlParams.get('guests');
+    
+    // If we have date parameters, restore them to the component state
+    if (startDate && endDate) {
+      dates.value.startDate = startDate;
+      dates.value.endDate = endDate;
+      
+      if (guestCount) {
+        const parsedGuests = parseInt(guestCount, 10);
+        if (!isNaN(parsedGuests) && parsedGuests > 0) {
+          guests.value = Math.min(parsedGuests, spot.value?.max_guests || 1);
+        }
+      }
+      
+      // Recalculate the booking totals with the restored values
+      calculateTotal();
+      
+      // Show success message
+      toast.success('Your booking information has been restored');
+    }
+  }
+}
+
+// Call the restore function on app load
+onMounted(() => {
+  checkForRestoredBookingState();
+});
 </script>
 
 <style scoped>

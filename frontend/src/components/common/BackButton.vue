@@ -18,14 +18,20 @@ export default {
       default: false
     }
   },
-  methods: {
-    handleClick(e) {
+  methods: {    handleClick(e) {
+      e.preventDefault();
       if (this.useRouter) {
-        e.preventDefault();
+        // Use Vue router for navigation
         this.$router.push(this.url);
       } else {
-        // Let the browser handle the navigation using the href
-        window.location.href = this.url;
+        // For non-router navigation, still use Vue router for internal links
+        // but allow direct navigation for external links
+        const isExternal = this.url.startsWith('http') || this.url.startsWith('//');
+        if (isExternal) {
+          window.location.href = this.url;
+        } else {
+          this.$router.push(this.url);
+        }
       }
     }
   }

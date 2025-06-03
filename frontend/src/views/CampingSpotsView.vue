@@ -380,7 +380,8 @@ const removeExistingImage = async (imageId) => {
   if (!editingSpot.value) return;
   if (confirm('Are you sure you want to delete this image?')) {
     try {
-      await axios.delete(`/camping-spots/images/${imageId}`);
+      // Use the same API path format as in SpotFormModal.vue
+      await axios.delete(`/api/camping-spots/images/${imageId}`);
       editingSpot.value.images = editingSpot.value.images.filter(img => img.image_id !== imageId);
     } catch (error) {
       console.error('Failed to delete image:', error);
@@ -538,18 +539,27 @@ onUnmounted(() => {
 });
 const fetchAmenities = async () => {
   try {
-    const { data } = await axios.get('/camping-spots/amenities')
-    availableAmenities.value = data
+    const response = await apiClient.get('/api/camping-spots/amenities', {
+      headers: {
+        'X-Public-Route': 'true'
+      }
+    });
+    availableAmenities.value = response.data;
   } catch (error) {
-    console.error('Failed to fetch amenities:', error)
+    console.error('Failed to fetch amenities:', error);
   }
-}
+};
+
 const fetchCountries = async () => {
   try {
-    const { data } = await axios.get('/camping-spots/countries')
-    countries.value = data
+    const response = await apiClient.get('/api/camping-spots/countries', {
+      headers: {
+        'X-Public-Route': 'true'
+      }
+    });
+    countries.value = response.data;
   } catch (error) {
-    console.error('Failed to fetch countries:', error)
+    console.error('Failed to fetch countries:', error);
   }
 }
 // Load spots on mount

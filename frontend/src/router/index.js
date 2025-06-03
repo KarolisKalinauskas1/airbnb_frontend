@@ -6,11 +6,30 @@ import PaymentView from '../views/PaymentView.vue'
 import BookingSuccessView from '../views/BookingSuccessView.vue'
 import BookingFailedView from '../views/BookingFailedView.vue'
 import DashboardBookings from '@/views/DashboardBookings.vue'
-import SocialAuthSuccess from '@/views/SocialAuthSuccess.vue' // Import the new component
+import SocialAuthSuccess from '@/views/SocialAuthSuccess.vue'
+import ConnectionErrorView from '@/views/ConnectionErrorView.vue'
 import { useAuthStore } from '@/stores/auth'
 import axios from '@/axios'
 import { isBackendAvailable, getCachedData } from '@/utils/connectionHelper'
-import OfflinePage from '@/views/OfflinePage.vue';
+import OfflinePage from '@/views/OfflinePage.vue'
+
+// Define public paths
+const publicPaths = [
+  '/',
+  '/campers',
+  '/camping-spot',
+  '/camper',
+  '/auth',
+  '/offline',
+  '/404',
+  '/camping-spots',
+  '/api/reviews/stats',
+  '/api/camping-spots',
+  '/camping-spot/',
+  '/connection-error',
+  '/reset-password',
+  '/social-auth-success'
+]
 
 // Prevent route guards from running multiple times
 let isNavigationRunning = false;
@@ -101,31 +120,13 @@ async function bookingAuthGuard(to, from, next) {
 function renterGuard(to, from, next) {
   const authStore = useAuthStore();
   
-  // Allow these pages for everyone, no auth check needed
-  const publicPaths = [
-    '/campers',
-    '/camping-spot',
-    '/camper',
-    '/api/reviews',
-    '/', // Home page
-    '/auth', // Login/register page
-    '/404', // Not found page
-    '/offline' // Offline page
-  ];
-
-  // Check if current path is a camper detail page (handle dynamic segments)
-  const isCamperDetailPage = to.name === 'camping-spot-detail' || 
-                           to.name === 'CampingSpotDetail' ||
-                           to.path.match(/^\/camper\/\d+/) || 
-                           to.path.match(/^\/camping-spot\/\d+/);
-
-  // Check if current path matches any public path
-  const isPublicPath = publicPaths.some(publicPath => 
-    to.path === publicPath || to.path.startsWith(publicPath + '/')
-  );
-
-  if (isPublicPath || isCamperDetailPage) {
-    console.log('Public path or camper detail page, allowing access:', to.path);
+  // Check if path is public or a detail page before requiring auth
+  if (to.matched.some(record => record.meta.public) || 
+      to.path.match(/^\/(camper|camping-spot)\/\d+$/) ||
+      ['/campers', '/camping-spot', '/camper', '/'].includes(to.path) ||
+      to.path.startsWith('/camping-spot/') ||
+      to.path.startsWith('/camper/')) {
+    console.log('Public path detected, allowing access:', to.path);
     next();
     return;
   }
@@ -186,7 +187,7 @@ function ownerGuard(to, from, next) {
 function dashboardGuard(to, from, next) {
   const authStore = useAuthStore();
   
-  // If user isn't logged in at all, redirect to login
+  // If user isn't logged in, redirect to login
   if (!authStore.isLoggedIn || !authStore.token) {
     next({
       path: '/auth',
@@ -201,16 +202,27 @@ function dashboardGuard(to, from, next) {
     return;
   }
   
-  // For now, allow access to all dashboard routes for logged-in users
-  next();
-  
-  // We'll re-enable these checks once we confirm the owner status is working
-  /*
   // For owner-specific routes, ensure the user is an owner
   const ownerRoutes = ['/dashboard/spots', '/dashboard/analytics'];
-  if (ownerRoutes.includes(to.path) && !authStore.isOwner) {
-    next('/dashboard');
-    return;
+  if (ownerRoutes.includes(to.path)) {
+    // If we don't have owner status yet, fetch full user info
+    if (authStore.fullUser === null) {
+      authStore.fetchFullUserInfo().then(() => {
+        if (!authStore.isOwner) {
+          next('/dashboard');
+        } else {
+          next();
+        }
+      }).catch(() => {
+        next('/dashboard');
+      });
+      return;
+    }
+    
+    if (!authStore.isOwner) {
+      next('/dashboard');
+      return;
+    }
   }
   
   // For renter-specific routes, ensure the user is not an owner
@@ -221,7 +233,6 @@ function dashboardGuard(to, from, next) {
   }
   
   next();
-  */
 }
 
 // Simplified lazy loading with prefetch
@@ -233,10 +244,12 @@ function lazyLoad(view) {
 function authPageGuard(to, from, next) {
   const authStore = useAuthStore();
   
-  // If user is already logged in, redirect to home or the requested redirect
-  if (authStore.isLoggedIn) {
-    // If there's a redirect parameter, go there instead of home
-    const redirectPath = to.query.redirect || '/';
+  // If user is already logged in and this wasn't a logout, redirect to home or the requested redirect
+  if (authStore.isLoggedIn && !to.query.logout) {
+    // If there's a redirect parameter and it's not to /auth itself, use it
+    const redirectPath = to.query.redirect && !to.query.redirect.startsWith('/auth') 
+      ? to.query.redirect 
+      : '/';
     next(redirectPath);
     return;
   }
@@ -317,13 +330,11 @@ const routes = [
     ]
   },
   {
-    path: '/payment',
-    name: 'payment',
+    path: '/create-checkout-session',
+    name: 'checkout',
     component: lazyLoad('PaymentView'),
-    beforeEnter: renterGuard,
     meta: { 
-      requiresAuth: true,
-      requiresBookingDetails: true
+      requiresAuth: true
     }
   },
   {
@@ -365,7 +376,14 @@ const routes = [
     name: 'Offline',
     component: lazyLoad('OfflinePage')
   },
-
+  {
+    path: '/connection-error',
+    name: 'ConnectionError',
+    component: ConnectionErrorView,
+    meta: {
+      public: true
+    }
+  },
   {
     path: '/reset-password',
     name: 'ResetPassword',
@@ -406,57 +424,19 @@ const router = createRouter({
   }
 })
 
-// Simplified navigation guard
+// Router navigation guard
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
   const requiresSeller = to.matched.some(record => record.meta.requiresSeller)
   const requiresRenter = to.matched.some(record => record.meta.requiresRenter)
   
-  // Define public paths that don't require authentication
-  const publicPaths = [
-    '/',
-    '/campers',
-    '/camping-spot',
-    '/camper',
-    '/auth',
-    '/offline',
-    '/404',
-    '/camping-spots', // Added this path to handle camping spot details
-    '/api/reviews/stats', // Add public reviews endpoint
-    '/api/camping-spots' // Add public camping spots endpoint
-  ];
-  
-  // Check if current path is a public path or a camper detail page
-  const isCamperDetailPage = to.name === 'camping-spot-detail' || 
-                           to.name === 'CampingSpotDetail' ||
-                           to.path.match(/^\/camper\/\d+/) || 
-                           to.path.match(/^\/camping-spot\/\d+/);
-  
-  // Check if current path is a public path
-  const isPublicPath = publicPaths.some(publicPath => 
-    to.path === publicPath || to.path.startsWith(publicPath + '/')
-  ) || to.path.startsWith('/camping-spots/') || to.path.includes('/api/reviews/stats/') || isCamperDetailPage;
-  
-  // Handle direct OAuth callback to home page
-  if (to.path === '/' && to.query.source === 'oauth') {
-    
-    // We'll let the HomeView component handle the OAuth processing
-    // Just clean up the URL to not show the OAuth parameters
-    if (to.query.source) {
-      const query = { ...to.query };
-      delete query.source;
-      
-      if (Object.keys(query).length === 0) {
-        // If no other query parameters, just use the path
-        next({ path: to.path, replace: true });
-        return;
-      } else {
-        // Keep other query parameters if they exist
-        next({ path: to.path, query, replace: true });
-        return;
-      }
-    }
+  // Handle OAuth callback cleanup
+  if (to.query.source === 'oauth') {
+    const query = { ...to.query }
+    delete query.source
+    next({ path: to.path, query: Object.keys(query).length ? query : undefined, replace: true })
+    return
   }
 
   // Ensure auth is initialized
@@ -468,20 +448,26 @@ router.beforeEach(async (to, from, next) => {
     }
   }
 
-  // Handle auth page access
-  if (to.path === '/auth' && authStore.isLoggedIn) {
-    return next('/')
-  }
+  // Check if it's a public path
+  const isPublicPath = publicPaths.some(path => {
+    if (typeof path === 'string') {
+      return to.path.startsWith(path)
+    }
+    return path.test(to.path)
+  })
 
   // Allow public paths or routes not requiring auth
   if (isPublicPath || !requiresAuth) {
     return next()
   }
 
-  // Check authentication for protected routes
+  // Handle unauthenticated access to protected routes
   if (!authStore.isLoggedIn) {
-    console.log('User not authenticated, redirecting to login page from:', to.fullPath)
-    // Store the path user was trying to access for post-login redirect
+    // Don't add redirect if user is explicitly trying to logout
+    if (to.path === '/auth' && to.query.logout) {
+      return next()
+    }
+    
     return next({
       path: '/auth',
       query: { redirect: to.fullPath }
@@ -490,11 +476,11 @@ router.beforeEach(async (to, from, next) => {
 
   // Check seller/renter requirements
   if (requiresSeller && !authStore.isOwner) {
-    return next('/dashboard')
+    return next('/')
   }
 
   if (requiresRenter && authStore.isOwner) {
-    return next('/dashboard')
+    return next('/')
   }
 
   next()

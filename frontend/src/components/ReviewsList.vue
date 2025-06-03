@@ -63,9 +63,9 @@ const loadReviews = async () => {
   console.log(`Loading reviews for camping spot ID: ${props.campingSpotId}`);
   
   try {
-    // First try with /api prefix (common pattern)
-    console.log(`Requesting reviews from: /api/reviews/spot/${props.campingSpotId}`);
-    const response = await axios.get(`/api/reviews/spot/${props.campingSpotId}`);
+    // Use new canonical endpoint path
+    console.log(`Requesting reviews from: /api/camping-spots/${props.campingSpotId}/reviews`);
+    const response = await axios.get(`/api/camping-spots/${props.campingSpotId}/reviews`);
     
     if (response.data && Array.isArray(response.data)) {
       reviews.value = response.data;
@@ -75,21 +75,8 @@ const loadReviews = async () => {
       reviews.value = [];
     }
   } catch (err) {
-    console.error('Error loading reviews with /api prefix:', err);
-    
-    // Try fallback path without /api prefix
-    try {
-      console.log(`Attempting fallback review request to: /reviews/spot/${props.campingSpotId}`);
-      const fallbackResponse = await axios.get(`/reviews/spot/${props.campingSpotId}`);
-      if (fallbackResponse && fallbackResponse.data) {
-        reviews.value = fallbackResponse.data;
-        error.value = null;
-        console.log('Reviews loaded via fallback:', reviews.value);
-      }
-    } catch (fallbackErr) {
-      console.error('Fallback review request also failed:', fallbackErr);
-      error.value = 'Failed to load reviews. Please try again.';
-    }
+    console.error('Error loading reviews:', err);
+    error.value = 'Failed to load reviews. Please try again.';
   } finally {
     loading.value = false;
   }

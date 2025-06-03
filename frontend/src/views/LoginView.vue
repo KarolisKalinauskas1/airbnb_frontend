@@ -306,6 +306,7 @@ import { testSupabaseConnection } from '@/utils/supabaseUtils'
 import { useAuthStore } from '@/stores/auth'
 import { syncSessionWithBackend } from '@/utils/sessionHelper'
 import { attemptSessionRecovery, clearAuthData } from '@/utils/sessionRecovery'
+import { diagnoseNetworkIssues, getNetworkErrorMessage } from '@/utils/networkDiagnostic'
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
@@ -427,24 +428,81 @@ const validateResetPasswordForm = () => {
 const checkSupabaseConnection = async () => {
   connectionChecking.value = true
   try {
-    const { connected, message } = await testSupabaseConnection()
+    // First check if browser reports being offline
+    if (!navigator.onLine) {
+      supabaseConnected.value = false
+      loginError.value = "Your device appears to be offline. Please check your internet connection."
+      toast.error(loginError.value)
+      
+      // Redirect to offline page
+      router.push('/offline')
+      return false
+    }
+
+    // Run network diagnostics to pinpoint the issue
+    const diagnosticResults = await diagnoseNetworkIssues()
+    
+    // Try the Supabase connection test
+    const { connected, message, error } = await testSupabaseConnection()
+    
     if (connected) {
       supabaseConnected.value = true
+      loginError.value = null
+      return true
     } else {
-      console.error('Supabase connection issue:', message)
-      // Don't show error to user for certain errors that might be false negatives
-      if (message.includes('relation') || message.includes('does not exist')) {
+      console.error('Supabase connection issue:', message, error)
+      
+      // Set appropriate error message based on diagnostics
+      supabaseConnected.value = false
+      
+      let errorType = 'CONNECTION_ERROR'
+      
+      // Handle specific error cases
+      if (error && error.message) {
+        if (error.message.includes('ERR_NAME_NOT_RESOLVED') || 
+            error.message.includes('net::ERR_NAME_NOT_RESOLVED')) {
+          errorType = 'DNS_ERROR'
+        } else if (error.message.includes('Failed to fetch')) {
+          errorType = 'FETCH_ERROR'
+        } else if (error.message.includes('timeout') || error.message.includes('timed out')) {
+          errorType = 'TIMEOUT_ERROR'
+        } else if (error.message.includes('NetworkError')) {
+          errorType = 'NETWORK_ERROR'
+        }
+        
+        // Redirect to the connection error view with the error type
+        router.push({
+          path: '/connection-error',
+          query: { 
+            errorType,
+            message: error.message,
+            from: 'login'
+          }
+        })
+        return false
+      } else if (message.includes('relation') || message.includes('does not exist')) {
         // This is likely just a missing table, but connection works
         supabaseConnected.value = true
-      } else {
-        supabaseConnected.value = false
-        toast.error('Unable to connect to authentication service. Please check your internet connection.')
+        return true      } else {
+        loginError.value = "Cannot connect to authentication service. Please try again later."
+        toast.error(loginError.value)
+        return false
       }
-    }
-  } catch (err) {
+    }  } catch (err) {
     console.error('Connection test error:', err)
     supabaseConnected.value = false
-    toast.error('Cannot connect to authentication service')
+    loginError.value = "Cannot connect to authentication service. Please check your internet connection."
+    
+    // Redirect to connection error view for unexpected errors
+    router.push({
+      path: '/connection-error',
+      query: { 
+        errorType: 'UNEXPECTED_ERROR',
+        message: err.message || 'Unknown error occurred',
+        from: 'login'
+      }
+    })
+    return false
   } finally {
     connectionChecking.value = false
   }
@@ -473,48 +531,225 @@ const trySessionRecovery = async () => {
 }
 // Login handler with improved error handling
 const handleLogin = async () => {
-  try {
-    loginError.value = null
-    loginProcessing.value = true
+  try {    
+    loginError.value = null;
+    loginProcessing.value = true;
+    
+    // Validate form first
+    if (!validateLoginForm()) return;
+    
     // Attempt login with Supabase
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.value,
       password: password.value
-    })
-    if (error) {
-      throw error
-    }
+    });
+    
+    if (error) throw error;
+    
     if (!data?.session) {
-      console.error('No session received after login')
-      throw new Error('No session received after login')
+      console.error('No session received after login');
+      throw new Error('No session received after login');
     }
-    // Set up the session in the auth store
-    await authStore.setSession(data.session)
-    // Verify we're actually logged in
+    
+    // Double check we have a valid session
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) {
+      console.error('Failed to verify session:', sessionError);
+      throw sessionError;
+    }
+    
+    if (!session) {
+      console.error('No valid session found after login');
+      throw new Error('Session validation failed');
+    }
+    
+    // Set up the validated session in the auth store
+    await authStore.setSession(data.session);
+    
+    // Verify we're actually logged in and session was stored properly
     if (!authStore.isAuthenticated) {
-      console.error('Auth store not properly initialized')
-      throw new Error('Failed to establish session')
+      console.error('Auth store not properly initialized');
+      // Try to recover session
+      const { data: { session: recoveredSession } } = await supabase.auth.getSession();
+      if (recoveredSession) {
+        await authStore.setSession(recoveredSession);
+        if (!authStore.isAuthenticated) {
+          throw new Error('Failed to establish session even after recovery');
+        }
+      } else {
+        throw new Error('Failed to establish session');
+      }
     }
+    
     // Verify the session is properly stored
-    const storedSession = localStorage.getItem('supabase.auth.token')
-    const storedUser = localStorage.getItem('supabase.auth.user')
-    if (!storedSession || !storedUser) {
-      console.error('Session not properly stored in localStorage')
-      throw new Error('Failed to store session')
+    if (!localStorage.getItem('supabase.auth.token') || !localStorage.getItem('supabase.auth.user')) {
+      console.error('Session not properly stored in localStorage');
+      // Re-store session data
+      localStorage.setItem('supabase.auth.token', JSON.stringify({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: data.session.expires_at
+      }));
+      localStorage.setItem('supabase.auth.user', JSON.stringify(data.session.user));
+    }    // Handle redirect and restore booking state if present
+    try {
+      // First add a small delay to ensure auth store is fully updated (prevents race condition)
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Import auth loop breaker utils
+      const { resetAuthLoopCounter, checkAndHandleLoopParam } = await import('@/utils/authLoopBreaker');
+      
+      // Reset the auth loop counter since we've successfully logged in
+      resetAuthLoopCounter();
+      
+      // Check if we're breaking a loop and clean up URL parameters
+      checkAndHandleLoopParam();
+      
+      // Get pending booking data
+      const pendingBooking = localStorage.getItem('pendingBooking');
+      const pendingBookingUrl = localStorage.getItem('pendingBookingUrl');
+      const pendingRedirect = localStorage.getItem('pendingRedirect');
+      const defaultRedirect = route.query.redirect || '/';
+      
+      console.log('Login successful, handling redirection:', { 
+        hasPendingBooking: !!pendingBooking,
+        pendingBookingUrl,
+        pendingRedirect
+      });
+      
+      // For booking flow redirects
+      if (pendingBooking && pendingBookingUrl && pendingRedirect === 'booking') {
+        try {
+          const bookingState = JSON.parse(pendingBooking);
+          
+          // Verify booking data isn't stale (older than 30 minutes)
+          const now = new Date().getTime();
+          const timestamp = bookingState.timestamp || 0;
+          if (now - timestamp > 30 * 60 * 1000) {
+            console.warn('Booking data is stale, redirecting to camping spot without booking data');
+            // Just redirect to the camping spot page without booking params
+            localStorage.removeItem('pendingBooking');
+            localStorage.removeItem('pendingBookingUrl');
+            localStorage.removeItem('pendingRedirect');
+            router.push({ path: pendingBookingUrl });
+            return;
+          }
+          
+          // Handle redirection based on booking state
+          if (bookingState.spotId) {
+            // Option 1: Direct to booking creation with params
+            const bookingPath = `/booking/create/${bookingState.spotId}`;
+            const bookingQuery = {
+              startDate: bookingState.start,
+              endDate: bookingState.end,
+              guests: bookingState.guests
+            };
+            
+            // Clear stored booking data before navigation
+            localStorage.removeItem('pendingBooking');
+            localStorage.removeItem('pendingBookingUrl');
+            localStorage.removeItem('pendingRedirect');
+            
+            // Store flag to indicate authentication is complete
+            localStorage.setItem('authenticationComplete', 'true');
+            
+            console.log('Redirecting to booking creation:', bookingPath, bookingQuery);
+            router.push({ path: bookingPath, query: bookingQuery });
+          } else {
+            // Option 2: Return to camping spot with params
+            const query = {};
+            
+            // Add booking parameters to query
+            if (bookingState.start) query.startDate = bookingState.start;
+            if (bookingState.end) query.endDate = bookingState.end;
+            if (bookingState.guests) query.guests = bookingState.guests;
+            
+            // Clear stored booking data before navigation
+            localStorage.removeItem('pendingBooking');
+            localStorage.removeItem('pendingBookingUrl');
+            localStorage.removeItem('pendingRedirect');
+            
+            // Store flag to indicate authentication is complete
+            localStorage.setItem('authenticationComplete', 'true');
+            
+            console.log('Redirecting back to camping spot with params:', pendingBookingUrl, query);
+            router.push({ path: pendingBookingUrl, query });
+          }
+        } catch (parseError) {
+          console.error('Error parsing stored booking state:', parseError);
+            // Clean up storage
+          localStorage.removeItem('pendingBooking');
+          localStorage.removeItem('pendingBookingUrl');
+          localStorage.removeItem('pendingRedirect');
+          
+          // Fallback to the stored URL without parameters using router
+          router.push(pendingBookingUrl || '/campers');
+        }
+      } else {
+        // Clean up any stray booking data
+        localStorage.removeItem('pendingBooking');
+        localStorage.removeItem('pendingBookingUrl');
+        localStorage.removeItem('pendingRedirect');
+        
+        // Default redirect (home, dashboard, or requested redirect)
+        const redirectPath = defaultRedirect;
+        console.log('Standard redirect to:', redirectPath);
+        
+        // Set authentication complete flag
+        localStorage.setItem('authenticationComplete', 'true');
+        
+        // Use router instead of direct location change
+        router.push(redirectPath);
+      }
+    } catch (redirectError) {
+      console.error('Error handling redirect:', redirectError);
+        // Clean up storage on error
+      localStorage.removeItem('pendingBooking');
+      localStorage.removeItem('pendingBookingUrl');
+      localStorage.removeItem('pendingRedirect');
+      
+      // Fallback to home page using router
+      router.push('/');
+    }  } catch (error) {
+    console.error('Login error:', error);
+    
+    // Handle network and DNS errors
+    if (error.message && (
+        error.message.includes('ERR_NAME_NOT_RESOLVED') ||
+        error.message.includes('net::ERR_NAME_NOT_RESOLVED') ||
+        error.message.includes('Failed to fetch') ||
+        error.message.includes('NetworkError')
+    )) {
+      // Determine error type
+      let errorType = 'CONNECTION_ERROR';
+      
+      if (error.message.includes('ERR_NAME_NOT_RESOLVED') || 
+          error.message.includes('net::ERR_NAME_NOT_RESOLVED')) {
+        errorType = 'DNS_ERROR';
+      } else if (error.message.includes('timeout') || error.message.includes('timed out')) {
+        errorType = 'TIMEOUT_ERROR';
+      }
+      
+      // Redirect to connection error view
+      router.push({
+        path: '/connection-error',
+        query: { 
+          errorType,
+          message: error.message,
+          from: 'login'
+        }
+      });
+      return;
     }
-    // Redirect to home page
-    const redirectPath = route.query.redirect || '/'
-    router.push(redirectPath)
-  } catch (error) {
-    console.error('Login error:', error)
-    loginError.value = error.message || 'Failed to sign in'
+    
+    loginError.value = error.message || 'Failed to sign in';
     // Try session recovery if it's an auth error
     if (error.message?.includes('auth') || error.message?.includes('session')) {
-      const recovered = await trySessionRecovery()
-      if (recovered) return
+      const recovered = await trySessionRecovery();
+      if (recovered) return;
     }
   } finally {
-    loginProcessing.value = false
+    loginProcessing.value = false;
   }
 }
 // Add a timeout to prevent infinite waiting
@@ -572,9 +807,9 @@ const handleGoogleLogin = async () => {
     if (error) {
       console.error('Supabase Google login error:', error)
       throw error
-    }
-    if (data && data.url) {
-      // Redirect to Google authorization page via Supabase
+    }    if (data && data.url) {
+      // For OAuth flows, we must use direct navigation as it redirects to external domain
+      // This is an acceptable use of window.location as it's necessary for OAuth
       window.location.href = data.url
     } else {
       console.error('Invalid response format from Supabase:', data)
@@ -805,21 +1040,22 @@ const toggleLoginForm = (form) => {
 // Check if user is already logged in
 onMounted(async () => {
   try {
-    // Test Supabase connection
-    await checkSupabaseConnection()
-    // Only redirect if there's a valid session AND the user isn't trying to log out
-    const session = await authStore.getSupabaseSession()
-    const isLoggingOut = route.query.logout === 'true'
-    if (session && !isLoggingOut) {
-      const redirectPath = route.query.redirect || '/'
-      router.push(redirectPath)
-    } else if (isLoggingOut) {
-      // If logging out, ensure we clear any remaining session
-      await authStore.clearSession()
+    // Clean up URL parameters to prevent loop issues
+    const { checkAndHandleLoopParam } = await import('@/utils/authLoopBreaker');
+    checkAndHandleLoopParam();
+    
+    // If we already have a valid session, redirect to home
+    const authStore = useAuthStore();
+    if (authStore.isAuthenticated && route.query.loop !== 'broken') {
+      console.log('Already authenticated, redirecting to home');
+      router.replace('/');
+      return;
     }
+
+    // Check for Supabase connection
+    checkSupabaseConnection();
   } catch (error) {
-    console.error('Error in LoginView mounted hook:', error)
-    // Don't throw the error, just log it
+    console.error('Error in login component mount:', error);
   }
 })
 // SVG icon components instead of imported ones

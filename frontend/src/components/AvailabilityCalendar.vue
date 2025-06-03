@@ -27,7 +27,7 @@
       </button>
     </div>
     <!-- Date Range Selector for Blocking Dates (Only shown in blocking mode AND is owner) -->
-    <div v-if="blockingMode && isOwner && !viewOnly" class="mb-6 bg-white p-4 rounded-lg shadow-sm border border-red-200 bg-red-50">
+    <div v-if="blockingMode && isOwner && !viewOnly" class="mb-6 bg-red-50 p-4 rounded-lg shadow-sm border border-red-200">
       <h3 class="font-medium mb-3">Block Date Range</h3>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <div>
@@ -168,9 +168,10 @@
   </div>
 </template>
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch, onUnmounted } from 'vue';
 import axios from '@/axios';
 import { useToast } from 'vue-toastification';
+import { useAuthStore } from '@/stores/auth';
 const props = defineProps({
   campingSpotId: {
     type: [Number, String],
@@ -196,6 +197,8 @@ const props = defineProps({
 const emit = defineEmits(['date-selected', 'blocked-dates-loaded']);
 // Component state
 const toast = useToast();
+const authStore = useAuthStore();
+const session = computed(() => authStore.session);
 const bookings = ref([]);
 const loading = ref(false);
 const error = ref(null);
@@ -290,68 +293,72 @@ function getCalendarDays(year, month) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
   // Add days of the month
   for (let d = 1; d <= daysInMonth; d++) {
     const dayDate = new Date(year, month, d);
     const dateStr = formatDateForInput(dayDate);
     dayDate.setHours(0, 0, 0, 0);
+
     // Check if the date is in the past
     const isPast = dayDate < today;
+
     // Find ALL bookings for this day
     const dayBookings = bookings.value.filter(booking => {
       if (!booking.start_date || !booking.end_date) return false;
+      
       const bookingStart = new Date(booking.start_date);
       const bookingEnd = new Date(booking.end_date);
+      
       // Set times to start of day for accurate date comparison
       bookingStart.setHours(0, 0, 0, 0);
       bookingEnd.setHours(0, 0, 0, 0);
+      
       // Check if the day falls within the booking range (inclusive)
       return dayDate >= bookingStart && dayDate <= bookingEnd;
     });
+
     // Determine day status based on bookings
-    const isBlocked = dayBookings.some(booking => booking.status_id === 5);
-    const isBooked = dayBookings.some(booking => booking.status_id === 2 || booking.status_id === 4);
+    const isBlocked = dayBookings.some(booking => booking.status_id === 5); // Blocked by owner
+    const isBooked = dayBookings.some(booking => [1, 2, 4].includes(booking.status_id)); // Pending, Confirmed, or Completed
+
     days.push({
       date: dateStr,
       dayOfMonth: d,
       hasBooking: dayBookings.length > 0,
-      isBlocked: isBlocked,
-      isBooked: isBooked,
+      isBlocked,
+      isBooked,
       isToday: isToday(dayDate),
-      isPast: isPast
+      isPast
     });
   }
   return days;
 }
+
 function getDayClasses(day) {
-  const classes = [];
-  // Base styling
-  classes.push('text-center', 'relative');
-  // Skip empty cells
+  const classes = ['text-center', 'relative'];
+  
   if (!day.dayOfMonth) {
     classes.push('bg-white');
     return classes.join(' ');
   }
-  // Today styling
+
   if (day.isToday) {
     classes.push('font-bold border-2 border-blue-500');
   }
-  // Past days - show them but with muted styling
+
   if (day.isPast) {
     classes.push('text-gray-400 bg-gray-50');
   } else {
-    // Booking status styling for non-past days
     if (day.isBlocked) {
-      // Owner blocked dates
-      classes.push('bg-red-50 text-red-900');
+      classes.push('bg-red-50 text-red-900'); // Owner blocked dates
     } else if (day.isBooked) {
-      // Customer booked dates
-      classes.push('bg-blue-50 text-blue-900');
+      classes.push('bg-blue-50 text-blue-900'); // Customer booked dates
     } else {
-      // Available dates
-      classes.push('bg-white hover:bg-gray-50');
+      classes.push('bg-white hover:bg-gray-50'); // Available dates
     }
   }
+
   return classes.join(' ');
 }
 function toggleBlockingMode() {
@@ -364,23 +371,83 @@ function resetDateSelection() {
   endDateInput.value = '';
 }
 // Direct block dates - simplifying the flow
+function formatDateForAPI(dateStr) {
+  const date = new Date(dateStr);
+  return date.toISOString().split('T')[0];
+}
+// Direct block dates - simplifying the flow
 async function blockDates() {
   if (!isValidDateRange.value) {
     dateSelectionError.value = 'Please select a valid date range';
     return;
   }
+
   try {
-    // Notify the parent component about the dates
-    emit('date-selected', {
-      startDate: startDateInput.value,
-      endDate: endDateInput.value
+    // First check if the dates are valid
+    const startDate = new Date(startDateInput.value);
+    const endDate = new Date(endDateInput.value);
+    
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      throw new Error('Invalid date format');
+    }
+
+    // Ensure start date is not in the past
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (startDate < today) {
+      throw new Error('Start date cannot be in the past');
+    }
+
+    // Ensure end date is after start date
+    if (endDate <= startDate) {
+      throw new Error('End date must be after start date');
+    }
+
+    // Format dates for the API
+    const formattedStartDate = formatDateForAPI(startDate);
+    const formattedEndDate = formatDateForAPI(endDate);
+    
+    // Get auth token from store
+    const authStore = useAuthStore();
+    let token = await authStore.getAuthToken();
+    
+    // If no token or expired, try to refresh
+    if (!token && session.value?.refresh_token) {
+      try {
+        await authStore.refreshToken();
+        token = await authStore.getAuthToken();
+      } catch (refreshError) {
+        console.error('Token refresh failed:', refreshError);
+        throw new Error('Your session has expired. Please log in again.');
+      }
+    }
+    
+    if (!token) {
+      throw new Error('Authentication required. Please log in.');
+    }
+
+    console.log('Blocking dates:', {
+      spotId: props.campingSpotId,
+      startDate: formattedStartDate,
+      endDate: formattedEndDate
     });
-    // Post directly to the API
-    await axios.post(`/api/camping-spots/${props.campingSpotId}/availability`, {
-      startDate: startDateInput.value,
-      endDate: endDateInput.value,
-      owner_id: props.ownerId
-    });
+    
+    // Post directly to the API with auth token
+    const response = await axios.post(`/api/camping-spots/${props.campingSpotId}/availability`, 
+      {
+        startDate: formattedStartDate,
+        endDate: formattedEndDate
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    console.log('Block dates response:', response.data);
+    
     // Success feedback
     toast.success('Dates blocked successfully');
     // Reset and refresh
@@ -388,13 +455,19 @@ async function blockDates() {
     blockingMode.value = false;
     await loadBookings();
   } catch (error) {
-    console.error('Error blocking dates:', error);
-    toast.error(error.response?.data?.error || 'Failed to block dates');
-    if (error.response?.status === 400) {
-      dateSelectionError.value = error.response.data.error;
-    } else {
-      dateSelectionError.value = 'An error occurred while blocking dates';
-    }
+    console.error('Error blocking dates:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
+
+    const errorMessage = error.response?.data?.message || 
+                        error.response?.data?.error || 
+                        error.message || 
+                        'Failed to block dates';
+
+    toast.error(errorMessage);
+    dateSelectionError.value = errorMessage;
   }
 }
 // Unblock dates (for owner)
@@ -444,46 +517,95 @@ const loadBookings = async () => {
 };
 // Process booking response data
 const processBookingResponse = (data) => {
-  if (data.bookings && Array.isArray(data.bookings)) {
-    // Get today's date for filtering out past bookings
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    // Process bookings properly and filter out cancelled bookings (status_id 3)
-    // Also filter out bookings that ended in the past
-    bookings.value = data.bookings
-      .filter(booking => {
-        // Filter out cancelled bookings
-        if (booking.status_id === 3) return false;
-        // Filter out past bookings (end date is before today)
+  if (!data) {
+    console.warn('No data received from availability endpoint');
+    bookings.value = [];
+    return;
+  }
+
+  // Handle both the old and new response formats
+  const bookingsArray = Array.isArray(data) ? data : data.bookings || [];
+  
+  // Get today's date for filtering out past bookings
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  // Process bookings properly and filter out cancelled bookings and past dates
+  bookings.value = bookingsArray
+    .filter(booking => {
+      if (!booking || !booking.end_date) return false;
+      try {
+        // Keep if:
+        // 1. Not cancelled (status_id !== 3)
+        // 2. Not in the past
         const endDate = new Date(booking.end_date);
         endDate.setHours(0, 0, 0, 0);
-        return endDate >= today;
-      })
-      .map(booking => ({
-        ...booking,
-        // Ensure status_id is properly set
-        status_id: booking.status_id || (booking.isUnavailable ? 5 : 2),        // Add explicit flags for clarity
-        isBlocked: booking.status_id === 5,
-        isBooked: booking.status_id === 2 || booking.status_id === 4
-      }));
-    console.log('Processed bookings:', bookings.value);
-  } else {
-    console.warn('No bookings data found in response');
-    bookings.value = [];
-  }
+        return booking.status_id !== 3 && endDate >= today;
+      } catch (error) {
+        console.warn('Invalid booking data:', booking);
+        return false;
+      }
+    })    .map(booking => {
+      try {
+        const statusId = parseInt(booking.status_id) || (booking.isUnavailable ? 5 : 2);
+        return {
+          ...booking,
+          start_date: booking.start_date,
+          end_date: booking.end_date,
+          // Ensure status_id is properly set as a number
+          status_id: statusId,
+          // Add explicit flags for clarity
+          isBlocked: statusId === 5,
+          isBooked: statusId === 2 || statusId === 4
+        };
+      } catch (error) {
+        console.warn('Error processing booking:', booking, error);
+        return {
+          ...booking,
+          start_date: booking.start_date || new Date(),
+          end_date: booking.end_date || new Date(),
+          status_id: 2,
+          isBlocked: false,
+          isBooked: true
+        };
+      }
+    });
+
+  console.log('Processed bookings:', bookings.value);
+  
   // Emit the blocked dates for parent components
   emit('blocked-dates-loaded', bookings.value);
 };
-// Fix the watches to reference loadBookings after it's declared
-onMounted(() => {
-  loadBookings();
-});
-// Move this watch AFTER loadBookings is defined
-watch(() => props.campingSpotId, () => {
+// Load bookings when the component mounts
+onMounted(async () => {
   if (props.campingSpotId) {
-    loadBookings();
+    await loadBookings();
+  }
+});
+
+// Reload when camping spot ID changes
+watch(() => props.campingSpotId, async (newId) => {
+  if (newId) {
+    await loadBookings();
   }
 }, { immediate: true });
+
+// Reload bookings periodically to keep calendar up to date
+const startAutoRefresh = () => {
+  const refreshInterval = setInterval(async () => {
+    if (props.campingSpotId) {
+      await loadBookings();
+    }
+  }, 5 * 60 * 1000); // Refresh every 5 minutes
+
+  // Clean up on component unmount
+  onUnmounted(() => {
+    clearInterval(refreshInterval);
+  });
+};
+
+if (props.campingSpotId) {
+  startAutoRefresh();
+}
 </script>
 <style scoped>
 .availability-calendar {

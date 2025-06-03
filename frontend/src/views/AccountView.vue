@@ -210,7 +210,7 @@
                       More Info
                     </button>
                     <button 
-                      v-if="booking.status === 'Confirmed'"
+                      v-if="booking.status?.toLowerCase() === 'confirmed'"
                       @click="openCancelModal(booking)"
                       class="cancel-button"
                       :disabled="cancellingBooking === booking.id"
@@ -250,7 +250,8 @@
                       @click="showBookingDetails(booking)"
                     >
                       More Info
-                    </button>                    <button
+                    </button>
+                    <button
                       v-if="isReviewEligible(booking) && !hasReview(booking)"
                       class="review-button"
                       @click="openReviewModal(booking)"
@@ -523,21 +524,21 @@ const tabs = [
 ]
 // Computed properties
 const upcomingBookings = computed(() => {
-  const filtered = bookings.value.filter(booking => {
-    return booking.status === 'Confirmed' && new Date(booking.end_date) >= new Date()
-  })
-  // Log the first booking to see its structure
-  if (filtered.length > 0) {
-  }
-  return filtered
-})
+  return bookings.value.filter(booking => {
+    return booking.status?.toLowerCase() === 'confirmed';
+  });
+});
+
 const previousBookings = computed(() => {
   return bookings.value.filter(booking => {
-    return booking.status === 'Completed' || (booking.status === 'Confirmed' && new Date(booking.end_date) < new Date())
-  })
-})
+    return booking.status?.toLowerCase() === 'completed';
+  });
+});
+
 const cancelledBookings = computed(() => {
-  return bookings.value.filter(booking => booking.status === 'Cancelled')
+  return bookings.value.filter(booking => {
+    return booking.status?.toLowerCase() === 'cancelled';
+  });
 })
 const totalBookings = computed(() => {
   return bookings.value.filter(booking => {
@@ -613,11 +614,21 @@ const loadUserData = async () => {
   loading.value = true
   error.value = null
   try {
-    if (!authStore.isLoggedIn) {
-      router.push('/auth')
+    if (!authStore.isLoggedIn || !authStore.user) {
+      // Immediately redirect to auth page if not logged in
+      router.replace('/auth')
       return
     }
+
+    // Check token first
     const token = await authStore.getAuthToken()
+    if (!token) {
+      console.error('No auth token available')
+      await authStore.clearSession()
+      router.replace('/auth')
+      return
+    }
+
     const response = await axios.get('/api/users/me', {
       headers: {
         Authorization: `Bearer ${token}`
@@ -635,24 +646,36 @@ const loadUserData = async () => {
 }
 const loadBookings = async () => {
   loadingBookings.value = true
-    try {
+  try {
     const token = await authStore.getAuthToken()
     const response = await axios.get('/api/bookings/user', {
       headers: {
         Authorization: `Bearer ${token}`
-      },
-      params: {
-        include_reviews: true // Request review information
       }
     })
     
-    if (response.data && response.data.length > 0) {
-      // Process the bookings to make sure review status is properly handled
-      response.data.forEach(booking => {
-        // If has_review is not explicitly set, check other indicators
+    if (response.data) {
+      // Process each category of bookings
+      const processed = {
+        upcoming: response.data.upcoming || [],
+        previous: response.data.previous || [],
+        cancelled: response.data.cancelled || []
+      };
+      
+      // Process the reviews for all bookings
+      [...processed.upcoming, ...processed.previous, ...processed.cancelled].forEach(booking => {
         if (booking.has_review === undefined) {
-          booking.has_review = Boolean(booking.review_id || booking.rating > 0);
+          booking.has_review = Boolean(booking.review?.review_id || booking.review?.rating > 0);
         }
+      });
+
+      // Store all bookings in a flat array
+      bookings.value = [...processed.upcoming, ...processed.previous, ...processed.cancelled];
+      console.log('Loaded bookings:', {
+        total: bookings.value.length,
+        upcoming: processed.upcoming.length,
+        previous: processed.previous.length,
+        cancelled: processed.cancelled.length
       });
     }
     
@@ -719,13 +742,19 @@ const changePassword = async () => {
   try {
     const token = await authStore.getAuthToken()
     const response = await axios.post('/api/users/change-password', {
-      current_password: passwordData.currentPassword,
-      new_password: passwordData.newPassword
+      currentPassword: passwordData.currentPassword,
+      newPassword: passwordData.newPassword
     }, {
       headers: {
         Authorization: `Bearer ${token}`
       }
     })
+
+    // Update the session if returned
+    if (response.data.session) {
+      await authStore.setSession(response.data.session)
+    }
+
     toast.success('Password changed successfully')
     // Clear form
     passwordData.currentPassword = ''
@@ -1229,11 +1258,58 @@ onMounted(() => {
   display: flex;
   align-items: center;
   background-color: #F3F4F6;
+  color: #111827;  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.info-button {
+  background-color: #F3F4F6;
   color: #111827;
+}
+
+.info-button:hover {
+  background-color: #E5E7EB;
+}
+
+.cancel-button {
+  background-color: #FEE2E2;
+  color: #DC2626;
+}
+
+.cancel-button:hover:not(:disabled) {
+  background-color: #FEE2E2;
+}
+
+.cancel-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.review-button {
+  background-color: #E0F2FE;
+  color: #0369A1;
+}
+
+.review-button:hover {
+  background-color: #BAE6FD;
+}
+
+.has-review-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background-color: #F3F4F6;
+  color: #4B5563;
   padding: 0.5rem 0.75rem;
   border-radius: 0.375rem;
   font-size: 0.875rem;
   font-weight: 500;
+}
+
+.review-icon {
+  color: #EAB308;
 }
 .review-icon {
   color: #F59E0B;

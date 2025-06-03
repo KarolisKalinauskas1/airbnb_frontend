@@ -291,18 +291,26 @@ async function handleSaveSpot(spotData) {
       toast.error('Authentication data not loaded. Please refresh the page and try again.');
       return;
     }
-    // If we received spotData with camping_spot_id, it means the spot was already created
-    // by the modal component, so we just need to handle the success case
-    if (spotData.camping_spot_id) {
+
+    // If we received spotData with camping_spot_id and we're NOT editing, 
+    // it means the spot was already created by the modal component
+    if (spotData.camping_spot_id && !editingSpot.value) {
       toast.success('Camping spot created successfully');
       closeAddModal();
       await fetchSpots();
       return;
     }
-    // Only proceed with API calls if we're editing
+    
+    // If we're editing, proceed with the update
     if (editingSpot.value) {
       try {
-        const response = await axios.put(`/api/camping-spots/${editingSpot.value.camping_spot_id}`, spotData);
+        const token = await authStore.getAuthToken();
+        const response = await axios.put(`/api/camping-spots/${editingSpot.value.camping_spot_id}`, spotData, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
         toast.success('Spot updated successfully');
         closeAddModal();
         await fetchSpots();
@@ -331,7 +339,77 @@ async function handleUpdateSpot(updatedSpotData) {
       console.error('Invalid updated spot data received');
       return;
     }
-    // Find and update the spot in our local array immediately
+
+    // Get fresh auth token
+    const token = await authStore.getAuthToken();
+    
+    // Create form data to properly handle images and JSON data
+    const formData = new FormData();
+    
+    // Add camping spot data
+    formData.append('title', updatedSpotData.title);
+    formData.append('description', updatedSpotData.description);
+    formData.append('price_per_night', updatedSpotData.price_per_night);
+    formData.append('max_guests', updatedSpotData.max_guests);
+
+    // Add location data
+    const locationData = {
+      address_line1: updatedSpotData.location?.address_line1 || '',
+      address_line2: updatedSpotData.location?.address_line2 || '',
+      city: updatedSpotData.location?.city || '',
+      postal_code: updatedSpotData.location?.postal_code || '',
+      country_id: updatedSpotData.location?.country_id
+    };
+    formData.append('location', JSON.stringify(locationData));
+
+    // Find the original spot to compare amenities
+    const originalSpot = spots.value.find(s => s.camping_spot_id === updatedSpotData.camping_spot_id);
+    
+    // Get current amenity IDs
+    const currentAmenityIds = new Set(originalSpot?.camping_spot_amenities?.map(a => a.amenity_id) || []);
+    // Get new amenity IDs
+    const newAmenityIds = new Set(updatedSpotData.camping_spot_amenities?.map(a => a.amenity_id) || []);
+    
+    // Detect removals and additions
+    const amenityRemovals = [...currentAmenityIds].filter(id => !newAmenityIds.has(id));
+    const amenityAdditions = [...newAmenityIds].filter(id => !currentAmenityIds.has(id));
+    
+    // Add amenities data with removals info
+    formData.append('amenities', JSON.stringify({
+      add: amenityAdditions,
+      remove: amenityRemovals
+    }));
+
+    // Handle images - both new uploads and deletions
+    const currentImageIds = new Set(originalSpot?.images?.map(img => img.image_id) || []);
+    const newImageIds = new Set(updatedSpotData.images?.filter(img => !img instanceof File).map(img => img.image_id) || []);
+    
+    // Detect image removals
+    const imageRemovals = [...currentImageIds].filter(id => !newImageIds.has(id));
+    formData.append('remove_images', JSON.stringify(imageRemovals));
+
+    // Add new images
+    if (updatedSpotData.images) {
+      updatedSpotData.images.forEach((image) => {
+        if (image instanceof File) {
+          formData.append('images', image);
+        }
+      });
+    }
+
+    // Make API call to update the spot
+    await axios.put(
+      `/api/camping-spots/${updatedSpotData.camping_spot_id}`, 
+      formData,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      }
+    );
+
+    // Find and update the spot in our local array
     const spotIndex = spots.value.findIndex(s => s.camping_spot_id === updatedSpotData.camping_spot_id);
     if (spotIndex !== -1) {
       // Update the spot in the array with all the new data
@@ -340,23 +418,101 @@ async function handleUpdateSpot(updatedSpotData) {
         ...updatedSpotData
       };
     }
+
+    toast.success('Camping spot updated successfully');
     // Close the modal
     closeAddModal();
   } catch (error) {
     console.error('Error handling spot update:', error);
-    toast.error('Error updating spot data in UI');
+    
+    // Handle 401 unauthorized errors by refreshing token and retrying
+    if (error.response?.status === 401) {
+      try {
+        await authStore.refreshToken();
+        const token = await authStore.getAuthToken();
+        
+        // Create form data again for retry
+        const formData = new FormData();
+        formData.append('title', updatedSpotData.title);
+        formData.append('description', updatedSpotData.description);
+        formData.append('price_per_night', updatedSpotData.price_per_night);
+        formData.append('max_guests', updatedSpotData.max_guests);
+
+        const locationData = {
+          address_line1: updatedSpotData.location?.address_line1 || '',
+          address_line2: updatedSpotData.location?.address_line2 || '',
+          city: updatedSpotData.location?.city || '',
+          postal_code: updatedSpotData.location?.postal_code || '',
+          country_id: updatedSpotData.location?.country_id
+        };
+        formData.append('location', JSON.stringify(locationData));
+
+        formData.append('amenities', JSON.stringify(updatedSpotData.camping_spot_amenities?.map(a => a.amenity_id) || []));
+
+        if (updatedSpotData.images) {
+          updatedSpotData.images.forEach((image, index) => {
+            if (image instanceof File) {
+              formData.append('images', image);
+            }
+          });
+        }
+
+        await axios.put(
+          `/api/camping-spots/${updatedSpotData.camping_spot_id}`, 
+          formData,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'multipart/form-data'
+            }
+          }
+        );
+        toast.success('Camping spot updated successfully');
+        closeAddModal();
+        return;
+      } catch (retryError) {
+        console.error('Retry failed:', retryError);
+      }
+    }
+    
+    // Show more specific error messages
+    const errorMessage = error.response?.data?.error || error.response?.data?.message || 'Failed to update camping spot';
+    toast.error(errorMessage);
   }
 }
 async function deleteSpot() {
   if (!spotToDelete.value) return
   try {
-    await axios.delete(`/api/camping-spots/${spotToDelete.value.camping_spot_id}`)
+    const token = await authStore.getAuthToken();
+    await axios.delete(`/api/camping-spots/${spotToDelete.value.camping_spot_id}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
     toast.success('Spot deleted successfully')
     showDeleteModal.value = false
     spotToDelete.value = null
     await fetchSpots()
   } catch (error) {
     console.error('Failed to delete spot:', error)
+    if (error.response?.status === 401) {
+      try {
+        await authStore.refreshToken();
+        const newToken = await authStore.getAuthToken();
+        await axios.delete(`/api/camping-spots/${spotToDelete.value.camping_spot_id}`, {
+          headers: {
+            'Authorization': `Bearer ${newToken}`
+          }
+        });
+        toast.success('Spot deleted successfully')
+        showDeleteModal.value = false
+        spotToDelete.value = null
+        await fetchSpots()
+        return;
+      } catch (retryError) {
+        console.error('Retry failed:', retryError);
+      }
+    }
     toast.error('Failed to delete camping spot')
   }
 }

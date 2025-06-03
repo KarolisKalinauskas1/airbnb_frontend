@@ -198,6 +198,7 @@ import axios from '@/axios'
 import DateRangeSelector from '@/components/DateRangeSelector.vue'
 import CheckoutSummary from '@/components/CheckoutSummary.vue'
 import { useToast } from 'vue-toastification'
+import { navigateToAuth } from '@/utils/routerNavigation'
 
 const toast = useToast()
 const route = useRoute()
@@ -255,10 +256,19 @@ const datesAreBlocked = computed(() => {
   start.setHours(0, 0, 0, 0)
   end.setHours(0, 0, 0, 0)
   
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
   return blockedDates.value.some(block => {
     const blockStart = new Date(block.start_date)
     const blockEnd = new Date(block.end_date)
     
+    // Ignore blocks in the past
+    if (blockEnd < today) return false
+
+    // Ignore cancelled bookings
+    if (block.status_id === 3) return false
+
     blockStart.setHours(0, 0, 0, 0)
     blockEnd.setHours(0, 0, 0, 0)
     
@@ -268,7 +278,6 @@ const datesAreBlocked = computed(() => {
       (start >= blockStart && end <= blockEnd)
     )
   })
-})
 
 const formatLocation = (location) => {
   if (!location) return ''
@@ -341,17 +350,48 @@ const goBack = () => {
   });
 }
 
-const processBooking = async () => {
-  if (!validateForm()) return;
+const handleBooking = async () => {
+  // Check authentication first  
+  if (!authStore.isLoggedIn) {
+    // Save current booking details to query params
+    const currentBookingState = {
+      startDate: dates.value.startDate,
+      endDate: dates.value.endDate,
+      guests: guestCount.value
+    };
+
+    // Remember current page with booking details
+    const currentPath = router.currentRoute.value.fullPath;
+    
+    // Import the navigation utility
+    const { navigateToAuth } = await import('@/utils/routerNavigation');
+    
+    try {
+      // Use our centralized navigation with loop detection
+      navigateToAuth('booking-auth-redirect', currentPath, { 
+        booking: JSON.stringify(currentBookingState)
+      });
+    } catch (err) {
+      console.error('Navigation error:', err);
+      // Fallback to basic redirect
+      router.push('/auth');
+    }
+    return;
+  }
+
+  // Validate form before proceeding
+  if (!validateForm()) {
+    return;
+  }
 
   if (datesAreBlocked.value) {
     bookingError.value = 'The selected dates are unavailable for booking';
     toast.error('The selected dates are unavailable for booking');
     return;
   }
-  
-  loading.value = true;
+    loading.value = true;
   bookingError.value = null;
+  
   try {
     const basePrice = spot.value.price_per_night * nights.value;
     const serviceFee = basePrice * 0.1; // 10% service fee
@@ -374,7 +414,10 @@ const processBooking = async () => {
     
     // Set a small timeout to allow the toast to display
     setTimeout(() => {
-      // Redirect to Stripe Checkout
+      // IMPORTANT: This is an acceptable use of window.location.href because:
+      // 1. Stripe Checkout requires a full page navigation to an external domain
+      // 2. This is not part of the auth redirect flow that could cause loops
+      // 3. Vue Router cannot handle external domain navigation
       window.location.href = data.url;
     }, 500);
   } catch (error) {

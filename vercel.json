@@ -13,7 +13,7 @@
       }
     },
     {
-      "src": "/login",
+      "src": "/auth",
       "status": 308,
       "headers": { "Location": "/auth" }
     },

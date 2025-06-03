@@ -1,6 +1,7 @@
 import axios from '@/axios';
 import { useAuthStore } from '@/stores/auth';
-import { getTokenFromStorage } from '@/utils/persistentAuth';
+import { isValidTokenFormat } from '@/utils/tokenValidation';
+import { navigateToAuth } from '@/utils/routerNavigation';
 
 /**
  * Configure Axios interceptors for better error handling
@@ -11,120 +12,86 @@ export function configureAxiosInterceptors() {
     async (config) => {
       // Set sensible timeouts based on request type
       if (!config.timeout) {
-        if (config.url.includes('/ping')) {
-          config.timeout = 3000; // 3 seconds for ping
-        } else if (config.url.includes('/auth/')) {
-          config.timeout = 5000; // 5 seconds for auth endpoints        } else {
-          config.timeout = 10000; // 10 seconds for everything else
-        }
+        config.timeout = config.url?.includes('/auth/') ? 5000 : 10000;
       }
-        // Check if this is a public route (GET requests only)
-      const isPublicRoute = config.method.toLowerCase() === 'get' && (
-        config.url.includes('/api/camping-spots') || 
-        config.url.includes('/api/campingspots') || // Alternative API endpoint format
-        config.url.includes('/api/locations') || 
-        config.url.includes('/api/countries') || 
-        config.url.includes('/api/amenities') ||
-        config.url.includes('/api/bookings/success') || // Add success route to public routes
-        config.url.includes('/api/auth/oauth') || // Add OAuth routes to public routes
-        config.url.includes('/api/reviews/stats') || // Add review stats to public routes
-        config.url.includes('/api/reviews/spot') || // Add review listing to public routes
-        config.url.includes('/api/camper') || // Add camper routes (for browsing) to public routes
-        config.url.includes('/api/health') || // Health check endpoints
-        config.url.includes('/api/status') // Status endpoints
-      );
 
-      // Only add auth token for non-public routes
-      if (!isPublicRoute) {
-        const authStore = useAuthStore();
-        
+      // Check if this is a public route
+      const isPublicRoute = 
+        (config.headers && config.headers['X-Public-Route'] === 'true') ||
+        (config.method?.toLowerCase() === 'get' && (
+          config.url?.includes('/api/camping-spots') || 
+          config.url?.includes('/api/amenities') || 
+          config.url?.includes('/api/countries') ||
+          config.url?.match(/\/api\/camping-spots\/\d+$/) ||
+          config.url?.match(/\/api\/camper\/\d+$/) ||
+          config.url?.includes('/api/reviews/stats') ||
+          config.url?.includes('/api/health') ||
+          config.url?.includes('/api/status')
+        ));
+
+      if (isPublicRoute) {
+        config.headers['X-Public-Route'] = 'true';
+      } else {
         try {
-          // Force refresh token for PUT requests
-          const forceRefresh = config.method.toLowerCase() === 'put';
-          const token = await authStore.getAuthToken(forceRefresh);
-          
-          if (token && typeof token === 'string') {
+          const authStore = useAuthStore();
+          const token = await authStore.getAuthToken();
+
+          if (token && isValidTokenFormat(token)) {
             config.headers.Authorization = `Bearer ${token}`;
-            console.log(`Token: ${token.substring(0, 5)}...`); // Log partial token for debugging          } else {
-            console.error('Interceptor: Invalid token format:', typeof token);
           }
         } catch (error) {
-          console.error('Error getting auth token:', error);          // Only redirect to login page for non-public routes
-          if (!isPublicRoute) {
-            window.location.href = '/auth?redirect=' + window.location.pathname;
-            return Promise.reject(error);
-          }
+          console.error('Error getting auth token:', error);
         }
       }
 
-      // Add request identifier to help track duplicates
-      config.requestId = Math.random().toString(36).substring(7);
       return config;
-    }, 
-    (error) => {
-      return Promise.reject(error);
-    }
+    },
+    error => Promise.reject(error)
   );
-  
+
   // Response interceptor
   axios.interceptors.response.use(
     (response) => response,
     async (error) => {
       const originalRequest = error.config;
 
-      // Don't retry if:
-      // 1. No config (canceled requests)
-      // 2. Already retried
-      // 3. Auth-related endpoints
-      if (!originalRequest || originalRequest._retry || originalRequest.url.includes('/auth/')) {
+      // Don't retry if no config, already retried, or auth-related endpoints
+      if (!originalRequest || 
+          originalRequest._retry || 
+          originalRequest?.url?.includes('/auth/')) {
         return Promise.reject(error);
       }
 
-      // Handle 401 errors
-      if (error.response?.status === 401) {
+      // Check if this was a public route
+      const isPublicRoute = 
+        originalRequest.headers?.['X-Public-Route'] === 'true' ||
+        originalRequest.url?.match(/\/api\/(camping-spots|camper)\/\d+$/) ||
+        (originalRequest.method?.toLowerCase() === 'get' && (
+          originalRequest.url?.includes('/api/amenities') ||
+          originalRequest.url?.includes('/api/countries')
+        ));
+
+      // Handle 401 errors for non-public routes
+      if (error.response?.status === 401 && !isPublicRoute) {
         try {
-          // Mark request as retried
           originalRequest._retry = true;
-          
-          // Try to refresh the token
           const authStore = useAuthStore();
           const success = await authStore.refreshToken();
-          
+
           if (success) {
-            // Get the new token
             const token = await authStore.getAuthToken();
-            
-            if (token && typeof token === 'string') {
+            if (token && isValidTokenFormat(token)) {
               originalRequest.headers.Authorization = `Bearer ${token}`;
-              console.log(`Refreshed token: ${token.substring(0, 5)}...`); // Log partial token for debugging
-              // Retry the original request
               return axios(originalRequest);
-            } else {
-              console.error('Interceptor: Invalid token format after refresh:', typeof token);
-            }          }
-            // If we get here, token refresh failed
-          console.error('Token refresh failed, redirecting to login page');
-          window.location.href = '/auth?redirect=' + window.location.pathname;
-          return Promise.reject(error);        } catch (refreshError) {
+            }
+          }
+          
+          // Token refresh failed, clear session and redirect to login
+          await authStore.clearSession();
+          navigateToAuth('axios-refresh-failed', window.location.pathname);
+        } catch (refreshError) {
           console.error('Error during token refresh:', refreshError);
-          window.location.href = '/auth?redirect=' + window.location.pathname;
-          return Promise.reject(error);
         }
-      }
-
-      // Handle timeout errors better
-      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-        error.isTimeout = true;
-      }
-
-      // Catch network errors when offline
-      if (!navigator.onLine) {
-        error.isOffline = true;
-      }
-
-      // Don't console.error canceled requests as they're often intentional
-      if (error.code !== 'ERR_CANCELED' && error.name !== 'CanceledError') {
-        console.error('Request error:', error.message, 'URL:', originalRequest?.url);
       }
 
       return Promise.reject(error);

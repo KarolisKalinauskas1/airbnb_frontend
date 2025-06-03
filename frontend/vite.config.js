@@ -4,10 +4,8 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 export default defineConfig(({ command, mode }) => {
-  const isProduction = mode === 'production'
-  const backendUrl = isProduction 
-    ? 'https://airbnbbackend-production-5ffb.up.railway.app' 
-    : 'http://localhost:3000';
+  const isProduction = mode === 'production';
+  const backendUrl = process.env.VITE_API_URL || 'http://localhost:3000';
 
   return {
     plugins: [
@@ -19,8 +17,7 @@ export default defineConfig(({ command, mode }) => {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url))
       },
-    },
-    server: {
+    },    server: {
       host: true,
       port: process.env.PORT || 5173,
       strictPort: false,
@@ -29,9 +26,20 @@ export default defineConfig(({ command, mode }) => {
         '^/api/.*': {
           target: backendUrl,
           changeOrigin: true,
-          secure: isProduction,
-          rewrite: (path) => path
-        },
+          secure: false,
+          ws: true,
+          configure: (proxy, _options) => {
+            proxy.on('error', (err, _req, _res) => {
+              console.log('[Proxy Error]', err);
+            });
+            proxy.on('proxyReq', (proxyReq, req, _res) => {
+              console.log('[Proxy Request]', req.method, req.url);
+            });
+            proxy.on('proxyRes', (proxyRes, req, _res) => {
+              console.log('[Proxy Response]', proxyRes.statusCode, req.url);
+            });
+          }
+        }
       },
     },
     build: {
@@ -43,28 +51,7 @@ export default defineConfig(({ command, mode }) => {
           drop_console: isProduction,
           drop_debugger: isProduction
         }
-      },
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            'vue-vendor': ['vue', 'vue-router', 'pinia'],
-            'ui-vendor': ['vue-toastification', 'vue3-toastify'],
-            'http-vendor': ['axios'],
-            'date-vendor': ['date-fns']
-          }
-        }
       }
-    },
-    optimizeDeps: {
-      include: [
-        'vue',
-        'vue-router',
-        'pinia',
-        'axios',
-        'vue-toastification',
-        'vue3-toastify',
-        'date-fns'
-      ]
     }
   }
 })

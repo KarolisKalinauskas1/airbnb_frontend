@@ -292,9 +292,22 @@ class DashboardService {
    * @returns {Promise<Array>} List of bookings for owner's camping spots
    */  async getOwnerBookings() {
     try {
-      const response = await this.api.get('/api/dashboard/bookings');
+      const authStore = useAuthStore();
+      if (!authStore.isAuthenticated) {
+        throw new Error('Not authenticated');
+      }
+
+      const response = await this.api.get('/api/dashboard/bookings', {
+        retry: 0 // Disable retries for unauthorized requests
+      });
       return response.data;
     } catch (error) {
+      if (error.response?.status === 401) {
+        // Clear any stale auth state and throw a specific error
+        const authStore = useAuthStore();
+        await authStore.clearAuthState();
+        throw new Error('Authentication required. Please log in again.');
+      }
       throw error;
     }
   }

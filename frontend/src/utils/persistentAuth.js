@@ -10,11 +10,17 @@ const USER_KEY = 'auth_user';
  * @param {string} token - The JWT token to save
  */
 export function saveTokenToStorage(token) {
-  if (!token) {
-    localStorage.removeItem(TOKEN_KEY);
-    return;
+  try {
+    if (!token || typeof token !== 'string' || token.length === 0) {
+      console.warn('Attempting to save invalid token');
+      return false;
+    }
+    localStorage.setItem('auth_token', token);
+    return true;
+  } catch (error) {
+    console.error('Error saving token to storage:', error);
+    return false;
   }
-  localStorage.setItem(TOKEN_KEY, token);
 }
 
 /**
@@ -22,7 +28,28 @@ export function saveTokenToStorage(token) {
  * @returns {string|null} The stored token or null if not found
  */
 export function getTokenFromStorage() {
-  return localStorage.getItem(TOKEN_KEY);
+  try {
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      // Also check Supabase token as fallback
+      const supabaseToken = localStorage.getItem('supabase.auth.token');
+      if (supabaseToken) {
+        try {
+          const { access_token } = JSON.parse(supabaseToken);
+          if (access_token && typeof access_token === 'string' && access_token.length > 0) {
+            return access_token;
+          }
+        } catch (parseError) {
+          console.warn('Error parsing Supabase token:', parseError);
+        }
+      }
+      return null;
+    }
+    return token;
+  } catch (error) {
+    console.error('Error getting token from storage:', error);
+    return null;
+  }
 }
 
 /**
