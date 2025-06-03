@@ -838,15 +838,14 @@ const handleRegister = async () => {
   registerError.value = ''
   try {
     // Use direct fetch instead of axios to rule out any axios interceptor issues
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000'
-    // Try direct registration with backend first using fetch
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000'    // Try direct registration with backend first using fetch
     const registerPayload = {
       email: registerData.value.email,
       password: registerData.value.password,
       full_name: registerData.value.fullName,
-      is_seller: registerData.value.isOwner,
+      is_seller: registerData.value.isOwner ? '1' : '0',
       license: registerData.value.isOwner ? registerData.value.license : undefined
-    }
+    };
     try {
       const response = await fetch(`${apiUrl}/api/auth/register`, {
         method: 'POST',
@@ -896,7 +895,7 @@ const handleRegister = async () => {
           email: registerData.value.email,
           password: registerData.value.password,
           full_name: registerData.value.fullName,
-          is_seller: registerData.value.isOwner,
+          is_seller: registerData.value.isOwner ? '1' : '0',
           license: registerData.value.isOwner ? registerData.value.license : undefined
         })
         // Auto-login after registration

@@ -47,6 +47,9 @@ apiClient.interceptors.request.use(
   async (config) => {
     const path = config.url?.replace(/^\/+|\/+$/g, '') || ''; // Normalize and handle undefined
     
+    // Set withCredentials for all requests
+    config.withCredentials = true;
+    
     // Log the request for debugging
     if (isDev) {
       console.log(`[API] ${config.method?.toUpperCase()} ${path}`, {
