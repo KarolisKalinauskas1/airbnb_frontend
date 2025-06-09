@@ -163,12 +163,12 @@ onMounted(async () => {
         </div>
         <div>
           <label for="new-password" class="block text-sm font-medium text-gray-700">New password</label>
-          <div class="relative">
-            <input 
+          <div class="relative">            <input 
               id="new-password" 
               v-model="newPassword" 
               :type="showNewPassword ? 'text' : 'password'"
               required 
+              autocomplete="new-password"
               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 pr-10"
             />
             <button 
@@ -185,12 +185,12 @@ onMounted(async () => {
         </div>
         <div>
           <label for="confirm-password" class="block text-sm font-medium text-gray-700">Confirm new password</label>
-          <div class="relative">
-            <input 
+          <div class="relative">            <input 
               id="confirm-password" 
               v-model="confirmPassword" 
               :type="showConfirmPassword ? 'text' : 'password'"
               required 
+              autocomplete="new-password"
               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-red-500 focus:ring-red-500 pr-10"
             />
             <button 

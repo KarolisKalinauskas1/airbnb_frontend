@@ -102,6 +102,13 @@ export const useAuthStore = defineStore('auth', () => {
   // Refresh token
   const refreshToken = async () => {
     try {
+      // Skip token refresh if we're on password reset page
+      const isOnPasswordResetPage = router.currentRoute.value.path === '/reset-password';
+      if (isOnPasswordResetPage) {
+        console.log('Skipping token refresh on password reset page')
+        return false
+      }
+
       // Get current refresh token from session
       const currentSession = session.value
       if (!currentSession?.refresh_token) {
@@ -146,6 +153,27 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Clear session helper function
   const clearSession = async (force = false) => {
+    // Check if we're on a password reset page - if so, don't attempt logout at all
+    const isOnPasswordResetPage = router.currentRoute.value.path === '/reset-password';
+    
+    if (isOnPasswordResetPage && !force) {
+      console.log('Skipping logout on password reset page')
+      // Clear all auth state without calling Supabase
+      user.value = null
+      session.value = null
+      publicUser.value = null
+      error.value = null
+      
+      // Remove from localStorage
+      localStorage.removeItem('supabase.auth.token')
+      localStorage.removeItem('supabase.auth.user')
+      localStorage.removeItem('token')
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('authenticationComplete')
+      
+      return false
+    }
+    
     if (isLoggingOut.value && !force) {
       console.log('Logout already in progress')
       return false
@@ -153,8 +181,8 @@ export const useAuthStore = defineStore('auth', () => {
 
     isLoggingOut.value = true
     try {
-      // Sign out from Supabase
-      await supabase.auth.signOut()
+      // Sign out from Supabase with global scope
+      await supabase.auth.signOut({ scope: 'global' })
       
       // Clear state
       user.value = null
@@ -169,8 +197,11 @@ export const useAuthStore = defineStore('auth', () => {
       localStorage.removeItem('token')
       localStorage.removeItem('authenticationComplete')
       
-      // Force router to home page
-      router.push('/')
+      // Only force router navigation if not on password reset page
+      if (!isOnPasswordResetPage) {
+        // Force router to home page
+        router.push('/')
+      }
       
       isLoggingOut.value = false
       return true
@@ -188,9 +219,16 @@ export const useAuthStore = defineStore('auth', () => {
   // Initialize auth state
   const initAuth = async ({ forceRefresh = false } = {}) => {
     if (isInitializing.value) {
-      console.log('Auth initialization already in progress')
+      console.log('Auth initialization already in progress, waiting...')
+      // Wait for existing initialization to complete
+      let attempts = 0
+      while (isInitializing.value && attempts < 50) { // Max 5 seconds wait
+        await new Promise(resolve => setTimeout(resolve, 100))
+        attempts++
+      }
       return
     }
+    
     isInitializing.value = true
     try {
       // Check if we have a recent cached session

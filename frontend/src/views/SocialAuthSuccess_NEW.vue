@@ -52,104 +52,25 @@ const navigateToHome = () => {
   router.push('/');
 };
 
-// Function to wait for Supabase session with timeout
-const waitForSupabaseSession = async (maxAttempts = 10, delayMs = 500) => {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    console.log(`Checking for Supabase session, attempt ${attempt + 1}/${maxAttempts}`);
-    
-    const { data: { session }, error } = await supabase.auth.getSession();
-    
-    if (error) {
-      console.error('Session error:', error);
-      throw error;
-    }
-    
-    if (session) {
-      console.log('✅ Session found:', session);
-      return session;
-    }
-    
-    // Wait before next attempt
-    await new Promise(resolve => setTimeout(resolve, delayMs));
-  }
-  
-  throw new Error('No session found after maximum attempts');
-};
-
-onMounted(async () => {
-  try {
-    console.log('=== Social Auth Success - Starting ===');
-    console.log('Current URL:', window.location.href);
-    console.log('URL params:', window.location.search);
-    console.log('URL fragment:', window.location.hash);
-    
-    // Check if we have OAuth tokens in the URL fragment
-    const fragment = window.location.hash;
-    const hasOAuthTokens = fragment.includes('access_token') || fragment.includes('id_token');
-    
-    if (hasOAuthTokens) {
-      console.log('✅ OAuth tokens detected in URL fragment');
-      statusMessage.value = 'Processing OAuth tokens...';
-      
-      // Wait for Supabase to process the OAuth tokens
-      const session = await waitForSupabaseSession();
-      
-      if (session && session.user) {
-        await processOAuthSuccess(session);
-      } else {
-        throw new Error('Session found but no user data');
-      }
-    } else {
-      // Try to get existing session
-      console.log('No OAuth tokens in URL, checking for existing session...');
-      const { data: { session }, error } = await supabase.auth.getSession();
-      
-      if (error) {
-        console.error('Error retrieving Supabase session:', error);
-        throw error;
-      }
-      
-      if (session && session.user) {
-        console.log('✅ Existing session found');
-        await processOAuthSuccess(session);
-      } else {
-        throw new Error('No session found. Please try logging in again.');
-      }
-    }
-  } catch (error) {
-    console.error('❌ Social auth error:', error);
-    success.value = false;
-    pageTitle.value = 'Authentication Failed';
-    statusMessage.value = `We encountered an issue while signing you in: ${error.message}. Please try again.`;
-    
-    // If we're logged in with Supabase but our backend sync failed,
-    // we should sign out of Supabase to prevent a state mismatch
-    try {
-      await supabase.auth.signOut();
-    } catch (signOutError) {
-      console.error('Failed to sign out of Supabase after error:', signOutError);
-    }
-  } finally {
-    loading.value = false;
-  }
-});
-
+// Extract the OAuth success processing into a separate function
 const processOAuthSuccess = async (session) => {
+  console.log('✅ Supabase session found:', session);
+  
+  // Use the user data from Supabase session
   const { user } = session;
   
-  console.log('📋 Processing user data:', user);
+  // Log the user structure to debug
+  console.log("User data:", user);
   
-  // Validate user email
+  // Make sure we have the user email
   if (!user || !user.email) {
     console.error('Missing user email in session data:', user);
-    
-    // Try to find email in other locations
+    // Check if we can find the email elsewhere in the user object
     const email = user?.identities?.[0]?.identity_data?.email || 
                   user?.app_metadata?.email ||
                   user?.user_metadata?.email;
-    
     if (email) {
-      console.log('✅ Found email in alternative location:', email);
+      // We found an email, so we can proceed
       user.email = email;
     } else {
       throw new Error('Could not find email in user data. Authentication failed.');
@@ -159,7 +80,6 @@ const processOAuthSuccess = async (session) => {
   // Now sync this with our backend for our own JWT and user record
   try {
     console.log('🔄 Syncing with backend...');
-    statusMessage.value = 'Syncing with our servers...';
     
     const backendPayload = {
       supabase_id: user.id,
@@ -191,7 +111,7 @@ const processOAuthSuccess = async (session) => {
     
     console.log('✅ Auth store initialized');
     
-    // Success - show success message and redirect
+    // Automatically redirect to home page after a short delay
     success.value = true;
     pageTitle.value = 'Login Successful!';
     statusMessage.value = 'You have been successfully logged in with Google. Redirecting...';
@@ -201,11 +121,86 @@ const processOAuthSuccess = async (session) => {
       console.log('🏠 Redirecting to home page...');
       router.push('/');
     }, 1500); // 1.5 second delay to show success message
-    
   } catch (backendError) {
     console.error('❌ Backend synchronization error:', backendError);
     console.error('Backend error response:', backendError.response?.data);
     throw new Error(`Backend sync failed: ${backendError.response?.data?.error || backendError.message}`);
   }
 };
+
+onMounted(async () => {
+  try {
+    console.log('=== Social Auth Success - Starting ===');
+    console.log('Current URL:', window.location.href);
+    console.log('URL params:', window.location.search);
+    console.log('URL fragment:', window.location.hash);
+    
+    // Check if we have OAuth tokens in the URL fragment
+    const hasOAuthTokens = window.location.hash.includes('access_token') || 
+                          window.location.hash.includes('id_token');
+    
+    if (hasOAuthTokens) {
+      console.log('🔄 OAuth tokens detected, waiting for Supabase to process...');
+      
+      // Wait for Supabase to process the OAuth tokens
+      // Set up a listener for auth state changes
+      const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log('🔔 Auth state change:', event, session);
+        
+        if (event === 'SIGNED_IN' && session) {
+          console.log('✅ OAuth sign-in detected with session');
+          authListener.subscription.unsubscribe(); // Unsubscribe from further events
+          await processOAuthSuccess(session);
+        } else if (event === 'SIGNED_OUT') {
+          console.log('❌ Sign-out detected during OAuth');
+          throw new Error('OAuth sign-in failed - user was signed out');
+        }
+      });
+      
+      // Also check if session already exists (in case auth state change already fired)
+      setTimeout(async () => {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (session && !error) {
+          console.log('✅ Session already exists, processing...');
+          authListener.subscription.unsubscribe();
+          await processOAuthSuccess(session);
+        }
+      }, 1000); // Wait 1 second for auth state to settle
+      
+    } else {
+      // No OAuth tokens, try to get existing session
+      console.log('🔍 No OAuth tokens, checking for existing session...');
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error('Error retrieving Supabase session:', error);
+        throw error;
+      }
+      
+      console.log('Supabase session data:', data);
+      
+      const session = data?.session;
+      if (!session) {
+        console.error('No session found after Supabase OAuth flow');
+        throw new Error('No session found. Authentication failed.');
+      }
+      
+      await processOAuthSuccess(session);
+    }
+  } catch (error) {
+    console.error('❌ Social auth error:', error);
+    success.value = false;
+    pageTitle.value = 'Authentication Failed';
+    statusMessage.value = `We encountered an issue while signing you in: ${error.message}. Please try again.`;
+    
+    // If we're logged in with Supabase but our backend sync failed,
+    // we should sign out of Supabase to prevent a state mismatch
+    try {
+      await supabase.auth.signOut();
+    } catch (signOutError) {
+      console.error('Failed to sign out of Supabase after error:', signOutError);
+    }
+  } finally {
+    loading.value = false;
+  }
+});
 </script>

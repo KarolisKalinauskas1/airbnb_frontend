@@ -101,15 +101,29 @@ const retryAuth = async () => {
   await initAuth()
 }
 onMounted(async () => {
-  // Check for direct OAuth callback first
+  // Check for OAuth callback in URL
   const queryParams = new URLSearchParams(window.location.search);
-  const isOAuthCallback = queryParams.get('source') === 'oauth';
+  const urlFragment = window.location.hash;
+  
+  // Check if this is an OAuth callback (query param or URL fragment)
+  const isOAuthCallback = queryParams.get('source') === 'oauth' || 
+                         urlFragment.includes('access_token') || 
+                         urlFragment.includes('id_token');
+  
   if (isOAuthCallback) {
-    // We'll let the router handle this, but we still need to init auth
-    await initAuth({ priority: true });
+    // For OAuth callbacks, we need to initialize auth first then let router handle the redirect
+    loadingMessage.value = 'Processing OAuth login...'
+    await initAuth()
+    
+    // If we have URL fragment tokens, let Supabase handle them
+    if (urlFragment.includes('access_token') || urlFragment.includes('id_token')) {
+      // Supabase will automatically detect and process the tokens
+      // The router will then redirect to /social-auth-success
+      return
+    }
   } else {
-    // Normal initialization
-    initAuth();
+    // Normal app initialization
+    await initAuth()
   }
 })
 onUnmounted(() => {

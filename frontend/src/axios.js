@@ -26,6 +26,7 @@ const publicRoutes = [
   'auth/login',
   'auth/register',
   'auth/reset-password',
+  'auth/update-password',
   'camping-spots',
   'api/camping-spots',
   'health',
@@ -122,8 +123,11 @@ apiClient.interceptors.response.use(
     // Check if this was a public route request
     const isPublicRequest = originalRequest.headers?.['X-Public-Route'] === 'true';
 
-    // Handle 401s for non-public routes
-    if (error.response?.status === 401 && !isPublicRequest) {
+    // Check if we're currently on a password reset page
+    const isOnPasswordResetPage = router.currentRoute.value.path === '/reset-password';
+
+    // Handle 401s for non-public routes, but skip auth clearing if on password reset page
+    if (error.response?.status === 401 && !isPublicRequest && !isOnPasswordResetPage) {
       originalRequest._retry = true;
       const authStore = useAuthStore();
 

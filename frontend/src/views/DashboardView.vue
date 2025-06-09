@@ -175,20 +175,20 @@ const formatCurrency = (value) => {
 }
 
 const loadDashboardData = async () => {
+  // Prevent multiple simultaneous loads
+  if (loading.value) {
+    console.log('Dashboard already loading, skipping...');
+    return;
+  }
+  
   try {
     loading.value = true;
     error.value = null;
     
-    // Check auth store initialization with a timeout
-    const startTime = Date.now();
-    const timeout = 5000; // 5 seconds timeout
-    
-    while (!authStore.initialized && Date.now() - startTime < timeout) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
+    // Ensure auth store is initialized (should already be done by router guard)
     if (!authStore.initialized) {
-      throw new Error('Authentication initialization timed out');
+      console.log('Auth store not initialized, initializing now...');
+      await authStore.initAuth();
     }
 
     if (!authStore.isAuthenticated) {
@@ -207,11 +207,12 @@ const loadDashboardData = async () => {
       return;
     }
 
-    // Load dashboard data with session token
+    // Load dashboard data with session token and timeout
     const response = await axios.get('/api/dashboard', {
       headers: {
         Authorization: `Bearer ${session.access_token}`
-      }
+      },
+      timeout: 10000 // 10 second timeout for API request
     });
 
     if (!response.data) {
@@ -223,7 +224,7 @@ const loadDashboardData = async () => {
     spots.value = response.data.spots || [];
     bookings.value = response.data.bookings || [];
 
-    // Load analytics if user is owner
+    // Load analytics if user is owner - with error isolation
     if (authStore.isOwner) {
       try {
         await dashboardStore.loadDashboardData(false);
@@ -231,15 +232,27 @@ const loadDashboardData = async () => {
       } catch (analyticsErr) {
         console.error('Error loading analytics:', analyticsErr);
         // Don't fail the whole dashboard for analytics error
+        // Just log it and continue without analytics
       }
     }
   } catch (err) {
     console.error('Dashboard loading error:', err);
-    if (err.response?.status === 401 || err.message.includes('authentication')) {
-      // Handle auth errors by redirecting to login
+    
+    // Handle different types of errors appropriately
+    if (err.response?.status === 401) {
+      // Handle auth errors by clearing session and redirecting
       await authStore.clearSession();
       error.value = 'Your session has expired. Please log in again.';
       router.push('/auth?redirect=/dashboard');
+    } else if (err.response?.status === 429) {
+      // Handle rate limiting
+      error.value = 'Too many requests. Please wait a moment and try again.';
+    } else if (err.message.includes('timeout') || err.message.includes('network')) {
+      // Handle timeout/network errors with retry option
+      error.value = 'Failed to load dashboard data. Please check your connection and try again.';
+    } else if (err.response?.status >= 500) {
+      // Handle server errors
+      error.value = 'Server error. Please try again later.';
     } else {
       error.value = err.message || 'Failed to load dashboard data';
     }
@@ -258,12 +271,19 @@ const viewAllBookings = () => {
 
 onMounted(async () => {
   try {
-    // Give a short delay for auth store to initialize from route guard
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // The router guard should have already initialized auth for protected routes
+    // If somehow auth is not ready, wait a short time for it to complete
+    if (!authStore.initialized && !authStore.isInitializing) {
+      console.log('Auth not initialized on dashboard mount, waiting briefly...');
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
     
-    // Only load if we're already authenticated
+    // Load dashboard data if authenticated
     if (authStore.isAuthenticated) {
       await loadDashboardData();
+    } else {
+      error.value = 'Authentication required';
+      router.push('/auth?redirect=/dashboard');
     }
   } catch (err) {
     console.error('Error loading dashboard on mount:', err);
@@ -271,19 +291,35 @@ onMounted(async () => {
   }
 })
 
-// Watch for auth state changes, but avoid infinite loops by checking initialization
+// Watch for auth state changes with debouncing to prevent infinite loops
+let watcherDebounceTimer = null
 watch([() => authStore.isAuthenticated, () => authStore.initialized], 
-  async ([isAuthenticated, isInitialized]) => {
-    try {
-      if (isInitialized && isAuthenticated) {
-        await loadDashboardData();
-      }
-    } catch (err) {
-      console.error('Error in auth state watcher:', err);
-      error.value = err.message;
+  ([isAuthenticated, isInitialized]) => {
+    // Clear any existing timer
+    if (watcherDebounceTimer) {
+      clearTimeout(watcherDebounceTimer)
     }
+    
+    // Debounce the watcher to prevent rapid-fire requests
+    watcherDebounceTimer = setTimeout(async () => {
+      try {
+        // Only act when auth is fully initialized and we're not already loading
+        if (isInitialized && isAuthenticated && !loading.value) {
+          // Check if we already have data to prevent unnecessary reloads
+          if (!user.value || !spots.value.length) {
+            await loadDashboardData();
+          }
+        } else if (isInitialized && !isAuthenticated && !authStore.isLoggingOut) {
+          error.value = 'Authentication required';
+          router.push('/auth?redirect=/dashboard');
+        }
+      } catch (err) {
+        console.error('Error in auth state watcher:', err);
+        error.value = err.message;
+      }
+    }, 500) // 500ms debounce
   },
-  { immediate: true }
+  { immediate: false } // Don't run immediately since onMounted handles initial load
 )
 </script>
 

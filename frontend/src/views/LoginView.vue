@@ -529,7 +529,7 @@ const trySessionRecovery = async () => {
   toast.error('Could not restore session. Please login again.')
   return false
 }
-// Login handler with improved error handling
+// Login handler with improved error handling and backend sync
 const handleLogin = async () => {
   try {    
     loginError.value = null;
@@ -538,7 +538,7 @@ const handleLogin = async () => {
     // Validate form first
     if (!validateLoginForm()) return;
     
-    // Attempt login with Supabase
+    // Step 1: Attempt login with Supabase
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.value,
       password: password.value
@@ -551,7 +551,49 @@ const handleLogin = async () => {
       throw new Error('No session received after login');
     }
     
-    // Double check we have a valid session
+    // Step 2: Sync with backend to ensure user exists in database
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${data.session.access_token}`
+        },
+        body: JSON.stringify({
+          email: email.value,
+          password: password.value
+        }),
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        // If backend login fails, try to auto-sync the user
+        if (response.status === 401 || response.status === 404) {
+          console.log('User not found in backend database, attempting auto-sync...');
+          const syncResponse = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/sync-user`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${data.session.access_token}`
+            },
+            body: JSON.stringify({
+              user: data.user,
+              session: data.session
+            }),
+            credentials: 'include'
+          });
+          
+          if (!syncResponse.ok) {
+            console.warn('Failed to auto-sync user, continuing with Supabase-only auth');
+          }
+        }
+      }
+    } catch (syncError) {
+      console.warn('Backend sync failed, continuing with Supabase auth:', syncError);
+      // Continue with Supabase authentication even if backend sync fails
+    }
+    
+    // Step 3: Double check we have a valid session
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError) {
       console.error('Failed to verify session:', sessionError);
@@ -563,10 +605,10 @@ const handleLogin = async () => {
       throw new Error('Session validation failed');
     }
     
-    // Set up the validated session in the auth store
+    // Step 4: Set up the validated session in the auth store
     await authStore.setSession(data.session);
     
-    // Verify we're actually logged in and session was stored properly
+    // Step 5: Verify we're actually logged in and session was stored properly
     if (!authStore.isAuthenticated) {
       console.error('Auth store not properly initialized');
       // Try to recover session
@@ -581,7 +623,7 @@ const handleLogin = async () => {
       }
     }
     
-    // Verify the session is properly stored
+    // Step 6: Verify the session is properly stored
     if (!localStorage.getItem('supabase.auth.token') || !localStorage.getItem('supabase.auth.user')) {
       console.error('Session not properly stored in localStorage');
       // Re-store session data
@@ -591,7 +633,7 @@ const handleLogin = async () => {
         expires_at: data.session.expires_at
       }));
       localStorage.setItem('supabase.auth.user', JSON.stringify(data.session.user));
-    }    // Handle redirect and restore booking state if present
+    }// Handle redirect and restore booking state if present
     try {
       // First add a small delay to ensure auth store is fully updated (prevents race condition)
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -785,10 +827,9 @@ const handleGoogleLogin = async () => {
     googleLoginProcessing.value = true
     googleLoginError.value = null
         // Use Supabase's built-in OAuth provider support    // Determine the redirect URL based on environment
-    const isProduction = import.meta.env.PROD;
-    const redirectUrl = isProduction 
-      ? 'https://airbnb-frontend.vercel.app/?source=oauth'  // Use your actual production URL here
-      : `${window.location.origin}/?source=oauth`;
+    const isProduction = import.meta.env.PROD;    const redirectUrl = isProduction 
+      ? 'https://airbnb-frontend.vercel.app/social-auth-success'  // Use your actual production URL here
+      : `${window.location.origin}/social-auth-success`;
       
     console.log('OAuth redirect URL:', redirectUrl);
     

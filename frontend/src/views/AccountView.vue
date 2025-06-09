@@ -600,8 +600,9 @@ const hasReview = (booking) => {
 }
 // Check if a booking is eligible for review (completed and past end date)
 const isReviewEligible = (booking) => {
-  // Must be a confirmed or completed booking
-  if (booking.status !== 'Confirmed' && booking.status !== 'Completed') {
+  // Must be a confirmed or completed booking (using lowercase to match API response)
+  const status = booking.status?.toLowerCase()
+  if (status !== 'confirmed' && status !== 'completed') {
     return false
   }
   // Must be in the past
@@ -870,8 +871,7 @@ const submitReview = async () => {
     const token = await authStore.getAuthToken(true) // Force token refresh for this important operation
     if (!token || typeof token !== 'string') {
       throw new Error(`Invalid token format: ${typeof token}`)
-    }
-    const bookingId = selectedBookingForReview.value.id
+    }    const bookingId = selectedBookingForReview.value.id
     const method = reviewExists.value ? 'PUT' : 'POST'
     // For PUT requests, we need the actual review ID, not just the booking ID
     const endpoint = reviewExists.value && reviewData.review_id
@@ -882,6 +882,15 @@ const submitReview = async () => {
       rating: reviewData.rating,
       comment: reviewData.comment || null
     }
+    
+    console.log('[FRONTEND DEBUG] Submitting review:', {
+      booking: selectedBookingForReview.value,
+      bookingId: bookingId,
+      method: method,
+      endpoint: endpoint,
+      payload: reviewPayload
+    });
+    
     const response = await axios({
       method,
       url: endpoint,

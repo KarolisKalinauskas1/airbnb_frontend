@@ -431,24 +431,14 @@ router.beforeEach(async (to, from, next) => {
   const requiresSeller = to.matched.some(record => record.meta.requiresSeller)
   const requiresRenter = to.matched.some(record => record.meta.requiresRenter)
   
-  // Handle OAuth callback cleanup
-  if (to.query.source === 'oauth') {
-    const query = { ...to.query }
-    delete query.source
-    next({ path: to.path, query: Object.keys(query).length ? query : undefined, replace: true })
+  // Check if this is the root page with OAuth tokens in URL fragment
+  if (to.path === '/' && window.location.hash.includes('access_token')) {
+    // Redirect to the SocialAuthSuccess page which will handle the authentication
+    next({ path: '/social-auth-success', replace: true })
     return
   }
 
-  // Ensure auth is initialized
-  if (!authStore.initialized) {
-    try {
-      await authStore.initAuth()
-    } catch (error) {
-      console.error('Auth initialization failed:', error)
-    }
-  }
-
-  // Check if it's a public path
+  // Check if it's a public path first
   const isPublicPath = publicPaths.some(path => {
     if (typeof path === 'string') {
       return to.path.startsWith(path)
@@ -456,9 +446,18 @@ router.beforeEach(async (to, from, next) => {
     return path.test(to.path)
   })
 
-  // Allow public paths or routes not requiring auth
+  // Allow public paths or routes not requiring auth WITHOUT initializing auth
   if (isPublicPath || !requiresAuth) {
     return next()
+  }
+
+  // Only initialize auth for protected routes
+  if (!authStore.initialized) {
+    try {
+      await authStore.initAuth()
+    } catch (error) {
+      console.error('Auth initialization failed:', error)
+    }
   }
 
   // Handle unauthenticated access to protected routes
