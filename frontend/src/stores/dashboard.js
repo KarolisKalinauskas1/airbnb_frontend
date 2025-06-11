@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import dashboardService from '@/services/dashboardService'
 import { useAuthStore } from '@/stores/auth'
+import { logDashboardRequest } from '@/utils/dashboardDebug'
+
 // Helper to safely parse numbers
 function safeParseNumber(value, defaultValue = 0) {
   // Handle null/undefined
@@ -189,11 +191,28 @@ export const useDashboardStore = defineStore('dashboard', () => {
    * Load dashboard data
    */
   async function loadDashboardData(forceRefresh = false) {
+    // Log the dashboard store load attempt
+    logDashboardRequest('store_load_dashboard', { 
+      forceRefresh, 
+      currentlyLoading: loading.value,
+      hasExistingData: !!dashboardData.value?.revenue
+    })
+    
     // Prevent multiple simultaneous loads
-    if (loading.value) {
+    if (loading.value && !forceRefresh) {
       console.log('Dashboard store already loading, skipping...');
+      logDashboardRequest('store_load_skipped', { reason: 'already_loading' })
       return dashboardData.value;
     }
+    
+    // Add a timeout to prevent infinite loading states
+    const loadingTimeout = setTimeout(() => {
+      if (loading.value) {
+        console.error('Dashboard loading timeout - forcing completion');
+        loading.value = false;
+        error.value = 'Loading timeout - please try again';
+      }
+    }, 30000); // 30 second timeout
     
     try {
       loading.value = true;
@@ -209,23 +228,10 @@ export const useDashboardStore = defineStore('dashboard', () => {
       
       const token = authStore.token;
       
-      // Check if user is an owner for proper error messages
+      // Check if user is an owner - simplified check to prevent loops
       if (!authStore.isOwner) {
         console.warn('User is not an owner, dashboard access restricted');
-        if (debugMode.value) {
-          // Try to verify owner status with permission debug endpoint
-          try {
-            const permissionCheck = await dashboardService.checkOwnerPermissions();
-            if (!permissionCheck.isOwner) {
-              throw new Error('Owner account required to view analytics');
-            }
-          } catch (permissionErr) {
-            console.error('Permission check failed:', permissionErr);
-            throw new Error('Owner account required to view analytics');
-          }
-        } else {
-          throw new Error('Owner account required to view analytics');
-        }
+        throw new Error('Owner account required to view analytics');
       }
       
       // Decide whether to use debug data or real data
@@ -260,8 +266,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
       if (useDebugData.value && failedAttempts.value >= MAX_RETRY_ATTEMPTS) {
         useDebugData.value = false;
         failedAttempts.value = 0;
-      }
-        // Don't retry on authentication errors to prevent infinite loops
+      }      // Don't retry on authentication errors to prevent infinite loops
       if (err.message.includes('authentication') || err.message.includes('Owner account')) {
         failedAttempts.value = 0; // Reset attempts
         loading.value = false; // Ensure loading is cleared
@@ -273,6 +278,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
       
       throw err;
     } finally {
+      // Clear the timeout and ensure loading is always set to false
+      clearTimeout(loadingTimeout);
       loading.value = false;
     }
   }

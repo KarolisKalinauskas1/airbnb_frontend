@@ -175,15 +175,25 @@ const formatCurrency = (value) => {
 }
 
 const loadDashboardData = async () => {
-  // Prevent multiple simultaneous loads
+  // Check if we're already loading and how long it's been
   if (loading.value) {
     console.log('Dashboard already loading, skipping...');
-    return;
+    // Force reset loading state if it's been loading for more than 30 seconds
+    if (!window.dashboardLoadingStartTime || (Date.now() - window.dashboardLoadingStartTime) > 30000) {
+      console.warn('Loading state has been active for too long, forcing reset');
+      loading.value = false;
+    } else {
+      return;
+    }
   }
+  
+  // Track when loading started
+  window.dashboardLoadingStartTime = Date.now();
   
   try {
     loading.value = true;
     error.value = null;
+    console.log('Starting dashboard data load...');
     
     // Ensure auth store is initialized (should already be done by router guard)
     if (!authStore.initialized) {
@@ -258,6 +268,8 @@ const loadDashboardData = async () => {
     }
   } finally {
     loading.value = false;
+    window.dashboardLoadingStartTime = null;
+    console.log('Dashboard loading completed, loading state reset');
   }
 }
 
@@ -291,25 +303,35 @@ onMounted(async () => {
   }
 })
 
-// Watch for auth state changes with debouncing to prevent infinite loops
-let watcherDebounceTimer = null
-watch([() => authStore.isAuthenticated, () => authStore.initialized], 
-  ([isAuthenticated, isInitialized]) => {
+// Simplified watcher to prevent infinite loops - only watch authentication state changes
+let lastAuthState = null
+const watcherDebounceTimer = ref(null)
+
+watch(() => authStore.isAuthenticated, 
+  (isAuthenticated) => {
+    // Skip if this is the same state we already handled
+    if (lastAuthState === isAuthenticated) {
+      return
+    }
+    lastAuthState = isAuthenticated
+    
     // Clear any existing timer
-    if (watcherDebounceTimer) {
-      clearTimeout(watcherDebounceTimer)
+    if (watcherDebounceTimer.value) {
+      clearTimeout(watcherDebounceTimer.value)
     }
     
     // Debounce the watcher to prevent rapid-fire requests
-    watcherDebounceTimer = setTimeout(async () => {
+    watcherDebounceTimer.value = setTimeout(async () => {
       try {
         // Only act when auth is fully initialized and we're not already loading
-        if (isInitialized && isAuthenticated && !loading.value) {
+        if (authStore.initialized && isAuthenticated && !loading.value) {
           // Check if we already have data to prevent unnecessary reloads
-          if (!user.value || !spots.value.length) {
+          if (!user.value) {
+            console.log('Auth state changed to authenticated, loading dashboard data')
             await loadDashboardData();
           }
-        } else if (isInitialized && !isAuthenticated && !authStore.isLoggingOut) {
+        } else if (authStore.initialized && !isAuthenticated && !authStore.isLoggingOut) {
+          console.log('Auth state changed to unauthenticated, redirecting to login')
           error.value = 'Authentication required';
           router.push('/auth?redirect=/dashboard');
         }
@@ -317,7 +339,7 @@ watch([() => authStore.isAuthenticated, () => authStore.initialized],
         console.error('Error in auth state watcher:', err);
         error.value = err.message;
       }
-    }, 500) // 500ms debounce
+    }, 1000) // Increased debounce to 1 second
   },
   { immediate: false } // Don't run immediately since onMounted handles initial load
 )

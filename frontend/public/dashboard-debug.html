@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Debug Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .loading { background-color: #fff3cd; border: 1px solid #ffeaa7; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; }
+        .debug-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border-left: 4px solid #007bff;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        pre { background-color: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Dashboard Loading Debug Test</h1>
+    
+    <div class="status" id="status">Ready to test</div>
+    
+    <div>
+        <button onclick="testDashboardAccess()">Test Dashboard Access</button>
+        <button onclick="testAnalyticsAPI()">Test Analytics API</button>
+        <button onclick="testAuthStatus()">Test Auth Status</button>
+        <button onclick="clearDebugInfo()">Clear Debug Info</button>
+        <button onclick="resetDashboard()">Reset Dashboard</button>
+    </div>
+    
+    <div class="debug-info">
+        <h3>Debug Information</h3>
+        <div id="debugInfo">No debug info yet</div>
+    </div>
+    
+    <div class="debug-info">
+        <h3>Request Log</h3>
+        <div id="requestLog">No requests logged yet</div>
+    </div>
+
+    <script>
+        let requestCount = 0;
+        let requestLog = [];
+        
+        function updateStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+        
+        function logRequest(type, details) {
+            requestCount++;
+            const logEntry = {
+                id: requestCount,
+                type,
+                timestamp: new Date().toISOString(),
+                details
+            };
+            requestLog.unshift(logEntry);
+            updateRequestLog();
+            return logEntry;
+        }
+        
+        function updateRequestLog() {
+            const logEl = document.getElementById('requestLog');
+            logEl.innerHTML = '<pre>' + JSON.stringify(requestLog.slice(0, 10), null, 2) + '</pre>';
+        }
+        
+        function updateDebugInfo(info) {
+            const debugEl = document.getElementById('debugInfo');
+            debugEl.innerHTML = '<pre>' + JSON.stringify(info, null, 2) + '</pre>';
+        }
+        
+        async function testAuthStatus() {
+            updateStatus('Testing auth status...', 'loading');
+            logRequest('auth_status_test', {});
+            
+            try {
+                const response = await fetch('/api/auth/status', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                logRequest('auth_status_response', { status: response.status, data });
+                
+                if (response.ok) {
+                    updateStatus('Auth status check successful', 'success');
+                    updateDebugInfo({ authStatus: data });
+                } else {
+                    updateStatus(`Auth status check failed: ${data.error || 'Unknown error'}`, 'error');
+                    updateDebugInfo({ error: data });
+                }
+            } catch (error) {
+                logRequest('auth_status_error', { error: error.message });
+                updateStatus(`Auth status check error: ${error.message}`, 'error');
+                updateDebugInfo({ error: error.message });
+            }
+        }
+        
+        async function testAnalyticsAPI() {
+            updateStatus('Testing analytics API...', 'loading');
+            logRequest('analytics_test', {});
+            
+            try {
+                const response = await fetch('/api/dashboard/analytics', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                logRequest('analytics_response', { status: response.status, hasData: !!data });
+                
+                if (response.ok) {
+                    updateStatus('Analytics API test successful', 'success');
+                    updateDebugInfo({ analytics: data });
+                } else {
+                    updateStatus(`Analytics API test failed: ${data.error || 'Unknown error'}`, 'error');
+                    updateDebugInfo({ error: data });
+                }
+            } catch (error) {
+                logRequest('analytics_error', { error: error.message });
+                updateStatus(`Analytics API error: ${error.message}`, 'error');
+                updateDebugInfo({ error: error.message });
+            }
+        }
+        
+        async function testDashboardAccess() {
+            updateStatus('Testing dashboard access...', 'loading');
+            logRequest('dashboard_test', {});
+            
+            try {
+                // First test if we can reach the frontend
+                const frontendResponse = await fetch('/');
+                logRequest('frontend_check', { status: frontendResponse.status });
+                
+                // Then test the dashboard page
+                const dashboardResponse = await fetch('/dashboard');
+                logRequest('dashboard_check', { status: dashboardResponse.status });
+                
+                updateStatus('Dashboard access test completed', 'success');
+                updateDebugInfo({ 
+                    frontend: { status: frontendResponse.status },
+                    dashboard: { status: dashboardResponse.status }
+                });
+            } catch (error) {
+                logRequest('dashboard_error', { error: error.message });
+                updateStatus(`Dashboard access error: ${error.message}`, 'error');
+                updateDebugInfo({ error: error.message });
+            }
+        }
+        
+        function clearDebugInfo() {
+            requestLog = [];
+            requestCount = 0;
+            updateRequestLog();
+            updateDebugInfo({ message: 'Debug info cleared' });
+            updateStatus('Debug info cleared', 'success');
+        }
+        
+        function resetDashboard() {
+            // Clear localStorage
+            localStorage.clear();
+            
+            // Clear sessionStorage
+            sessionStorage.clear();
+            
+            updateStatus('Dashboard reset - localStorage and sessionStorage cleared', 'success');
+            logRequest('dashboard_reset', {});
+        }
+        
+        // Auto-update every 5 seconds with current status
+        setInterval(() => {
+            const now = new Date().toISOString();
+            const debugInfo = {
+                timestamp: now,
+                totalRequests: requestCount,
+                recentRequests: requestLog.slice(0, 3)
+            };
+            
+            // Only update if we have some data
+            if (requestCount > 0) {
+                updateDebugInfo(debugInfo);
+            }
+        }, 5000);
+        
+        updateStatus('Dashboard debug test ready');
+    </script>
+</body>
+</html>

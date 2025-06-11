@@ -473,13 +473,31 @@ async function blockDates() {
 // Unblock dates (for owner)
 async function unblockDates(bookingId) {
   if (!props.isOwner || !props.campingSpotId) return;
+  
   try {
-    await axios.delete(`/api/camping-spots/${props.campingSpotId}/availability/${bookingId}`);
+    // Ensure we have a valid auth token
+    const token = await authStore.getAuthToken();
+    if (!token) {
+      toast.error('You must be logged in to perform this action');
+      return;
+    }
+    
+    console.log('Unblocking booking ID:', bookingId);
+    const response = await axios.delete(`/api/camping-spots/${props.campingSpotId}/availability/${bookingId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
     toast.success('Date range unblocked successfully');
     await loadBookings();
   } catch (err) {
     console.error('Failed to unblock dates:', err);
-    toast.error('Failed to unblock dates. Please try again.');
+    if (err.response?.status === 401) {
+      toast.error('Authentication failed. Please log in again.');
+    } else {
+      toast.error('Failed to unblock dates. Please try again.');
+    }
   }
 }
 // Improved loadBookings function that handles API fallback

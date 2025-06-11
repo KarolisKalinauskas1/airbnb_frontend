@@ -1,6 +1,8 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/lib/supabase'
+import { logDashboardRequest, checkForInfiniteLoop } from '@/utils/dashboardDebug'
+
 // Implement a more robust request cache with a longer timeout
 const requestCache = {
   data: null,
@@ -178,59 +180,43 @@ class DashboardService {
    * @param {boolean} options.forceRefresh - Whether to force a refresh of data
    * @param {string} options.token - Authentication token to use (optional)
    * @returns {Promise<Object>} - Analytics data
-   */
-  async getAnalytics(options = {}) {
+   */  async getAnalytics(options = {}) {
+    // Log the request for debugging
+    logDashboardRequest('analytics_request', { 
+      forceRefresh: options.forceRefresh,
+      hasToken: !!options.token 
+    })
+    
+    // Check for potential infinite loops
+    if (checkForInfiniteLoop()) {
+      throw new Error('Infinite loop detected - too many analytics requests')
+    }
+    
     try {
       const { forceRefresh, token } = options;
       const endpoint = `/api/dashboard/analytics${forceRefresh ? '?refresh=true' : ''}`;      
       
       // Return cached data if available and not forcing refresh
       if (!forceRefresh) {
-        const cachedData = requestCache.get();
-        if (cachedData) {
+        const cachedData = requestCache.get();        if (cachedData) {
+          logDashboardRequest('analytics_cache_hit');
           console.log('Returning cached analytics data');
           return cachedData;
         }
       }      
       
-      // Check if the endpoint is currently locked
-      if (this.requestLocks[endpoint]) {
-        console.log('Request already in progress, returning pending promise');
-        return this.pendingRequests[endpoint] || requestCache.get() || Promise.reject(new Error('Request in progress'));
-      }
-      
-      // Prevent rapid identical requests with more aggressive throttling
-      const now = Date.now();
-      if (
-        this.requestTimestamps[endpoint] && 
-        (now - this.requestTimestamps[endpoint] < this.MIN_REQUEST_INTERVAL)
-      ) {
-        console.log('Request throttled, using cached data or pending request');
-        // If we have pending request, use it, otherwise use cached data if available
-        if (this.pendingRequests[endpoint]) {
-          return this.pendingRequests[endpoint];
-        } else if (requestCache.get()) {
-          return requestCache.get();
-        } else {
-          // Throttle the request by throwing an error
-          throw new Error('Request throttled - please wait before retrying');
-        }
-      }
-      
-      // Update timestamp for this endpoint
-      this.requestTimestamps[endpoint] = now;
-      
+      // Simplified request handling - remove complex throttling that causes issues
       // Check for pending requests to the same endpoint
       if (this.pendingRequests[endpoint]) {
+        logDashboardRequest('analytics_pending_request');
         console.log('Returning existing pending request');
         return this.pendingRequests[endpoint];
       }
       
-      // Lock this endpoint to prevent duplicate requests
-      this.requestLocks[endpoint] = true;
-      
       // Configure request with the provided token if available
-      const config = {};
+      const config = {
+        timeout: 10000 // 10 second timeout
+      };
       if (token) {
         config.headers = {
           ...config.headers,
@@ -240,7 +226,7 @@ class DashboardService {
       
       console.log('Making new analytics request to:', endpoint);
       
-      // Create the promise for this request
+      // Create the promise for this request with timeout handling
       this.pendingRequests[endpoint] = (async () => {
         try {
           const response = await this.api.get(endpoint, config);          
@@ -306,38 +292,42 @@ class DashboardService {
               currentMonth: data.currentMonth,
               totalSpots: safeParseNumber(data.totalSpots)
             };            
-            
-            // Processed data is now ready for caching
+              // Processed data is now ready for caching
             // Cache data for future requests
             requestCache.set(processedData);
             console.log('Analytics data processed and cached successfully');
             return processedData;
           }
-          return rawData;        } catch (error) {
+          return rawData;        
+        } catch (error) {
           console.error('Analytics request failed:', error);          
-            // Handle specific error types
-            if (error.response?.status === 401) {
-              console.error('Dashboard request unauthorized - token may be invalid or expired');
-              throw new Error('Authentication required - please log in again');
-            } else if (error.response?.status === 403) {
-              console.error('Dashboard request forbidden - user may not have owner permissions');
-              throw new Error('Access denied - owner account required');
-            } else if (error.response?.status === 429) {
-              throw new Error('Too many requests - please wait before retrying');
-            } else if (error.response?.status >= 500) {
-              throw new Error('Server error - please try again later');
-            }
-            
-            throw error;
+          // Handle specific error types
+          if (error.response?.status === 401) {
+            console.error('Dashboard request unauthorized - token may be invalid or expired');
+            throw new Error('Authentication required - please log in again');
+          } else if (error.response?.status === 403) {
+            console.error('Dashboard request forbidden - user may not have owner permissions');
+            throw new Error('Access denied - owner account required');
+          } else if (error.response?.status === 429) {
+            throw new Error('Too many requests - please wait before retrying');
+          } else if (error.response?.status >= 500) {
+            throw new Error('Server error - please try again later');
+          } else if (error.code === 'ECONNABORTED') {
+            throw new Error('Request timeout - please try again');
+          }
+          
+          throw error;
         } finally {
-          // Immediately clear the locks on completion or error to prevent stuck states
+          // Always clear the pending request to prevent stuck states
           delete this.pendingRequests[endpoint];
-          delete this.requestLocks[endpoint];
         }
       })();
       
       return this.pendingRequests[endpoint];
     } catch (error) {
+      // Ensure pending request is cleared even if outer try block fails
+      delete this.pendingRequests[endpoint];
+      
       // Return cached data as fallback if available (but only for non-auth errors)
       if (!error.message.includes('Authentication') && !error.message.includes('Access denied')) {
         const cachedData = requestCache.get();
